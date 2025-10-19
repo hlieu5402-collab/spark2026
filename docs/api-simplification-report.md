@@ -22,7 +22,7 @@
    - 在管线层提供 `PipelineStage` + `StageDirection`，并为旧接口保留默认实现以平滑迁移。
 
 2. **命名与分层**
-   - 建议将 `cluster::membership::ClusterMembership` 与 `cluster::discovery::ServiceDiscovery` 的公共背压配置抽象为 `cluster::backpressure`，已在本次改动中落实，为后续合并打下基础。
+   - 建议将 `cluster::membership::ClusterMembership` 与 `cluster::discovery::ServiceDiscovery` 的公共流控配置抽象为 `cluster::flow_control`，已在本次改动中落实，为后续合并打下基础。
    - 运行时与可观测性模块可引入 `prelude` 模块，暴露常用 Trait 组合，降低调用方的导入负担。
 
 3. **Facade 构想**

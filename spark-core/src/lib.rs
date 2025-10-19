@@ -30,6 +30,7 @@ pub mod router;
 pub mod runtime;
 pub mod security;
 pub mod service;
+pub mod status;
 pub mod transport;
 
 pub use backpressure::{BackpressureReason, PollReady};
@@ -38,12 +39,11 @@ pub use buffer::{
     PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
 };
 pub use cluster::{
-    BackpressureMode, ClusterConsistencyLevel, ClusterEpoch, ClusterMembership,
-    ClusterMembershipEvent, ClusterMembershipScope, ClusterMembershipSnapshot, ClusterNodeProfile,
-    ClusterNodeState, ClusterRevision, ClusterScopeSelector, DiscoveryEvent, DiscoverySnapshot,
+    ClusterConsistencyLevel, ClusterEpoch, ClusterMembership, ClusterMembershipEvent,
+    ClusterMembershipScope, ClusterMembershipSnapshot, ClusterNodeProfile, ClusterNodeState,
+    ClusterRevision, ClusterScopeSelector, DiscoveryEvent, DiscoverySnapshot, FlowControlMode,
     NodeId, OverflowPolicy, RoleDescriptor, ServiceDiscovery, ServiceInstance, ServiceName,
-    SubscriptionBackpressure, SubscriptionQueueProbe, SubscriptionQueueSnapshot,
-    SubscriptionStream,
+    SubscriptionFlowControl, SubscriptionQueueProbe, SubscriptionQueueSnapshot, SubscriptionStream,
 };
 pub use codec::{
     Codec, CodecDescriptor, CodecRegistry, ContentEncoding, ContentType, DecodeContext,
@@ -102,6 +102,10 @@ pub use security::{
     NegotiationOutcome, NegotiationResult, PolicyAttachment, PolicyEffect, PolicyRule,
     ResourcePattern, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy, SecurityProtocol,
     SecurityProtocolOffer, SubjectMatcher,
+};
+pub use service::{Layer, Service};
+pub use status::ready::{
+    BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice, SubscriptionBudget,
 };
 pub use service::{BoxService, DynService, Layer, Service, ServiceObject};
 pub use transport::{

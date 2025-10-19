@@ -1,7 +1,7 @@
 use crate::{
     BoxFuture,
     cluster::{
-        backpressure::{SubscriptionBackpressure, SubscriptionStream},
+        flow_control::{SubscriptionFlowControl, SubscriptionStream},
         topology::{ClusterConsistencyLevel, ClusterEpoch, ClusterRevision, RoleDescriptor},
     },
     error::SparkError,
@@ -223,7 +223,7 @@ pub enum ClusterMembershipEvent {
 /// # 逻辑解析（How）
 /// - `snapshot`：获取指定范围的全量视图，应尊重 `consistency` 的语义，例如 `Linearizable` 需要借助 Raft/etcd 的读屏障。
 /// - `subscribe`：返回一个流式事件源，可选起始修订号用于断点续传，并允许通过
-///   [`SubscriptionBackpressure`] 协商缓冲模式与队列探针；当启用观测时，应在
+///   [`SubscriptionFlowControl`] 协商缓冲模式与队列探针；当启用观测时，应在
 ///   [`SubscriptionStream::queue_probe`] 中填充实现提供的观测对象。
 /// - `self_profile`：提供运行时自身节点的画像，便于 Handler 决策。
 ///
@@ -231,7 +231,7 @@ pub enum ClusterMembershipEvent {
 /// - **输入参数**：
 ///   - `scope`：事件过滤器与一致性配置，详见 [`ClusterMembershipScope`].
 ///   - `resume_from`：可选修订号，表示消费端已经处理到的进度。
-///   - `backpressure`：订阅背压配置，详见 [`SubscriptionBackpressure`]。
+///   - `flow_control`：订阅流控配置，详见 [`SubscriptionFlowControl`]。
 /// - **返回值**：
 ///   - `snapshot` 返回 `ClusterMembershipSnapshot`，若范围为空需返回空集合而非错误。
 ///   - `subscribe` 返回 [`SubscriptionStream<ClusterMembershipEvent>`]，要求事件按修订号递增；若 `queue_probe`
@@ -252,7 +252,7 @@ pub enum ClusterMembershipEvent {
 /// - 接口未强制使用某种一致性算法，允许实现者选择 Raft、Viewstamped Replication、Gossip+Delta CRDT 等不同方案；但更强一致性会增
 ///   加延迟。
 /// - `subscribe` 必须在背压严重时提供自适应策略（如快照重置或事件压缩），否则可能导致内存膨胀；当启用
-///   `SubscriptionBackpressure::bounded` 且溢出时，应返回 `cluster.queue_overflow` 或在探针中增加丢弃计数。
+///   `SubscriptionFlowControl::bounded` 且溢出时，应返回 `cluster.queue_overflow` 或在探针中增加丢弃计数。
 ///
 /// # 错误契约（Error Contract）
 /// - `snapshot`：
@@ -278,7 +278,7 @@ pub trait ClusterMembership: Send + Sync + 'static {
         &self,
         scope: ClusterMembershipScope,
         resume_from: Option<ClusterRevision>,
-        backpressure: SubscriptionBackpressure,
+        flow_control: SubscriptionFlowControl,
     ) -> SubscriptionStream<ClusterMembershipEvent>;
 
     /// 获取当前节点的画像。
