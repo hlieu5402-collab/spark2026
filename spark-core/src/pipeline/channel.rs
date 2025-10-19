@@ -1,5 +1,10 @@
-use crate::{buffer::PipelineMessage, error::SparkError, transport::TransportSocketAddr};
-use core::time::Duration;
+use crate::{
+    buffer::PipelineMessage,
+    contract::{CloseReason, Deadline},
+    error::SparkError,
+    future::BoxFuture,
+    transport::TransportSocketAddr,
+};
 
 use super::Controller;
 
@@ -97,10 +102,13 @@ pub trait Channel: Send + Sync + 'static {
     fn local_addr(&self) -> Option<TransportSocketAddr>;
 
     /// 触发优雅关闭，允许在截止前冲刷缓冲。
-    fn close_graceful(&self, deadline: Option<Duration>);
+    fn close_graceful(&self, reason: CloseReason, deadline: Option<Deadline>);
 
     /// 立即终止连接。
     fn close(&self);
+
+    /// 等待连接完全关闭，用于满足“优雅关闭契约”。
+    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>>;
 
     /// 向通道写入消息，返回背压信号。
     fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, SparkError>;

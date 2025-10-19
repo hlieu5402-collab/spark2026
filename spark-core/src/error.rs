@@ -1,29 +1,90 @@
 use crate::{Error, TraceContext, cluster::NodeId, transport::TransportSocketAddr};
-use alloc::{boxed::Box, string::String};
+use alloc::{borrow::Cow, boxed::Box, string::String};
 use core::fmt;
 
-/// `SparkError` 表示 `spark-core` 统一的错误域。
+/// `CoreError` 提供稳定的错误码与根因链路，是框架错误分层的最底层。
 ///
 /// # 设计背景（Why）
-/// - 框架需要跨层传递稳定的错误码，以便日志、指标与 AIOps 系统能够进行机器可读的根因识别。
-/// - 错误必须运行在 `no_std` 环境下，因此不依赖 `std::error::Error`，并兼容可选的链路上下文（链路追踪、节点信息等）。
-///
-/// # 逻辑解析（How）
-/// - 结构体以 Builder 风格的方法累积上下文，例如 `with_cause`、`with_trace`（见下方实现）。
-/// - `code` 字段承载稳定错误码，`message` 面向人类调试；其余字段为可选元信息，帮助运行时进行降噪或溯源。
+/// - 错误分层共识要求“核心错误可稳定 round-trip”，因此该结构仅承载错误码、消息与底层 `source`。
+/// - 通过对象安全的 [`Error`] 实现，保证在 `no_std + alloc` 环境下同样可用。
 ///
 /// # 契约说明（What）
-/// - **前置条件**：调用方应保证错误码在 `codes` 模块中声明，或遵守约定的 `namespace.action` 形式。
-/// - **后置条件**：所有构造方法都会产生 `SparkError` 拥有的所有权，确保可以跨线程移动与重试。
+/// - `code`：稳定字符串，建议使用 `namespace.reason` 命名规范。
+/// - `message`：人类可读描述，避免包含敏感信息。
+/// - `cause`：可选底层原因；若不存在可设为 `None`。
 ///
-/// # 设计取舍与风险（Trade-offs）
-/// - 采用 `String` 储存消息，牺牲少量拷贝成本换取在日志与跨组件通信上的灵活性。
-/// - `TraceContext`、节点信息均为可选，以免在轻量场景（如单机部署）产生多余依赖。
+/// # 风险提示（Trade-offs）
+/// - 结构体仅负责承载信息，不执行任何格式化或指标上报逻辑；调用方需自行处理。
+#[derive(Debug)]
+pub struct CoreError {
+    code: &'static str,
+    message: Cow<'static, str>,
+    cause: Option<ErrorCause>,
+}
+
+impl CoreError {
+    /// 构造核心错误。
+    pub fn new(code: &'static str, message: impl Into<Cow<'static, str>>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            cause: None,
+        }
+    }
+
+    /// 附带底层原因并返回新的核心错误。
+    pub fn with_cause(mut self, cause: impl Error + Send + Sync + 'static) -> Self {
+        self.cause = Some(Box::new(cause));
+        self
+    }
+
+    /// 为现有错误设置底层原因。
+    pub fn set_cause(&mut self, cause: impl Error + Send + Sync + 'static) {
+        self.cause = Some(Box::new(cause));
+    }
+
+    /// 获取稳定错误码。
+    pub fn code(&self) -> &'static str {
+        self.code
+    }
+
+    /// 获取描述。
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// 获取底层原因。
+    pub fn cause(&self) -> Option<&ErrorCause> {
+        self.cause.as_ref()
+    }
+}
+
+impl fmt::Display for CoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}] {}", self.code, self.message)
+    }
+}
+
+impl Error for CoreError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.cause
+            .as_ref()
+            .map(|boxed| boxed.as_ref() as &(dyn Error + 'static))
+    }
+}
+
+/// `SparkError`（DomainError）在核心错误之上附加分布式上下文信息。
+///
+/// # 设计背景（Why）
+/// - 结合 Trace/Peer/Node 元信息，满足跨节点调试、审计与 AIOps 需求。
+/// - `source()` 始终返回内部的 [`CoreError`]，以保证错误链 `Impl → Domain → Core → Cause` 的 round-trip。
+///
+/// # 契约说明（What）
+/// - 所有 Builder 方法返回 `Self`，保持不可变语义，避免多线程情况下出现部分更新。
+/// - `with_cause` 实际调用核心错误的 `with_cause`，确保底层 cause 与核心层共享。
 #[derive(Debug)]
 pub struct SparkError {
-    code: &'static str,
-    message: String,
-    cause: Option<ErrorCause>,
+    core: CoreError,
     trace_context: Option<TraceContext>,
     peer_addr: Option<TransportSocketAddr>,
     node_id: Option<NodeId>,
@@ -34,16 +95,9 @@ pub type ErrorCause = Box<dyn Error + Send + Sync + 'static>;
 
 impl SparkError {
     /// 使用稳定错误码与消息创建 `SparkError`。
-    ///
-    /// # 契约说明
-    /// - **参数**：`code` 必须是全局唯一且稳定的字符串；`message` 为任意人类可读文本。
-    /// - **前置条件**：`code` 应遵循 `domain.reason` 命名；`message` 建议避免敏感信息。
-    /// - **后置条件**：返回的实例尚未附带任何补充上下文。
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
-            code,
-            message: message.into(),
-            cause: None,
+            core: CoreError::new(code, Cow::Owned(message.into())),
             trace_context: None,
             peer_addr: None,
             node_id: None,
@@ -52,17 +106,17 @@ impl SparkError {
 
     /// 获取稳定错误码。
     pub fn code(&self) -> &'static str {
-        self.code
+        self.core.code()
     }
 
     /// 获取人类可读的错误描述。
     pub fn message(&self) -> &str {
-        &self.message
+        self.core.message()
     }
 
     /// 附带一个底层原因，形成错误链。
     pub fn with_cause(mut self, cause: impl Error + Send + Sync + 'static) -> Self {
-        self.cause = Some(Box::new(cause));
+        self.core.set_cause(cause);
         self
     }
 
@@ -101,21 +155,96 @@ impl SparkError {
 
     /// 获取可选的底层原因。
     pub fn cause(&self) -> Option<&ErrorCause> {
-        self.cause.as_ref()
+        self.core.cause()
+    }
+
+    /// 访问核心错误。
+    pub fn core(&self) -> &CoreError {
+        &self.core
     }
 }
 
 impl fmt::Display for SparkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.code, self.message)
+        write!(f, "{}", self.core)
     }
 }
 
 impl Error for SparkError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.cause
-            .as_ref()
-            .map(|boxed| boxed.as_ref() as &(dyn Error + 'static))
+        Some(self.core() as &dyn Error)
+    }
+}
+
+/// `ImplError`（Implementation Error）包装领域错误并附加实现细节。
+///
+/// # 设计背景（Why）
+/// - 满足分层共识中“实现细节可扩展”的要求，便于在不同宿主/协议实现中记录私有信息。
+///
+/// # 契约说明（What）
+/// - `detail`：实现层描述，推荐使用稳定字符串便于日志聚合。
+/// - `source_cause`：实现层额外的底层错误，例如系统调用或第三方库异常。
+#[derive(Debug)]
+pub struct ImplError {
+    domain: SparkError,
+    detail: Option<Cow<'static, str>>,
+    source_cause: Option<ErrorCause>,
+}
+
+impl ImplError {
+    /// 使用领域错误创建实现错误。
+    pub fn new(domain: SparkError) -> Self {
+        Self {
+            domain,
+            detail: None,
+            source_cause: None,
+        }
+    }
+
+    /// 附加实现细节描述。
+    pub fn with_detail(mut self, detail: impl Into<Cow<'static, str>>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    /// 附加底层错误原因。
+    pub fn with_source(mut self, cause: impl Error + Send + Sync + 'static) -> Self {
+        self.source_cause = Some(Box::new(cause));
+        self
+    }
+
+    /// 获取领域错误。
+    pub fn domain(&self) -> &SparkError {
+        &self.domain
+    }
+
+    /// 消耗自身并返回领域错误。
+    pub fn into_domain(self) -> SparkError {
+        self.domain
+    }
+
+    /// 获取实现细节描述。
+    pub fn detail(&self) -> Option<&Cow<'static, str>> {
+        self.detail.as_ref()
+    }
+}
+
+impl fmt::Display for ImplError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.detail {
+            Some(detail) => write!(f, "{} ({})", self.domain, detail),
+            None => write!(f, "{}", self.domain),
+        }
+    }
+}
+
+impl Error for ImplError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        if let Some(ref cause) = self.source_cause {
+            Some(cause.as_ref())
+        } else {
+            Some(self.domain() as &dyn Error)
+        }
     }
 }
 

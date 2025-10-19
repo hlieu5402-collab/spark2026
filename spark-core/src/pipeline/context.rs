@@ -1,12 +1,11 @@
+use super::{channel::Channel, controller::Controller};
 use crate::{
     buffer::{BufferPool, PipelineMessage},
     cluster::{ClusterMembership, ServiceDiscovery},
+    contract::{CallContext, CloseReason, Deadline},
     observability::{Logger, MetricsProvider, TraceContext},
     runtime::{TaskExecutor, TimeDriver},
 };
-use core::time::Duration;
-
-use super::{channel::Channel, controller::Controller};
 
 /// Handler 访问运行时能力与事件流的统一入口。
 ///
@@ -65,6 +64,9 @@ pub trait Context: Send + Sync {
     /// 服务发现能力。
     fn discovery(&self) -> Option<&dyn ServiceDiscovery>;
 
+    /// 当前调用上下文，携带取消/截止/预算等统一契约。
+    fn call_context(&self) -> &CallContext;
+
     /// 继续向后传播读事件。
     fn forward_read(&self, msg: PipelineMessage);
 
@@ -75,5 +77,8 @@ pub trait Context: Send + Sync {
     fn flush(&self);
 
     /// 优雅关闭。
-    fn close_graceful(&self, deadline: Option<Duration>);
+    fn close_graceful(&self, reason: CloseReason, deadline: Option<Deadline>);
+
+    /// 等待关闭完成。
+    fn closed(&self) -> crate::future::BoxFuture<'static, Result<(), crate::SparkError>>;
 }
