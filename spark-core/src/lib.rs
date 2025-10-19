@@ -22,6 +22,7 @@ pub mod observability;
 pub mod pipeline;
 pub mod router;
 pub mod runtime;
+pub mod security;
 pub mod service;
 pub mod transport;
 
@@ -78,6 +79,14 @@ pub use runtime::{
     ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
     TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle, TaskLaunchOptions, TaskPriority,
     TaskResult, TimeDriver,
+};
+pub use security::{
+    Credential, CredentialDescriptor, CredentialMaterial, CredentialScope, CredentialState,
+    IdentityDescriptor, IdentityKind, IdentityProof, KeyMaterial, KeyPurpose, KeyRequest,
+    KeyResponse, KeyRetrievalError, KeySource, NegotiationContext, NegotiationError,
+    NegotiationOutcome, NegotiationResult, PolicyAttachment, PolicyEffect, PolicyRule,
+    ResourcePattern, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy, SecurityProtocol,
+    SecurityProtocolOffer, SubjectMatcher,
 };
 pub use service::{Layer, Service};
 pub use transport::{
