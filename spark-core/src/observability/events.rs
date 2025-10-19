@@ -253,10 +253,19 @@ pub enum OpsEvent {
 
 /// 运维事件种类，用于配置策略与分类统计。
 ///
+/// # 设计背景（Why）
+/// - **策略对齐**：`set_event_policy` 需要离散的事件种类索引，以避免调用方直接操作内部事件结构。
+/// - **跨模块协作**：调度、负载均衡、健康探针等子系统均需共享同一事件命名空间，枚举提供编译期校验能力。
+/// - **可扩展性考量**：`Custom` 变体允许主机框架根据业务需要扩展事件，同时保留与核心事件的隔离。
+///
 /// # 契约说明（What）
 /// - 枚举值与 [`OpsEvent`] 变体保持一一对应，`Custom` 允许宿主扩展。
 /// - **命名建议**：扩展事件使用 `vendor.event_name` 形式，避免与内置事件冲突。
 /// - **实现责任**：对于未识别的自定义事件，策略配置应拒绝生效并返回错误。
+///
+/// # 风险提示（Trade-offs）
+/// - 若实现将变体映射到整型索引，请确保为 `Custom` 生成的散列稳定，否则策略缓存会失效。
+/// - 需要在多进程或多语言组件间共享策略时，建议额外持久化字符串表示以避免枚举 discriminant 演进导致不兼容。
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum OpsEventKind {
     ShutdownTriggered,
@@ -271,6 +280,11 @@ pub enum OpsEventKind {
 
 /// 事件策略配置，定义速率限制、采样与缓冲行为。
 ///
+/// # 设计背景（Why）
+/// - **统一抽象**：历史上事件总线实现各自维护限速、采样逻辑，难以在运行时动态组合；引入枚举后可由控制平面集中下发策略。
+/// - **资源兜底**：事件风暴会放大内存与 CPU 压力，通过显式策略可控制峰值并向观测平台暴露可预期的行为。
+/// - **跨实现契约**：无论底层使用 channel、MPSC 队列或广播树，均需遵守同一策略模型，避免调用方根据具体实现进行硬编码。
+///
 /// # 契约说明（What）
 /// - `Passthrough`：默认策略，不做额外限制。
 /// - `RateLimit`：采用令牌桶限速，`permits_per_sec` 表示平均速率，`burst` 表示桶容量。
@@ -278,6 +292,11 @@ pub enum OpsEventKind {
 /// - `Debounce`：在指定时间窗口内合并事件，适用于抖动频繁的信号。
 /// - `BoundedBuffer`：配置内部队列容量与溢出策略，复用 [`OverflowPolicy`] 语义。
 /// - **实现责任**：事件总线需尽力遵守策略；若硬件或实现限制导致策略无法生效，应在日志或返回值中明确说明。
+///
+/// # 风险提示（Trade-offs）
+/// - 高频 `RateLimit` 配置切换需避免重置令牌桶状态导致事件瞬间突发，建议实现做增量调整。
+/// - `Sample` 与 `Debounce` 同时启用时需定义清晰的组合顺序（推荐先采样后去抖），否则可能出现难以解释的漏报。
+/// - `BoundedBuffer` 中 `OverflowPolicy` 的选择直接影响事件可追溯性；请在文档中同步说明溢出行为。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventPolicy {
     Passthrough,
@@ -324,9 +343,55 @@ pub trait OpsEventBus: Send + Sync + 'static {
 
     /// 为特定事件类型设置策略。
     ///
+    /// # 设计背景（Why）
+    /// - 提供运行时可调的事件风暴防护手段，使平台可基于观测数据及时调整限流或缓冲策略。
+    /// - 让控制平面与数据平面分离：控制侧只需下发策略枚举，而实现侧负责解释策略并调整内部结构。
+    ///
     /// # 契约说明（What）
     /// - `kind`：目标事件类别，详见 [`OpsEventKind`]。
     /// - `policy`：策略配置，详见 [`EventPolicy`]。
-    /// - **实现责任**：策略应即时生效，若无法应用应返回错误并保持原策略；建议在实现中输出日志帮助诊断。
+    /// - **前置条件**：调用方需确保事件种类在目标实现中受支持；对于 `Custom` 事件，建议先通过 out-of-band 注册完成映射。
+    /// - **后置条件**：策略应即时生效，若无法应用应返回错误并保持原策略；建议在实现中输出日志帮助诊断。
+    ///
+    /// # 逻辑解析（How）
+    /// - 推荐实现以无锁配置表（如 `RwLock<HashMap<OpsEventKind, PolicyState>>`）缓存策略。
+    /// - 接收到策略后，应同步调整对应事件的内部限速器、采样器或缓冲区参数；若需要重建数据结构，请确保广播通道短暂阻塞可控。
+    /// - 对于 `BoundedBuffer`，务必在应用新容量前清理或迁移旧缓冲，防止内存泄露。
+    ///
+    /// # 风险提示（Trade-offs）
+    /// - 频繁切换策略可能导致内部状态抖动，建议实现方加入最小冷却时间或 compare-and-swap 保护。
+    /// - 未授权调用方下发策略可能造成监控盲区，实际部署应结合 ACL 或鉴权钩子。
+    ///
+    /// # 示例（Example）
+    /// ```ignore
+    /// use alloc::sync::Arc;
+    /// use core::num::{NonZeroU32, NonZeroUsize};
+    /// use spark_core::observability::{EventPolicy, OpsEvent, OpsEventBus, OpsEventKind};
+    ///
+    /// # struct NopBus;
+    /// # impl OpsEventBus for NopBus {
+    /// #     fn broadcast(&self, _event: OpsEvent) {}
+    /// #     fn subscribe(&self) -> spark_core::BoxStream<'static, OpsEvent> {
+    /// #         unimplemented!("示例总线不会被真实轮询");
+    /// #     }
+    /// #     fn set_event_policy(&self, _kind: OpsEventKind, _policy: EventPolicy) {}
+    /// # }
+    /// let bus: Arc<dyn OpsEventBus> = Arc::new(NopBus);
+    /// // 运行时限速缓冲设置：先对 `FailureClusterDetected` 事件做令牌桶限速，再将缓冲容量设置为 128。
+    /// bus.set_event_policy(
+    ///     OpsEventKind::FailureClusterDetected,
+    ///     EventPolicy::RateLimit {
+    ///         permits_per_sec: NonZeroU32::new(10).unwrap(),
+    ///         burst: NonZeroU32::new(20).unwrap(),
+    ///     },
+    /// );
+    /// bus.set_event_policy(
+    ///     OpsEventKind::FailureClusterDetected,
+    ///     EventPolicy::BoundedBuffer {
+    ///         capacity: NonZeroUsize::new(128).unwrap(),
+    ///         overflow: spark_core::cluster::backpressure::OverflowPolicy::DropNew,
+    ///     },
+    /// );
+    /// ```
     fn set_event_policy(&self, kind: OpsEventKind, policy: EventPolicy);
 }
