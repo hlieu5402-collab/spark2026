@@ -1,0 +1,17 @@
+[package]
+name = "spark-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+authors = ["Gemini 架构组 <architecture@gemini.example>"]
+license = "Apache-2.0"
+description = "spark-core: 高性能、协议无关、分布式原生的异步通信框架核心契约"
+
+[lib]
+name = "spark_core"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+alloc = []
+std = ["alloc"]
