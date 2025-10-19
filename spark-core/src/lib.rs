@@ -13,9 +13,11 @@ extern crate alloc;
 pub mod buffer;
 pub mod codec;
 pub mod common;
+pub mod configuration;
 pub mod distributed;
 pub mod error;
 pub mod future;
+pub mod host;
 pub mod observability;
 pub mod pipeline;
 pub mod runtime;
@@ -27,14 +29,30 @@ pub use codec::{
     Codec, CodecDescriptor, CodecRegistry, ContentEncoding, ContentType, DecodeContext,
     DecodeOutcome, DynCodec, DynCodecFactory, EncodeContext, EncodedPayload, Encoder,
     NegotiatedCodec, SchemaDescriptor, TypedCodecAdapter, TypedCodecFactory,
+pub use buffer::{
+    BufferPool, Bytes, PipelineMessage, PoolStatisticsView, ReadableBuffer, WritableBuffer,
 };
 pub use common::{Empty, IntoEmpty, Loopback};
+pub use configuration::{
+    ChangeEvent, ChangeNotification, ChangeSet, ConfigKey, ConfigMetadata, ConfigScope,
+    ConfigValue, ConfigurationBuilder, ConfigurationError, ConfigurationHandle, ConfigurationLayer,
+    ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId, ProfileLayering,
+    ResolvedConfiguration, SourceMetadata, WatchToken,
+};
 pub use distributed::{
     ClusterMembershipProvider, DiscoveryEvent, MembershipEvent, NodeId, NodeInfo, NodeStatus,
     ServiceDiscoveryProvider,
 };
 pub use error::{ErrorCause, SparkError};
 pub use future::{BoxFuture, BoxStream, Stream};
+pub use host::{
+    CapabilityDescriptor, CapabilityLevel, ComponentDescriptor, ComponentFactory,
+    ComponentHealthState, ComponentKind, ConfigChange, ConfigConsumer, ConfigEnvelope, ConfigQuery,
+    HostContext, HostLifecycle, HostMetadata, HostRuntimeProfile, NetworkAddressFamily,
+    NetworkProtocol, ProvisioningOutcome, SecurityFeature, ShutdownReason, StartupPhase,
+    ThroughputClass,
+};
+pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use observability::{
     ComponentHealth, CoreUserEvent, Counter, Gauge, HealthCheckProvider, HealthState, Histogram,
     IdleDirection, IdleTimeout, Logger, MetricsProvider, OpsEvent, OpsEventBus, RateDirection,
@@ -44,7 +62,12 @@ pub use pipeline::{
     Channel, ChannelState, Context, ExtensionsMap, InboundHandler, OutboundHandler, Pipeline,
     PipelineFactory, WriteSignal,
 };
-pub use runtime::{CoreServices, Executor, SparkRuntime, Timer};
+pub use runtime::{
+    AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission, ManagedBlockingTask,
+    ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
+    TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle, TaskLaunchOptions, TaskPriority,
+    TaskResult, TimeDriver,
+};
 pub use service::{Layer, Service};
 pub use transport::{Endpoint, ParamMap, ServerTransport, SparkSocketAddr, TransportFactory};
 

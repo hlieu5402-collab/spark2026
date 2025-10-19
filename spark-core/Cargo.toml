@@ -23,3 +23,15 @@ criterion = "0.5"
 [[bench]]
 name = "codec"
 harness = false
+[[bench]]
+name = "smoke"
+
+[[bench]]
+name = "configuration"
+
+[[bench]]
+name = "buffer_roundtrip"
+harness = false
+
+[dev-dependencies]
+criterion = "0.5"
