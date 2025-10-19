@@ -55,9 +55,10 @@ impl ListenerShutdown {
 /// - **后置条件**：当 Future 完成且返回 `Ok(())` 时，监听器已停止接受新连接，并按计划处理旧连接。
 ///
 /// # 性能契约（Performance Contract）
-/// - `shutdown` 返回 [`BoxFuture`]，维持 Trait 对象安全；调用会进行一次堆分配与虚表跳转。
-/// - 若关闭过程位于超敏感控制环，可在实现类型上提供额外的同步/泛型 API，让调用方在明确类型时绕过分配。
-/// - 框架在默认场景中假定优雅关闭频率低，因此分配成本可忽略；如需批量关闭，可预热 `Box` 缓冲或复用 `Future` 状态机。
+/// - `shutdown` 返回 [`BoxFuture`] 以维持 Trait 对象安全；调用会进行一次堆分配与通过虚表调度的 `poll`。
+/// - `async_contract_overhead` Future 场景在 20 万次轮询中测得泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
+///   因优雅关闭频率通常较低，额外 CPU 成本可忽略。【e8841c†L4-L13】
+/// - 若关闭过程位于超敏感控制环，可在实现类型上提供额外的同步/泛型 API，或复用 `Box` 缓冲让调用方在明确类型时绕过分配。
 ///
 /// # 风险提示（Trade-offs）
 /// - 如果底层 API 不支持优雅关闭，实现方应在超时后返回 `SparkError::operation_timeout` 等语义化错误。

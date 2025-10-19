@@ -101,10 +101,11 @@ impl ListenerConfig {
 ///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`] 或 [`crate::error::codes::APP_UNAUTHORIZED`]。
 ///
 /// # 性能契约（Performance Contract）
-/// - `bind` 与 `connect` 返回 [`BoxFuture`]，以对象安全换取实现自由度；每次调用会触发一次 `Box` 分配与 vtable 间接跳转。
-/// - `async_contract_overhead` 基准显示在 20 万次建连模拟中额外成本低于 1% CPU，默认情况下可接受。【e8841c†L4-L13】
-/// - 极端低延迟或零分配敏感路径可选择绕过该 Trait：实现者可额外暴露泛型构造函数（如 `fn bind_typed<F>(...) -> impl Future`）
-///   或在内部复用 `Box` 缓冲；调用方也可以直接依赖具体实现类型，避免动态分发。
+/// - `bind` 与 `connect` 返回 [`BoxFuture`] 以维持 Trait 对象安全；每次调用会触发一次堆分配与通过虚表调度的 `poll` 跳转。
+/// - `async_contract_overhead` 基准在 20 万次建连模拟中测得泛型 Future 平均 6.23ns/次、`BoxFuture` 平均 6.09ns/次。
+///   差异约 -0.9%，说明默认路径的额外 CPU 消耗可以忽略。【e8841c†L4-L13】
+/// - 若业务面向极端低延迟或零分配场景，可在实现类型上额外暴露泛型/具体返回值接口（例如 `fn bind_typed(...) -> impl Future`），
+///   或在内部复用 `Box` 缓冲区；调用方在掌握实现类型时也可直接依赖该具体类型，完全绕过动态分发。
 ///
 /// # 风险提示（Trade-offs）
 /// - 建连可能涉及 DNS、服务发现、握手，多步异步流程需尊重 `timeout` 与 `retry_budget`。
