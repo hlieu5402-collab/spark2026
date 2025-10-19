@@ -57,9 +57,11 @@ pub use host::{
     ThroughputClass,
 };
 pub use observability::{
-    ComponentHealth, CoreUserEvent, Counter, Gauge, HealthCheckProvider, HealthState, Histogram,
-    IdleDirection, IdleTimeout, Logger, MetricsProvider, OpsEvent, OpsEventBus, RateDirection,
-    RateLimited, TlsInfo, TraceContext,
+    AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter, Gauge,
+    HealthCheckProvider, HealthChecks, HealthState, Histogram, IdleDirection, IdleTimeout,
+    InstrumentDescriptor, KeyValue, LogField, LogRecord, LogSeverity, Logger, MetricAttributeValue,
+    MetricsProvider, OpsEvent, OpsEventBus, OwnedAttributeSet, RateDirection, RateLimited, TlsInfo,
+    TraceContext, TraceContextError, TraceFlags, TraceState, TraceStateEntry, TraceStateError,
 };
 pub use pipeline::{
     ChainBuilder, Channel, ChannelState, Context, Controller, ControllerEvent, ControllerEventKind,
