@@ -11,10 +11,10 @@
 extern crate alloc;
 
 pub mod buffer;
+pub mod cluster;
 pub mod codec;
 pub mod common;
 pub mod configuration;
-pub mod distributed;
 pub mod error;
 pub mod future;
 pub mod host;
@@ -24,13 +24,20 @@ pub mod runtime;
 pub mod service;
 pub mod transport;
 
-pub use buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage};
+pub use buffer::{
+    BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,
+    PoolStatisticsView, ReadableBuffer, WritableBuffer,
+};
+pub use cluster::{
+    ClusterConsistencyLevel, ClusterEpoch, ClusterMembership, ClusterMembershipEvent,
+    ClusterMembershipScope, ClusterMembershipSnapshot, ClusterNodeProfile, ClusterNodeState,
+    ClusterRevision, ClusterScopeSelector, DiscoveryEvent, DiscoverySnapshot, NodeId,
+    RoleDescriptor, ServiceDiscovery, ServiceInstance, ServiceName,
+};
 pub use codec::{
     Codec, CodecDescriptor, CodecRegistry, ContentEncoding, ContentType, DecodeContext,
     DecodeOutcome, DynCodec, DynCodecFactory, EncodeContext, EncodedPayload, Encoder,
     NegotiatedCodec, SchemaDescriptor, TypedCodecAdapter, TypedCodecFactory,
-pub use buffer::{
-    BufferPool, Bytes, PipelineMessage, PoolStatisticsView, ReadableBuffer, WritableBuffer,
 };
 pub use common::{Empty, IntoEmpty, Loopback};
 pub use configuration::{
@@ -39,12 +46,8 @@ pub use configuration::{
     ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId, ProfileLayering,
     ResolvedConfiguration, SourceMetadata, WatchToken,
 };
-pub use distributed::{
-    ClusterMembershipProvider, DiscoveryEvent, MembershipEvent, NodeId, NodeInfo, NodeStatus,
-    ServiceDiscoveryProvider,
-};
 pub use error::{ErrorCause, SparkError};
-pub use future::{BoxFuture, BoxStream, Stream};
+pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use host::{
     CapabilityDescriptor, CapabilityLevel, ComponentDescriptor, ComponentFactory,
     ComponentHealthState, ComponentKind, ConfigChange, ConfigConsumer, ConfigEnvelope, ConfigQuery,
@@ -52,7 +55,6 @@ pub use host::{
     NetworkProtocol, ProvisioningOutcome, SecurityFeature, ShutdownReason, StartupPhase,
     ThroughputClass,
 };
-pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use observability::{
     ComponentHealth, CoreUserEvent, Counter, Gauge, HealthCheckProvider, HealthState, Histogram,
     IdleDirection, IdleTimeout, Logger, MetricsProvider, OpsEvent, OpsEventBus, RateDirection,

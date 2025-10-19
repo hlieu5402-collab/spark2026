@@ -50,7 +50,7 @@ impl<'a> EncodeContext<'a> {
     pub fn acquire_buffer(
         &self,
         min_capacity: usize,
-    ) -> Result<Box<dyn ErasedSparkBufMut>, SparkError> {
+    ) -> Result<Box<ErasedSparkBufMut>, SparkError> {
         self.allocator.acquire(min_capacity)
     }
 
@@ -72,7 +72,7 @@ impl fmt::Debug for EncodeContext<'_> {
 ///
 /// # 设计背景（Why）
 /// - 类似 gRPC、NATS 中的帧抽象，编码器需要返回只读视图以便下游传输层直接写出。
-/// - 通过持有 `Box<dyn ErasedSparkBuf>`，允许实现者提供自定义引用计数缓冲或零拷贝切片。
+/// - 通过持有 `Box<ErasedSparkBuf>`，允许实现者提供自定义引用计数缓冲或零拷贝切片。
 ///
 /// # 逻辑解析（How）
 /// - `from_buffer` 接收任何对象安全的缓冲实现。
@@ -85,17 +85,17 @@ impl fmt::Debug for EncodeContext<'_> {
 /// # 风险提示（Trade-offs）
 /// - 不提供部分写入标记；如需分片发送，应在更高层通过 `PipelineMessage::Buf` 的多帧组合实现。
 pub struct EncodedPayload {
-    buffer: Box<dyn ErasedSparkBuf>,
+    buffer: Box<ErasedSparkBuf>,
 }
 
 impl EncodedPayload {
     /// 使用已经冻结的只读缓冲创建负载。
-    pub fn from_buffer(buffer: Box<dyn ErasedSparkBuf>) -> Self {
+    pub fn from_buffer(buffer: Box<ErasedSparkBuf>) -> Self {
         Self { buffer }
     }
 
     /// 取回底层缓冲。
-    pub fn into_buffer(self) -> Box<dyn ErasedSparkBuf> {
+    pub fn into_buffer(self) -> Box<ErasedSparkBuf> {
         self.buffer
     }
 }

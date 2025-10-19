@@ -50,7 +50,7 @@ impl<'a> DecodeContext<'a> {
     pub fn acquire_scratch(
         &self,
         min_capacity: usize,
-    ) -> Result<Box<dyn ErasedSparkBufMut>, SparkError> {
+    ) -> Result<Box<ErasedSparkBufMut>, SparkError> {
         self.allocator.acquire(min_capacity)
     }
 
@@ -121,7 +121,7 @@ pub trait Decoder: Send + Sync + 'static {
     /// 尝试将字节缓冲解码为高层对象。
     fn decode(
         &self,
-        src: &mut dyn ErasedSparkBuf,
+        src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
     ) -> Result<DecodeOutcome<Self::Item>, SparkError>;
 }

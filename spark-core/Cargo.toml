@@ -25,13 +25,12 @@ name = "codec"
 harness = false
 [[bench]]
 name = "smoke"
+harness = false
 
 [[bench]]
 name = "configuration"
+harness = false
 
 [[bench]]
 name = "buffer_roundtrip"
 harness = false
-
-[dev-dependencies]
-criterion = "0.5"
