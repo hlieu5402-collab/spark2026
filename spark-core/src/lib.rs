@@ -14,11 +14,13 @@
 
 extern crate alloc;
 
+pub mod backpressure;
 pub mod buffer;
 pub mod cluster;
 pub mod codec;
 pub mod common;
 pub mod configuration;
+pub mod contract;
 pub mod error;
 pub mod future;
 pub mod host;
@@ -31,6 +33,7 @@ pub mod service;
 pub mod status;
 pub mod transport;
 
+pub use backpressure::{BackpressureReason, PollReady};
 pub use buffer::{
     BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,
     PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
@@ -54,7 +57,12 @@ pub use configuration::{
     ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId, ProfileLayering,
     ResolvedConfiguration, SourceMetadata, WatchToken,
 };
-pub use error::{ErrorCause, SparkError};
+pub use contract::{
+    Budget, BudgetDecision, BudgetKind, BudgetSnapshot, CallContext, CallContextBuilder,
+    Cancellation, CloseReason, DEFAULT_OBSERVABILITY_CONTRACT, Deadline, ObservabilityContract,
+    SecurityContextSnapshot,
+};
+pub use error::{CoreError, ErrorCause, ImplError, SparkError};
 pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use host::{
     CapabilityDescriptor, CapabilityLevel, ComponentDescriptor, ComponentFactory,
@@ -99,6 +107,7 @@ pub use service::{Layer, Service};
 pub use status::ready::{
     BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice, SubscriptionBudget,
 };
+pub use service::{BoxService, DynService, Layer, Service, ServiceObject};
 pub use transport::{
     AvailabilityRequirement, ConnectionIntent, Endpoint, EndpointKind, ListenerShutdown,
     QualityOfService, SecurityMode, ServerTransport, SessionLifecycle, TransportFactory,
