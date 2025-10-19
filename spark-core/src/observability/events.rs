@@ -17,6 +17,14 @@ use core::{
 /// - 引入统一 Trait 后，可借助 `event_kind` 标签和 `as_any` 接口，在不牺牲扩展性的前提下提升事件语义自说明能力。
 /// - 该抽象借鉴 OpenTelemetry `Event` 与 Envoy Filter Event 模式，强调“自描述 + 可扩展”。
 ///
+/// # Any 使用指引
+/// - **推荐流程**：消费 [`CoreUserEvent::ApplicationSpecific`] 时，请通过
+///   [`CoreUserEvent::downcast_application_event`] 获取强类型，且必须检查返回值是否为 `Some`。
+/// - **失败诊断**：下转型失败时，请即时记录 [`ApplicationEvent::event_kind`] 与
+///   [`CoreUserEvent::application_event_kind`] 的返回值，辅助排查版本不兼容或事件路由错误；严禁直接 `unwrap`。
+/// - **跨边界协作**：在 FFI、持久化或多语言订阅场景，建议为事件定义显式的领域枚举或字符串代码，并在 Rust 端通过
+///   `event_kind` 和 `Any` 作为兜底扩展点。
+///
 /// # 逻辑解析（How）
 /// - `event_kind` 默认返回编译期类型名，配合可观测性后端可以快速识别事件类别。
 /// - `as_any` 允许在 Handler 中执行安全下转型，实现者可结合 [`CoreUserEvent::downcast_application_event`] 使用。
@@ -26,6 +34,11 @@ use core::{
 /// - `ApplicationEvent` 承担 Marker Trait 角色，收敛到 `Send + Sync + 'static` 的安全集合，避免重新引入裸 `Arc<dyn Any>`。
 /// - 若未来需要附加规范（例如规定可序列化格式、Tracing 语义），可在该 Trait 中增补关联常量或扩展方法以维持静态可分析性。
 /// - 保留 `as_any` 的设计是为了兼容运行时诊断；建议调用 [`CoreUserEvent::downcast_application_event`] 并在失败时记录 `event_kind`。
+///
+/// # 结构化类型标识符评估
+/// - 与可观测性、FFI 负责团队讨论后，结论为短期内继续沿用 `event_kind`（基于 Rust 类型名）即可满足日志与报警需求。
+/// - 一旦出现稳定跨语言标识的需求，可在 Trait 中引入 `const EVENT_CODE: &'static str` 等接口；考虑到当前缺乏统一命名空间及升级
+///   策略，本版本暂不新增常量，仅在文档中记录该扩展方向。
 ///
 /// # 契约说明（What）
 /// - **输入**：实现者需满足 `Send + Sync + 'static`，以支持跨线程广播与持久化记录；若使用默认实现，需额外实现 `Clone + Debug` 以便复制事件并兼容日志输出。
@@ -73,9 +86,14 @@ where
 /// - **后置条件**：事件对象应视为不可变；若需修改请创建新事件。
 ///
 /// # `Any` 使用指引
-/// - `ApplicationSpecific` 保留 `Arc<dyn ApplicationEvent>`，以 Marker Trait 包装 `Any` 能力，指导调用方通过 `downcast_application_event` 获取具体类型。
-/// - 推荐在扩展事件定义中提供稳定的 `event_kind` 字符串，并在消费方遇到 `None` 或 `downcast` 失败时记录该标识以便排查。
-/// - 若某些事件需要零成本访问，可在应用内部单独传递强类型通道，并仅在跨组件边界时包装为 `CoreUserEvent`。
+/// - **统一入口**：`ApplicationSpecific` 保留 `Arc<dyn ApplicationEvent>`，建议调用
+///   [`CoreUserEvent::downcast_application_event`] 或 [`CoreUserEvent::application_event_kind`] 进行类型判定，避免直接访问 `Arc` 内部。
+/// - **结果校验**：`downcast_application_event` 返回 `Option`，必须在进入业务逻辑前匹配 `Some` 分支；失败时请立刻记录
+///   `application_event_kind` 与目标类型名，帮助排查版本错配。
+/// - **诊断链路**：若判定失败，推荐结合上游记录的 `event_kind`、下游 Handler 名称及上下文标签输出结构化日志，便于在
+///   Observability 平台上追踪。
+/// - **跨语言/序列化**：当事件需要跨语言传输时，可在业务事件结构上额外维护稳定字段（如枚举 discriminant），Rust 端继续利用
+///   `event_kind` 作为兜底校验，确保回滚或灰度阶段的兼容性。
 ///
 /// # 风险提示（Trade-offs）
 /// - `ApplicationSpecific` 变体提供开放扩展，但需在上层维护良好命名空间以避免冲突。
