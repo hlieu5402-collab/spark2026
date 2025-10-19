@@ -22,7 +22,9 @@ pub mod runtime;
 pub mod service;
 pub mod transport;
 
-pub use buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage};
+pub use buffer::{
+    BufferPool, Bytes, PipelineMessage, PoolStatisticsView, ReadableBuffer, WritableBuffer,
+};
 pub use common::{Empty, IntoEmpty, Loopback};
 pub use configuration::{
     ChangeEvent, ChangeNotification, ChangeSet, ConfigKey, ConfigMetadata, ConfigScope,
@@ -35,7 +37,7 @@ pub use distributed::{
     ServiceDiscoveryProvider,
 };
 pub use error::{ErrorCause, SparkError};
-pub use future::{BoxFuture, BoxStream, Stream};
+pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use observability::{
     ComponentHealth, CoreUserEvent, Counter, Gauge, HealthCheckProvider, HealthState, Histogram,
     IdleDirection, IdleTimeout, Logger, MetricsProvider, OpsEvent, OpsEventBus, RateDirection,
@@ -45,7 +47,12 @@ pub use pipeline::{
     Channel, ChannelState, Context, ExtensionsMap, InboundHandler, OutboundHandler, Pipeline,
     PipelineFactory, WriteSignal,
 };
-pub use runtime::{CoreServices, Executor, SparkRuntime, Timer};
+pub use runtime::{
+    AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission, ManagedBlockingTask,
+    ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
+    TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle, TaskLaunchOptions, TaskPriority,
+    TaskResult, TimeDriver,
+};
 pub use service::{Layer, Service};
 pub use transport::{Endpoint, ParamMap, ServerTransport, SparkSocketAddr, TransportFactory};
 

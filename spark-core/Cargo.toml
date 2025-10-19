@@ -22,4 +22,5 @@ criterion = "0.5"
 
 [[bench]]
 name = "configuration"
+name = "buffer_roundtrip"
 harness = false
