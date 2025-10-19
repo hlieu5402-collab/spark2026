@@ -1,3 +1,39 @@
+//! # 策略评估引擎解耦指引（Why）
+//! - **定位说明**：本模块仅定义 `SecurityPolicy` 及其相关数据结构，负责描述“要评估的策略内容”，而不内置任何执行引擎。
+//! - **架构考量**：Spark Core 旨在保持轻量与可移植性，因而把决策逻辑托管给上层组件，可自由对接 OPA Rego、Google CEL 等策略引擎或自研求值器。
+//!
+//! # 集成建议（How）
+//! 1. **外部引擎桥接**：在业务层创建一个适配器，把 `SecurityPolicy` 序列化或转换为目标引擎的输入格式，再由该引擎返回最终 `PolicyEffect`。
+//! 2. **统一契约接口**：推荐为所有策略引擎实现者提供如下 Trait，统一“输入身份、资源和上下文，输出授权结果”的交互契约：
+//!
+//! ```rust,ignore
+//! use spark_core::security::identity::IdentityDescriptor;
+//! use spark_core::security::policy::{PolicyEffect, ResourcePattern, SecurityPolicy};
+//!
+//! /// 统一的策略评估接口，约束上层如何调用任意策略引擎。
+//! pub trait PolicyEvaluator {
+//!     /// - `subject`：调用者身份，如终端用户、服务账户或计算节点。
+//!     /// - `resource`：被访问的资源模式，与当前策略绑定的资源应一致。
+//!     /// - `context`：外部上下文（如环境变量、时区、请求标签等），其结构由上层自定义。
+//!     /// - 返回值：若评估成功则返回策略效果 `PolicyEffect`，失败则返回 `EvaluationError`。
+//!     fn evaluate(
+//!         &self,
+//!         policy: &SecurityPolicy,
+//!         subject: &IdentityDescriptor,
+//!         resource: &ResourcePattern,
+//!         context: &EvaluationContext,
+//!     ) -> Result<PolicyEffect, EvaluationError>;
+//! }
+//!
+//! /// 上层可自定义的求值上下文与错误类型示例。
+//! pub struct EvaluationContext;
+//! pub struct EvaluationError;
+//! ```
+//!
+//! # 使用提醒（What & Trade-offs）
+//! - **前置条件**：上层在调用策略评估接口前，应完成身份验证并准备好必要的上下文信息。
+//! - **后置条件**：接口返回 `PolicyEffect` 后，需要结合业务语义落实“拒绝”“允许”或“质询”动作。
+//! - **权衡提示**：当策略复杂度高时，建议缓存已编译的策略或评估结果，以平衡性能与实时性，同时确保缓存刷新机制与审计要求兼容。
 use alloc::string::String;
 use alloc::vec::Vec;
 
