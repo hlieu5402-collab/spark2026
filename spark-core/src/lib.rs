@@ -65,11 +65,11 @@ pub use host::{
 };
 pub use observability::{
     ApplicationEvent, AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter,
-    EventPolicy, Gauge, HealthCheckProvider, HealthChecks, HealthState, Histogram, IdleDirection,
-    IdleTimeout, InstrumentDescriptor, KeyValue, LogField, LogRecord, LogSeverity, Logger,
-    MetricAttributeValue, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, OwnedAttributeSet,
-    RateDirection, RateLimited, TlsInfo, TraceContext, TraceContextError, TraceFlags, TraceState,
-    TraceStateEntry, TraceStateError,
+    DefaultObservabilityFacade, EventPolicy, Gauge, HealthCheckProvider, HealthChecks, HealthState,
+    Histogram, IdleDirection, IdleTimeout, InstrumentDescriptor, KeyValue, LogField, LogRecord,
+    LogSeverity, Logger, MetricAttributeValue, MetricsProvider, ObservabilityFacade, OpsEvent,
+    OpsEventBus, OpsEventKind, OwnedAttributeSet, RateDirection, RateLimited, TlsInfo,
+    TraceContext, TraceContextError, TraceFlags, TraceState, TraceStateEntry, TraceStateError,
 };
 pub use pipeline::{
     ChainBuilder, Channel, ChannelState, Context, Controller, ControllerEvent, ControllerEventKind,

@@ -1,7 +1,9 @@
 use crate::{
     buffer::BufferPool,
     cluster::{ClusterMembership, ServiceDiscovery},
-    observability::{HealthChecks, Logger, MetricsProvider, OpsEventBus},
+    observability::{
+        DefaultObservabilityFacade, HealthChecks, Logger, MetricsProvider, OpsEventBus,
+    },
 };
 use alloc::sync::Arc;
 
@@ -50,5 +52,31 @@ impl CoreServices {
     /// 暴露时间驱动能力，便于在无需任务调度时直接访问 [`TimeDriver`]。
     pub fn time_driver(&self) -> &dyn TimeDriver {
         self.runtime.as_ref()
+    }
+
+    /// 构造基于当前依赖的可观测性外观。
+    ///
+    /// # 设计动机（Why）
+    /// - 遵循 REQ-SIMP-001 的外观提案，提供统一出口供 Handler 访问可观测性能力，减少字段级别耦合。
+    /// - 便于在依赖注入层做能力协商：宿主可在自定义实现中替换返回值以支持多租户、动态开关等高级特性。
+    ///
+    /// # 使用说明（What）
+    /// - **前置条件**：`CoreServices` 内部字段必须已初始化；若某能力不可用应使用显式空实现（如 `NoopLogger`）。
+    /// - **后置条件**：返回的外观实现 [`ObservabilityFacade`](crate::observability::ObservabilityFacade)，克隆后仍指向相同的底层 `Arc`，不会额外分配资源。
+    ///
+    /// # 逻辑解析（How）
+    /// - 通过克隆内部 `Arc` 构造 [`DefaultObservabilityFacade`]，确保对象安全且易于在 `no_std + alloc` 环境中使用。
+    /// - 该方法每次调用都会复制 `Arc` 的引用计数，如需缓存可在调用方层面持久化返回值。
+    ///
+    /// # 风险提示（Trade-offs）
+    /// - 目前始终返回 `DefaultObservabilityFacade`；如需懒加载或按租户隔离，需要在外层包装自定义结构。
+    /// - 若健康探针集合为空，请在调试文档中说明，以免调用方误以为系统缺失探针实现。
+    pub fn observability_facade(&self) -> DefaultObservabilityFacade {
+        DefaultObservabilityFacade::new(
+            Arc::clone(&self.logger),
+            Arc::clone(&self.metrics),
+            Arc::clone(&self.ops_bus),
+            self.health_checks.clone(),
+        )
     }
 }

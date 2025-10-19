@@ -35,3 +35,14 @@
 - 针对 Facade 提议，优先评估对 `spark-contract-tests` 的影响，并为主要实现（Tokio、quinn）提供概念验证。
 - 与产品团队对齐 Custom 扩展命名规范，确保新增 Facade 不会与扩展点冲突。
 
+## 5. 本轮原型输出（2024-XX-XX）
+
+- **落地提案：T4 Observability Facade**
+  - 在 `spark-core::observability` 下新增 `facade` 子模块，定义 `ObservabilityFacade` 契约与 `DefaultObservabilityFacade` 参考实现，聚合日志、指标、运维事件与健康探针能力。
+  - `runtime::CoreServices` 新增 `observability_facade` 便捷方法，以现有字段构造外观，验证“不破坏既有字段即可增量提供 Facade”的可行性。
+  - Rustdoc 明确前置/后置条件与扩展点，为后续 Feature Gate 化或替换实现奠定文档基础。
+- **后续计划**
+  - 评估是否为 `Context` 或其它 Handler 注入点提供 Facade 直通（可能通过扩展 `Pipeline::Context`）。
+  - 在 `spark-contract-tests` 中补充 Facade 级别的契约测试，确保日志/指标/事件的绑定关系保持一致。
+  - 探索与 Trace 能力的整合方式，如通过可选方法或组合 Trait 扩展 Facade 的覆盖范围。
+

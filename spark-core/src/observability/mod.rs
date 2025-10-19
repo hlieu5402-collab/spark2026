@@ -24,6 +24,7 @@
 
 pub mod attributes;
 pub mod events;
+pub mod facade;
 pub mod health;
 pub mod logging;
 pub mod metrics;
@@ -36,6 +37,7 @@ pub use events::{
     ApplicationEvent, CoreUserEvent, EventPolicy, IdleDirection, IdleTimeout, OpsEvent,
     OpsEventBus, OpsEventKind, RateDirection, RateLimited, TlsInfo,
 };
+pub use facade::{DefaultObservabilityFacade, ObservabilityFacade};
 pub use health::{ComponentHealth, HealthCheckProvider, HealthChecks, HealthState};
 pub use logging::{LogField, LogRecord, LogSeverity, Logger};
 pub use metrics::{Counter, Gauge, Histogram, InstrumentDescriptor, MetricsProvider};
