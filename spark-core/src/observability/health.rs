@@ -57,6 +57,11 @@ pub enum HealthState {
 /// - **前置条件**：实现需在合理超时内完成检查，避免阻塞健康聚合线程。
 /// - **后置条件**：返回的 [`ComponentHealth`] 应包含最新状态快照。
 ///
+/// # 性能契约（Performance Contract）
+/// - `check_health` 返回 [`BoxFuture`]，用于保持对象安全；每次探针执行会产生一次堆分配与虚函数调度。
+/// - 在 CPU 或内存受限环境，可通过实现自定义探针管理器：内部持有具体类型并将 `Future` 缓存在对象池中，降低分配频率。
+/// - 若探针实现可以暴露静态类型，调用方可直接依赖具体类型并绕过 Trait，从而获得零分配路径。
+///
 /// # 风险提示（Trade-offs）
 /// - 建议在实现中复用共享连接或缓存，避免探针本身影响依赖性能。
 pub trait HealthCheckProvider: Send + Sync + 'static {

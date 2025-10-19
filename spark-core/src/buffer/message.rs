@@ -14,6 +14,11 @@ use core::{any::Any, fmt};
 /// - `as_any` / `as_any_mut` / `into_any` 为运行时安全下转型提供统一入口，避免重复编写 `Any` 强制转换样板代码。
 /// - 采用对象安全方法签名，确保可放入 `Box<dyn UserMessage>` 并跨线程传递。对于满足 `Send + Sync + 'static` 的类型，crate 默认提供 blanket 实现。
 ///
+/// # 扩展契约评估（Marker Trait）
+/// - 经过评估，`UserMessage` 本身即作为显式标记 Trait，替代了早期的 `Box<dyn Any>` 方案，在保持开放扩展的同时提供静态语义。
+/// - 若未来需要附加约束（如统一序列化格式或鉴权标签），可在该 Trait 上新增关联常量/方法，而无需回退到裸 `Any`。
+/// - `Any` 相关接口保留用于运行时类型识别，建议搭配 [`PipelineMessage::downcast_user_ref`] 等工具函数统一处理失败分支，避免遗漏判错。
+///
 /// # 契约说明（What）
 /// - **输入**：实现者必须保证类型满足 `Send + Sync + 'static`，以便跨线程及长期存活场景安全复用。
 /// - **输出**：调用 `as_any*` 返回的引用/Box 仅用于类型判定，不得在外部强行转换为错误类型，否则会触发 panic。
@@ -66,6 +71,11 @@ where
 /// - `Buffer` 变体封装 [`ReadableBuffer`]，用于承载 L4/L5 字节流，适配零拷贝与池化策略。
 /// - `User` 变体封装任意实现 [`UserMessage`] 的对象，对应 L7 业务语义；通过 `UserMessage::as_any` 支持运行时下转型且提供类型标签。
 /// - `Bytes` 类型别名提供轻量级 `Vec<u8>` 快照，方便边缘组件或测试用例无需实现 `ReadableBuffer` 也能消费数据。
+///
+/// # `Any` 使用指南
+/// - `UserMessage` 通过 `as_any`/`into_any` 暴露 `Any` 接口，仅用于运行时类型识别，避免直接操作裸 `Box<dyn Any>`。
+/// - 推荐调用 [`PipelineMessage::downcast_user_ref`]、[`PipelineMessage::downcast_user_mut`] 与 [`PipelineMessage::try_into_user`] 进行安全转换，并在失败时结合 [`PipelineMessage::user_kind`] 记录诊断信息。
+/// - 若需要更强的编译期约束，可在业务模块中定义更细粒度的消息 Trait，并统一实现 `UserMessage` 以复用对象安全能力。
 ///
 /// # 契约说明（What）
 /// - **前置条件**：

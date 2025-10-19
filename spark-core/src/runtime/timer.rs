@@ -57,6 +57,11 @@ impl MonotonicTimePoint {
 /// - **前置条件**：实现者必须保证 `now` 单调递增；否则延时语义将被破坏。
 /// - **后置条件**：延时 Future 完成时，运行时应确保至少等待了指定时间间隔。
 ///
+/// # 性能契约（Performance Contract）
+/// - `sleep` 与 `sleep_until` 返回 [`BoxFuture`]，实现与调用方之间以对象安全通信；每次调用包含一次堆分配与虚表调度。
+/// - 针对高频短延时（如定时心跳 1ms）可通过实现自定义 `TimeDriver`，在内部复用 `Box` 缓冲或提供泛型变体以避免分配。
+/// - 若运行时具备 GAT 支持，可暴露额外的 `fn sleep_raw(&self, ...) -> impl Future` 供性能敏感组件绕过对象安全层。
+///
 /// # 风险提示（Trade-offs）
 /// - `sleep_until` 默认实现使用 `saturating_duration_since`，在系统时钟回拨情况下会立即完成；
 ///   如需不同策略，可在实现中覆写该方法。

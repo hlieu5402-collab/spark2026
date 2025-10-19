@@ -17,6 +17,11 @@ use core::{any::Any, fmt, time::Duration};
 /// - `as_any` 允许在 Handler 中执行安全下转型，实现者可结合 [`CoreUserEvent::downcast_application_event`] 使用。
 /// - `clone_event` 采用对象安全的 `Arc` 共享语义，确保事件多路广播时无需担心所有权问题。
 ///
+/// # 扩展契约评估（Marker Trait）
+/// - `ApplicationEvent` 承担 Marker Trait 角色，收敛到 `Send + Sync + 'static` 的安全集合，避免重新引入裸 `Arc<dyn Any>`。
+/// - 若未来需要附加规范（例如规定可序列化格式、Tracing 语义），可在该 Trait 中增补关联常量或扩展方法以维持静态可分析性。
+/// - 保留 `as_any` 的设计是为了兼容运行时诊断；建议调用 [`CoreUserEvent::downcast_application_event`] 并在失败时记录 `event_kind`。
+///
 /// # 契约说明（What）
 /// - **输入**：实现者需满足 `Send + Sync + 'static`，以支持跨线程广播与持久化记录；若使用默认实现，需额外实现 `Clone + Debug` 以便复制事件并兼容日志输出。
 /// - **输出**：`clone_event` 必须返回能够再次放入 `Arc<dyn ApplicationEvent>` 的对象；通常可使用 `Arc::new(self.clone())`。
@@ -61,6 +66,11 @@ where
 /// # 契约说明（What）
 /// - **前置条件**：生产者在广播事件前需确保相应消费者已注册处理逻辑。
 /// - **后置条件**：事件对象应视为不可变；若需修改请创建新事件。
+///
+/// # `Any` 使用指引
+/// - `ApplicationSpecific` 保留 `Arc<dyn ApplicationEvent>`，以 Marker Trait 包装 `Any` 能力，指导调用方通过 `downcast_application_event` 获取具体类型。
+/// - 推荐在扩展事件定义中提供稳定的 `event_kind` 字符串，并在消费方遇到 `None` 或 `downcast` 失败时记录该标识以便排查。
+/// - 若某些事件需要零成本访问，可在应用内部单独传递强类型通道，并仅在跨组件边界时包装为 `CoreUserEvent`。
 ///
 /// # 风险提示（Trade-offs）
 /// - `ApplicationSpecific` 变体提供开放扩展，但需在上层维护良好命名空间以避免冲突。
@@ -227,6 +237,10 @@ pub enum OpsEvent {
 /// # 契约说明（What）
 /// - **前置条件**：`broadcast` 调用需快速返回；如需阻塞应在内部异步处理。
 /// - **后置条件**：`subscribe` 返回的流必须具备背压或丢弃策略，避免慢消费者拖垮系统。
+///
+/// # 性能契约（Performance Contract）
+/// - `subscribe` 返回 [`BoxStream`]，确保事件总线对象安全；每次订阅会分配 `Box` 并在轮询时通过虚表调度。
+/// - 若事件风暴频繁，可在实现层引入泛型订阅接口或无分配环形缓冲，将对象安全层仅暴露给需要动态装配的消费者。
 ///
 /// # 风险提示（Trade-offs）
 /// - 建议实现对订阅者生命周期做监控，避免内存泄漏。

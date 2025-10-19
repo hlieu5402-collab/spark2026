@@ -37,6 +37,11 @@ pub type ServiceName = String;
 /// - **前置条件**：构造时应确保 `service` 非空，`metadata` 键名遵循 `snake_case` 或驼峰共识。
 /// - **后置条件**：实例在事件流或快照中出现时，应携带同一修订号。
 ///
+/// # BTreeMap 取舍说明
+/// - `metadata` 采用 [`BTreeMap`]，保证序列化与迭代顺序稳定，方便做配置 diff 与审计签名。
+/// - 若调用方更关注写入性能，可在读写热点路径中将 `metadata` 克隆为 `HashMap` 并缓存；导出时再转换回有序结构，以兼顾性能与确定性。
+/// - 未来如需直接暴露 `HashMap` 视图，可通过增设 feature flag 或附加访问器（如 `fn into_hash_map`) 拓展，本版本保持最小契约。
+///
 /// # 风险提示（Trade-offs）
 /// - `hints` 字段的语义由双方协商，若解释不一致可能导致调度策略偏差；建议结合 Schema 注册中心约束格式。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -128,6 +133,12 @@ pub enum DiscoveryEvent {
 ///   - `list_services` 返回服务名列表，按字典序排序。
 /// - **前置条件**：实现方需在初始化阶段完成注册中心连接，确保契约调用时具备基础数据。
 /// - **后置条件**：消费者可将快照与事件结合用于本地缓存或负载均衡决策。
+///
+/// # 性能契约（Performance Contract）
+/// - `resolve` 与 `list_services` 返回 [`BoxFuture`]，`watch` 返回 [`BoxStream`]，用于维持对象安全；每次调用/轮询都会产生堆分配
+///   与虚表跳转。
+/// - 对于热路径订阅，可在实现中提供额外的泛型 API（例如 `fn watch_typed<T: Stream<...>>`) 或复用内部缓冲，降低 `Box` 分配频率。
+/// - 调用方若能接受与具体实现耦合，可直接依赖实现类型并获取零分配的 Stream，实现性能与灵活度的权衡。
 ///
 /// # 设计取舍与风险（Trade-offs）
 /// - 解析强一致性需牺牲一定延迟，应结合调用场景（配置下发 vs 实时路由）选择合适等级。

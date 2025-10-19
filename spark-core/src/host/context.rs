@@ -19,6 +19,11 @@ use alloc::vec::Vec;
 /// # 契约（Contract）
 /// - **前置条件**：宿主应确保 `name` 与 `version` 非空。
 /// - **后置条件**：`labels` 键值需遵循 UTF-8，调用方读取时不得假定排序；`BTreeMap` 仅用于 deterministic 输出。
+///
+/// # BTreeMap 取舍说明
+/// - `labels` 使用 [`BTreeMap`] 提供确定性遍历顺序，便于序列化签名与配置差异比较。
+/// - 针对写入频繁的宿主，可在内部维护 `HashMap` 并在构造 `HostMetadata` 时排序导出；本结构保持最小可用性以避免 API 膨胀。
+/// - 若未来出现无序访问需求，可考虑新增 `labels_as_hash_map` 辅助方法或引入 feature flag 暴露零拷贝视图。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostMetadata {
     /// 宿主名称。
@@ -115,6 +120,7 @@ impl HostRuntimeProfile {
 ///
 /// # 风险提示（Trade-offs）
 /// - 使用 `BTreeMap` 作为扩展容器以保持序列化稳定性，但在高频读写场景可能不如 `HashMap` 高效；如需性能，宿主可在实现中缓存解析结果。
+/// - 若扩展字段需要频繁突变，可在宿主内部维护可变 `HashMap` 并在交付给组件前转换为 `BTreeMap`，以平衡性能与确定性。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostContext {
     /// 静态元数据。

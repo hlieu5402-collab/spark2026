@@ -54,6 +54,11 @@ pub enum MetadataValue {
 /// # 前置/后置条件
 /// - **前置**：键值需由上游组件保证语义正确与大小写一致。
 /// - **后置**：迭代结果稳定，可用于哈希/签名或回传管理平面。
+///
+/// # BTreeMap 性能讨论
+/// - 路由元数据写入频率通常远低于读取频率，因此优先选择有序结构以获取确定性输出。
+/// - 若策略引擎需要更快的随机写，可在内部缓存为 `HashMap` 并在调用 `RouteMetadata` 时进行一次性排序拷贝。
+/// - 后续若大量场景需要直接返回 `HashMap`，可评估增加 `into_hash_map` 或特性开关；当前版本保持稳定排序以利于审计。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RouteMetadata {
     entries: BTreeMap<MetadataKey, MetadataValue>,
