@@ -14,6 +14,11 @@ use alloc::vec::Vec;
 /// - `keys`：请求的配置键集合。
 /// - `metadata`：附加过滤条件，例如版本、灰度标签。
 ///
+/// # BTreeMap 取舍说明
+/// - `metadata` 使用 [`BTreeMap`] 保证键值遍历与序列化顺序稳定，便于对请求进行审计记录或在缓存层构建确定性 Key。
+/// - 相较 `HashMap`，`BTreeMap` 在插入过滤条件时需要 `O(log n)`，若调用方在热路径频繁构造请求，可先在局部 `HashMap` 中聚合条件后
+///   一次性排序转入本结构，或对常用过滤组合做池化缓存以摊薄成本。
+///
 /// # 契约（Contract）
 /// - **前置条件**：调用方至少指定一个键或 metadata 条件；宿主可据此决定返回范围。
 /// - **后置条件**：宿主应返回一个 `ConfigEnvelope`，即使没有命中任何配置，也应返回空集合而非错误。
@@ -48,6 +53,11 @@ impl ConfigQuery {
 /// - `items`：键值对集合。
 /// - `version`：宿主生成的版本或校验和。
 /// - `metadata`：额外信息，如签名、发布时间。
+///
+/// # BTreeMap 取舍说明
+/// - `items` 与 `metadata` 选用 [`BTreeMap`]，保证下发配置与元数据的遍历顺序稳定，方便组件生成哈希或进行差异化校验。
+/// - 写入 `BTreeMap` 的成本为 `O(log n)`，在配置变更较频繁的路径中略慢于 `HashMap`；可在宿主内部以 `HashMap` 缓存待发布内容，并
+///   在最终对外曝光时排序成 `BTreeMap`，或针对热点配置构建只读快照以避免重复重排。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConfigEnvelope {
     /// 命名空间。

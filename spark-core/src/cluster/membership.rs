@@ -79,7 +79,8 @@ pub enum ClusterNodeState {
 /// - **后置条件**：成功广播的事件与快照必须带有最新修订号，以便调用方实现幂等更新。
 ///
 /// # 风险提示（Trade-offs）
-/// - `metadata` 采用 `BTreeMap`，在读多写少的场景下提供稳定的排序，便于比对差异；若更关注写性能，可在实现中改用 `HashMap` 并在导出前转换。
+/// - `metadata` 采用 [`BTreeMap`]，在读多写少的场景下提供稳定排序，用于 diff 与审计；插入复杂度为 `O(log n)`，若更关注写性能，可在
+///   实现中改用 `HashMap` 缓存并在导出前转换，或对热点字段引入并行缓存以降低重排成本。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClusterNodeProfile {
     pub node_id: NodeId,
