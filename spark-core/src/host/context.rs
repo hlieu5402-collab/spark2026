@@ -21,8 +21,9 @@ use alloc::vec::Vec;
 /// - **后置条件**：`labels` 键值需遵循 UTF-8，调用方读取时不得假定排序；`BTreeMap` 仅用于 deterministic 输出。
 ///
 /// # BTreeMap 取舍说明
-/// - `labels` 使用 [`BTreeMap`] 提供确定性遍历顺序，便于序列化签名与配置差异比较。
-/// - 针对写入频繁的宿主，可在内部维护 `HashMap` 并在构造 `HostMetadata` 时排序导出；本结构保持最小可用性以避免 API 膨胀。
+/// - `labels` 选用 [`BTreeMap`]，确保遍历与序列化顺序稳定，利于生成签名与做配置 diff。
+/// - 与 `HashMap` 相比，`BTreeMap` 写入复杂度为 `O(log n)`，在高频更新场景可能略慢；因此推荐在热路径内部先使用 `HashMap` 聚合，最终导出
+///   到 `HostMetadata` 时再排序成 `BTreeMap` 以兼顾确定性。
 /// - 若未来出现无序访问需求，可考虑新增 `labels_as_hash_map` 辅助方法或引入 feature flag 暴露零拷贝视图。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostMetadata {
@@ -119,8 +120,9 @@ impl HostRuntimeProfile {
 /// - **后置条件**：上下文应视为只读，任何修改应通过配置或生命周期回调完成。
 ///
 /// # 风险提示（Trade-offs）
-/// - 使用 `BTreeMap` 作为扩展容器以保持序列化稳定性，但在高频读写场景可能不如 `HashMap` 高效；如需性能，宿主可在实现中缓存解析结果。
-/// - 若扩展字段需要频繁突变，可在宿主内部维护可变 `HashMap` 并在交付给组件前转换为 `BTreeMap`，以平衡性能与确定性。
+/// - 使用 `BTreeMap` 作为扩展容器以保持序列化稳定性；其插入成本为 `O(log n)`，写入密集型负载下会略逊于 `HashMap` 的平均 `O(1)` 性能。
+/// - 若扩展字段需要频繁突变，可在宿主内部维护可变 `HashMap` 并在交付给组件前转换为 `BTreeMap`，以平衡性能与确定性，或将热点字段缓
+///   存到 `HashMap`/`SmallVec` 后按需同步回扩展表。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostContext {
     /// 静态元数据。

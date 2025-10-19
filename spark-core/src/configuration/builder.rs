@@ -13,11 +13,15 @@ use super::{
 ///
 /// ### 设计目的（Why）
 /// - 将多个配置层按优先顺序合并为最终映射，供运行时快速读取。
-/// - 采用 `BTreeMap` 保证遍历顺序稳定，便于日志与调试对齐。
+/// - 采用 [`BTreeMap`] 保证遍历顺序稳定，便于日志与调试对齐，并为差异化比较提供确定性输出。
 ///
 /// ### 契约定义（What）
 /// - `values`：键到值的映射，后注册的高优先级层会覆盖低优先级层。
 /// - `version`：递增版本号，用于与通知事件对齐。
+///
+/// ### BTreeMap 取舍（Trade-offs）
+/// - 与 `HashMap` 相比，`BTreeMap` 的写入/合并为 `O(log n)`，在大规模配置层叠加时会稍慢；换来的是确定性序列化便于做快照哈希与审计。
+/// - 若调用方在热路径需要更快的随机访问，可将 `values` 克隆为 `HashMap` 进行缓存，或在增量通知中仅同步差异集合以减轻重建成本。
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedConfiguration {
     pub values: BTreeMap<ConfigKey, ConfigValue>,

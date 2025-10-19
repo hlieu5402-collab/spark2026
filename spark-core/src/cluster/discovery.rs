@@ -41,8 +41,9 @@ pub type ServiceName = String;
 /// - **后置条件**：实例在事件流或快照中出现时，应携带同一修订号。
 ///
 /// # BTreeMap 取舍说明
-/// - `metadata` 采用 [`BTreeMap`]，保证序列化与迭代顺序稳定，方便做配置 diff 与审计签名。
-/// - 若调用方更关注写入性能，可在读写热点路径中将 `metadata` 克隆为 `HashMap` 并缓存；导出时再转换回有序结构，以兼顾性能与确定性。
+/// - `metadata` 采用 [`BTreeMap`]，保证序列化与迭代顺序稳定，方便做配置 diff、灰度签名与日志对比。
+/// - 与 `HashMap` 相比，`BTreeMap` 插入/更新为 `O(log n)`，在实例注册频繁变动的场景写入会略慢；可在数据面热路径中先用 `HashMap` 聚
+///   合并缓存，推送到 API 契约前再排序回 `BTreeMap`，或对热点字段建立并行缓存以规避重复遍历。
 /// - 未来如需直接暴露 `HashMap` 视图，可通过增设 feature flag 或附加访问器（如 `fn into_hash_map`) 拓展，本版本保持最小契约。
 ///
 /// # 风险提示（Trade-offs）
