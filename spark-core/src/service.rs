@@ -1,6 +1,7 @@
 use crate::Error;
+use crate::status::ready::PollReady;
 use core::future::Future;
-use core::task::{Context as TaskContext, Poll};
+use core::task::Context as TaskContext;
 
 /// `Service` 抽象 L7 业务逻辑处理流程。
 ///
@@ -24,7 +25,23 @@ pub trait Service<Request> {
     type Future: Future<Output = Result<Self::Response, Self::Error>> + Send + 'static;
 
     /// 检查服务是否准备好处理请求。
-    fn poll_ready(&mut self, cx: &mut TaskContext<'_>) -> Poll<Result<(), Self::Error>>;
+    ///
+    /// # 契约说明（What）
+    /// - 返回 [`PollReady<Self::Error>`]：
+    ///   - `Poll::Ready(ReadyCheck::Ready(ReadyState::Ready))`：服务可立即处理请求；
+    ///   - `Poll::Ready(ReadyCheck::Ready(ReadyState::Busy(_)))`：服务繁忙并附带原因；
+    ///   - `Poll::Ready(ReadyCheck::Ready(ReadyState::BudgetExhausted(_)))`：调用预算已耗尽；
+    ///   - `Poll::Ready(ReadyCheck::Ready(ReadyState::RetryAfter(_)))`：建议等待后重试；
+    ///   - `Poll::Ready(ReadyCheck::Err(_))`：检查发生错误；
+    ///   - `Poll::Pending`：仍在等待就绪。
+    ///
+    /// # 前置条件（Contract）
+    /// - 调用方必须在 `call` 之前反复驱动该方法，直至获得 `ReadyState::Ready` 或选择根据繁忙状态退避。
+    ///
+    /// # 后置条件（Contract）
+    /// - 当返回 `ReadyState::Ready` 时，服务保证下一次 `call` 可安全执行；
+    /// - 若返回 `Busy`/`BudgetExhausted`，服务仅承诺保持内部状态一致，调用方需根据业务策略退避或告警。
+    fn poll_ready(&mut self, cx: &mut TaskContext<'_>) -> PollReady<Self::Error>;
 
     /// 处理请求并返回异步响应。
     fn call(&mut self, req: Request) -> Self::Future;

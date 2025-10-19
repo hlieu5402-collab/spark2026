@@ -1,6 +1,6 @@
 use crate::{
     BoxStream,
-    cluster::{ClusterMembershipEvent, DiscoveryEvent, backpressure::OverflowPolicy},
+    cluster::{ClusterMembershipEvent, DiscoveryEvent, flow_control::OverflowPolicy},
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
@@ -236,7 +236,7 @@ pub enum OpsEvent {
     ShutdownTriggered {
         deadline: Duration,
     },
-    BackpressureApplied {
+    FlowControlApplied {
         channel_id: String,
     },
     FailureClusterDetected {
@@ -275,7 +275,7 @@ pub enum OpsEvent {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum OpsEventKind {
     ShutdownTriggered,
-    BackpressureApplied,
+    FlowControlApplied,
     FailureClusterDetected,
     ClusterChange,
     DiscoveryJitter,
@@ -395,7 +395,7 @@ pub trait OpsEventBus: Send + Sync + 'static {
     ///     OpsEventKind::FailureClusterDetected,
     ///     EventPolicy::BoundedBuffer {
     ///         capacity: NonZeroUsize::new(128).unwrap(),
-    ///         overflow: spark_core::cluster::backpressure::OverflowPolicy::DropNew,
+    ///         overflow: spark_core::cluster::flow_control::OverflowPolicy::DropNew,
     ///     },
     /// );
     /// ```

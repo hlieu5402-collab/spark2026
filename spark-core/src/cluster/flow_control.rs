@@ -1,11 +1,11 @@
-//! 集群订阅背压与队列观测的统一抽象层。
+//! 集群订阅流控与队列观测的统一抽象层。
 //!
 //! # 模块定位（Why）
-//! - 将成员订阅与服务发现共用的背压语义集中管理，避免两个子模块各自维护一套选项导致概念漂移。
+//! - 将成员订阅与服务发现共用的流控语义集中管理，避免两个子模块各自维护一套选项导致概念漂移。
 //! - 通过结构化的配置体与探针接口，引导调用方在高吞吐事件流中显式规划缓冲区与监控逻辑。
 //!
 //! # 协议互操作（How）
-//! - [`SubscriptionBackpressure`] 以不可变配置的形式传入，实现可在建立订阅时决定缓冲模型与溢出策略。
+//! - [`SubscriptionFlowControl`] 以不可变配置的形式传入，实现可在建立订阅时决定缓冲模型与溢出策略。
 //! - 若调用方启用队列观测，返回值 [`SubscriptionStream`] 会绑定一个实现 [`SubscriptionQueueProbe`] 的探针，
 //!   使用者可定期查询以驱动指标或自适应节流算法。
 //!
@@ -41,7 +41,7 @@ pub enum OverflowPolicy {
     FailStream,
 }
 
-/// 背压模式，描述订阅内部使用的缓冲模型。
+/// 流控模式，描述订阅内部使用的缓冲模型。
 ///
 /// # 设计背景（Why）
 /// - 归纳分布式事件订阅常见的两类策略：完全依赖调用方控制速率（无界）与在实现侧进行容量限制（有界）。
@@ -57,7 +57,7 @@ pub enum OverflowPolicy {
 /// - `Unbounded` 模式下若消费者持续滞后，可能触发内存压力；建议配合队列探针监控深度。
 /// - `Bounded` 模式适合约束内存占用，但当溢出策略为 `DropNewest` 时，调用方需具备重放或快照恢复能力以补齐缺失事件。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BackpressureMode {
+pub enum FlowControlMode {
     /// 无界缓冲，由实现自行决定溢出策略（可能退化为阻塞/等待）。
     Unbounded,
     /// 有界缓冲 + 指定溢出策略。
@@ -67,13 +67,13 @@ pub enum BackpressureMode {
     },
 }
 
-/// 订阅背压配置，调用方可通过构造函数表达期望行为。
+/// 订阅流控配置，调用方可通过构造函数表达期望行为。
 ///
 /// # 设计背景（Why）
 /// - 提供统一的配置入口，让上游根据业务 SLA 调整缓冲容量、溢出策略与观测需求，避免在不同实现之间编写特定控制消息。
 ///
 /// # 逻辑解析（How）
-/// - 默认使用 [`BackpressureMode::Unbounded`]，可通过 [`Self::bounded`] 指定容量与溢出策略。
+/// - 默认使用 [`FlowControlMode::Unbounded`]，可通过 [`Self::bounded`] 指定容量与溢出策略。
 /// - 调用 [`Self::with_queue_observation`] 时，内部仅切换布尔标志；真实的队列探针由实现层按需创建，并通过
 ///   [`SubscriptionStream::with_probe`] 附加在返回值中。
 ///
@@ -87,16 +87,16 @@ pub enum BackpressureMode {
 /// - 队列探针通常以原子计数或轻量互斥实现，若观测频率极高，应在实现侧增加节流或缓存快照以避免性能退化。
 /// - 当选择 [`OverflowPolicy::FailStream`] 时，调用方需要准备重连/重放流程，以免在溢出后失去事件连续性。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SubscriptionBackpressure {
-    pub mode: BackpressureMode,
+pub struct SubscriptionFlowControl {
+    pub mode: FlowControlMode,
     pub observe_queue: bool,
 }
 
-impl SubscriptionBackpressure {
+impl SubscriptionFlowControl {
     /// 构造一个默认的无界配置。
     pub const fn unbounded() -> Self {
         Self {
-            mode: BackpressureMode::Unbounded,
+            mode: FlowControlMode::Unbounded,
             observe_queue: false,
         }
     }
@@ -104,7 +104,7 @@ impl SubscriptionBackpressure {
     /// 构造一个带容量限制的配置。
     pub const fn bounded(capacity: NonZeroUsize, overflow: OverflowPolicy) -> Self {
         Self {
-            mode: BackpressureMode::Bounded { capacity, overflow },
+            mode: FlowControlMode::Bounded { capacity, overflow },
             observe_queue: false,
         }
     }
@@ -116,7 +116,7 @@ impl SubscriptionBackpressure {
     }
 }
 
-impl Default for SubscriptionBackpressure {
+impl Default for SubscriptionFlowControl {
     fn default() -> Self {
         Self::unbounded()
     }
@@ -141,9 +141,9 @@ impl Default for SubscriptionBackpressure {
 ///
 /// # 使用示例（Example）
 /// ```ignore
-/// let backpressure = SubscriptionBackpressure::bounded(NonZeroUsize::new(512).unwrap(), OverflowPolicy::DropOldest)
+/// let flow = SubscriptionFlowControl::bounded(NonZeroUsize::new(512).unwrap(), OverflowPolicy::DropOldest)
 ///     .with_queue_observation(true);
-/// let SubscriptionStream { stream, queue_probe } = cluster.subscribe(scope, None, backpressure);
+/// let SubscriptionStream { stream, queue_probe } = cluster.subscribe(scope, None, flow);
 /// // `stream` 用于消费增量事件；`queue_probe`（若存在）可用于暴露 Prometheus Gauge。
 /// ```
 pub struct SubscriptionStream<T> {

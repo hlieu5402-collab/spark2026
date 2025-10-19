@@ -17,7 +17,7 @@ use super::route::{RouteId, RoutePattern};
 /// # 枚举项说明（What）
 /// - `NotFound`：未匹配到路由，携带原始模式与属性，便于观测或回退策略使用。
 /// - `PolicyDenied`：命中策略拒绝，包含拒绝原因。
-/// - `ServiceNotReady`：路由存在但绑定的 Service 当前不可用，包含路由 ID 与底层错误。
+/// - `ServiceUnavailable`：路由存在但绑定的 Service 当前不可用，包含路由 ID 与底层错误。
 /// - `Internal`：其他内部错误，直接暴露底层原因以便调试。
 #[derive(Debug)]
 pub enum RouteError<E>
@@ -31,7 +31,7 @@ where
     PolicyDenied {
         reason: Cow<'static, str>,
     },
-    ServiceNotReady {
+    ServiceUnavailable {
         id: RouteId,
         source: E,
     },
@@ -57,7 +57,7 @@ where
 /// # 错误契约（Error Contract）
 /// - `route`：
 ///   - 当路由表包含调用方未知的 `RouteKind::Custom`、策略引用未发布的能力或所需过滤器缺失时，
-///     必须通过 [`RouteError::ServiceNotReady`] 或 [`RouteError::Internal`] 的 `source` 映射为
+///     必须通过 [`RouteError::ServiceUnavailable`] 或 [`RouteError::Internal`] 的 `source` 映射为
 ///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，提醒调用方刷新自身组件版本或协商配置。
 ///   - 若路由依赖的服务发现/集群元数据在网络分区、领导者丢失时不可用，应将底层错误转换为
 ///     [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 或 [`crate::error::codes::CLUSTER_LEADER_LOST`]，
