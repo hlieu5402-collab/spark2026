@@ -14,10 +14,23 @@ use core::{any::Any, fmt};
 /// - `as_any` / `as_any_mut` / `into_any` 为运行时安全下转型提供统一入口，避免重复编写 `Any` 强制转换样板代码。
 /// - 采用对象安全方法签名，确保可放入 `Box<dyn UserMessage>` 并跨线程传递。对于满足 `Send + Sync + 'static` 的类型，crate 默认提供 blanket 实现。
 ///
+/// # Any 使用指引
+/// - **推荐流程**：调用 [`PipelineMessage::downcast_user_ref`]、[`PipelineMessage::downcast_user_mut`] 或
+///   [`PipelineMessage::try_into_user`] 时，应首先比对返回值是否为 `Some/Ok`，确保只在判定成功后解构具体类型。
+/// - **失败诊断**：若 `downcast_*` 返回 `None` 或 `Err`，请结合 [`UserMessage::message_kind`] 以及
+///   [`PipelineMessage::user_kind`] 输出日志或指标，用于定位消息来源；禁止忽略失败结果直接 `unwrap`，以免遗漏协议演进导致的类型错配。
+/// - **FFI/序列化注意**：当消息需穿越 FFI 或网络边界时，建议优先使用自定义枚举/标识字段进行协商，再回退到 `Any`
+///   判定，以最大限度减少运行时错误。
+///
 /// # 扩展契约评估（Marker Trait）
 /// - 经过评估，`UserMessage` 本身即作为显式标记 Trait，替代了早期的 `Box<dyn Any>` 方案，在保持开放扩展的同时提供静态语义。
 /// - 若未来需要附加约束（如统一序列化格式或鉴权标签），可在该 Trait 上新增关联常量/方法，而无需回退到裸 `Any`。
 /// - `Any` 相关接口保留用于运行时类型识别，建议搭配 [`PipelineMessage::downcast_user_ref`] 等工具函数统一处理失败分支，避免遗漏判错。
+///
+/// # 结构化类型标识符评估
+/// - 经过与 FFI/序列化子系统的评审，目前 `message_kind` 返回的编译期类型名已经满足在线诊断与日志需求。
+/// - 若未来存在跨语言稳定标识需求，可在本 Trait 中引入 `const TYPE_ID: &'static str` 之类的关联常量；当前阶段尚无场景需要
+///   付出维护成本，因此暂不引入额外常量，相关结论已记录于设计文档。
 ///
 /// # 契约说明（What）
 /// - **输入**：实现者必须保证类型满足 `Send + Sync + 'static`，以便跨线程及长期存活场景安全复用。
@@ -72,10 +85,15 @@ where
 /// - `User` 变体封装任意实现 [`UserMessage`] 的对象，对应 L7 业务语义；通过 `UserMessage::as_any` 支持运行时下转型且提供类型标签。
 /// - `Bytes` 类型别名提供轻量级 `Vec<u8>` 快照，方便边缘组件或测试用例无需实现 `ReadableBuffer` 也能消费数据。
 ///
-/// # `Any` 使用指南
-/// - `UserMessage` 通过 `as_any`/`into_any` 暴露 `Any` 接口，仅用于运行时类型识别，避免直接操作裸 `Box<dyn Any>`。
-/// - 推荐调用 [`PipelineMessage::downcast_user_ref`]、[`PipelineMessage::downcast_user_mut`] 与 [`PipelineMessage::try_into_user`] 进行安全转换，并在失败时结合 [`PipelineMessage::user_kind`] 记录诊断信息。
-/// - 若需要更强的编译期约束，可在业务模块中定义更细粒度的消息 Trait，并统一实现 `UserMessage` 以复用对象安全能力。
+/// # `Any` 使用指引
+/// - **统一入口**：请始终使用 [`PipelineMessage::downcast_user_ref`]、[`PipelineMessage::downcast_user_mut`]、
+///   [`PipelineMessage::try_into_user`] 访问业务类型，避免手动调用 `as_any` 以免遗漏错误处理。
+/// - **结果检查**：每次下转型都必须匹配 `Some`/`Ok` 后再操作具体类型；失败时请立刻记录 [`PipelineMessage::user_kind`] 与
+///   [`UserMessage::message_kind`] 以帮助排查消息版本不兼容、FFI 误配或热升级过程中混入的旧格式。
+/// - **兜底策略**：当转换失败但仍需处理消息时，可回退到 `PipelineMessage::Buffer` 或通用处理分支，同时保留
+///   `user_kind` 作为诊断字段；禁止 `unwrap` 或忽略错误返回值。
+/// - **跨边界协作**：若需在 FFI/序列化场景中传递 `User`，请先协商高层协议字段，再使用 `Any` 作为扩展点，以避免仅凭
+///   Rust 类型名在异构语言中无法解析。
 ///
 /// # 契约说明（What）
 /// - **前置条件**：
