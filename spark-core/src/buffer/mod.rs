@@ -21,7 +21,7 @@ pub mod writable;
 use crate::SparkError;
 use alloc::boxed::Box;
 
-pub use message::{Bytes, PipelineMessage};
+pub use message::{Bytes, PipelineMessage, UserMessage};
 pub use pool::{BufferPool, PoolStatisticsView};
 pub use readable::ReadableBuffer;
 pub use writable::WritableBuffer;

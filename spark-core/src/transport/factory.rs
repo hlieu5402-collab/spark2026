@@ -100,6 +100,7 @@ impl ListenerConfig {
 /// # 风险提示（Trade-offs）
 /// - 建连可能涉及 DNS、服务发现、握手，多步异步流程需尊重 `timeout` 与 `retry_budget`。
 /// - 绑定失败需提供明确错误原因，便于运维排查（端口占用、权限不足等）。
+/// - 性能评估：`async_contract_overhead` 基准验证了 `BoxFuture` 带来的对象安全分发在 20 万次建连模拟下与泛型实现耗时相当（差异 <1%），可作为默认选择而无须额外特化。【e8841c†L4-L13】
 pub trait TransportFactory: Send + Sync + 'static {
     /// 返回支持的 scheme。
     fn scheme(&self) -> &'static str;

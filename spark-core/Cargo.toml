@@ -34,3 +34,7 @@ harness = false
 [[bench]]
 name = "buffer_roundtrip"
 harness = false
+
+[[bench]]
+name = "async_contract_overhead"
+harness = false
