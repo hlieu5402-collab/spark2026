@@ -20,6 +20,7 @@ pub mod future;
 pub mod host;
 pub mod observability;
 pub mod pipeline;
+pub mod router;
 pub mod runtime;
 pub mod service;
 pub mod transport;
@@ -64,6 +65,11 @@ pub use pipeline::{
     ChainBuilder, Channel, ChannelState, Context, Controller, ControllerEvent, ControllerEventKind,
     ControllerFactory, DuplexHandler, ExtensionsMap, HandlerRegistry, InboundHandler, Middleware,
     MiddlewareDescriptor, OutboundHandler, Pipeline, PipelineFactory, WriteSignal,
+};
+pub use router::{
+    RouteBinding, RouteCatalog, RouteDecision, RouteDescriptor, RouteError, RouteId, RouteKind,
+    RouteMetadata, RoutePattern, RouteSegment, RouteValidation, Router, RoutingContext,
+    RoutingIntent, RoutingSnapshot,
 };
 pub use runtime::{
     AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission, ManagedBlockingTask,
