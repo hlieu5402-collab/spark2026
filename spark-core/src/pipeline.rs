@@ -1,9 +1,9 @@
 use crate::{
     SparkError,
-    buffer::{BufferAllocator, PipelineMessage},
+    buffer::{BufferPool, PipelineMessage},
     distributed::{ClusterMembershipProvider, ServiceDiscoveryProvider},
     observability::{CoreUserEvent, Logger, MetricsProvider, TraceContext},
-    runtime::{CoreServices, Executor, Timer},
+    runtime::{CoreServices, TaskExecutor, TimeDriver},
     transport::SparkSocketAddr,
 };
 use alloc::boxed::Box;
@@ -167,13 +167,17 @@ pub trait Context: Send + Sync {
     fn pipeline(&self) -> &dyn Pipeline;
 
     /// 执行器引用。
-    fn executor(&self) -> &dyn Executor;
+    fn executor(&self) -> &dyn TaskExecutor;
 
     /// 计时器引用。
-    fn timer(&self) -> &dyn Timer;
+    fn timer(&self) -> &dyn TimeDriver;
 
-    /// 缓冲分配器。
-    fn allocator(&self) -> &dyn BufferAllocator;
+    /// 缓冲池访问接口。
+    ///
+    /// # 契约说明
+    /// - 返回值必须实现 [`BufferPool`]，供 Handler 在编解码过程中租借/归还缓冲。
+    /// - 调用方不得缓存引用超过事件回调生命周期，避免破坏池的自适应调度。
+    fn buffer_pool(&self) -> &dyn BufferPool;
 
     /// 链路追踪上下文。
     fn trace_context(&self) -> &TraceContext;
