@@ -15,9 +15,12 @@ use alloc::vec::Vec;
 /// - `ConfigurationProvider`：提供配置与密钥的动态拉取能力。
 /// - `Extension`：轻量插件或实验特性。
 /// - `Custom`：宿主自定义分类。
-///   - **命名建议**：建议使用 `vendor.feature` 形式（如 `acme.feature_toggle`）。
-///   - **实现责任**：当宿主无法识别该分类时，应拒绝加载并返回
-///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，避免组件以未知权限运行。
+///
+/// # 实现责任 (Implementation Responsibility)
+/// - **命名约定**：推荐以组织或反向域名前缀命名，如 `acme.feature_toggle`，确保跨平台唯一。
+/// - **错误处理**：当宿主（如 `Router`、`ComponentFactory`）无法识别 `Custom` 值时，必须拒绝加载并返回
+///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，同时输出告警日志帮助诊断。
+/// - **禁止降级**：严禁静默忽略或回退至默认组件类别，避免以未知权限运行造成安全风险。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ComponentKind {
     TransportAdapter,

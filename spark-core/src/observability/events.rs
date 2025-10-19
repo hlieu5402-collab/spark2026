@@ -260,6 +260,12 @@ pub enum OpsEvent {
 ///
 /// # 契约说明（What）
 /// - 枚举值与 [`OpsEvent`] 变体保持一一对应，`Custom` 允许宿主扩展。
+///
+/// # 实现责任 (Implementation Responsibility)
+/// - **命名约定**：扩展事件使用 `vendor.event_name` 或反向域名形式，确保指标、告警可唯一定位。
+/// - **错误处理**：策略引擎若无法识别 `Custom` 值，必须拒绝应用策略并返回
+///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，同时输出告警日志提醒对齐配置。
+/// - **禁止降级**：不可默认回退到 `Passthrough` 或静默忽略事件，否则会导致监控盲区。
 /// - **命名建议**：扩展事件使用 `vendor.event_name` 形式，避免与内置事件冲突。
 /// - **实现责任**：对于未识别的自定义事件，策略配置应拒绝生效并返回错误。
 ///
