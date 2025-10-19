@@ -21,7 +21,9 @@ pub mod runtime;
 pub mod service;
 pub mod transport;
 
-pub use buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage};
+pub use buffer::{
+    BufferPool, Bytes, PipelineMessage, PoolStatisticsView, ReadableBuffer, WritableBuffer,
+};
 pub use common::{Empty, IntoEmpty, Loopback};
 pub use distributed::{
     ClusterMembershipProvider, DiscoveryEvent, MembershipEvent, NodeId, NodeInfo, NodeStatus,
