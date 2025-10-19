@@ -12,6 +12,7 @@ extern crate alloc;
 
 pub mod buffer;
 pub mod common;
+pub mod configuration;
 pub mod distributed;
 pub mod error;
 pub mod future;
@@ -25,6 +26,12 @@ pub use buffer::{
     BufferPool, Bytes, PipelineMessage, PoolStatisticsView, ReadableBuffer, WritableBuffer,
 };
 pub use common::{Empty, IntoEmpty, Loopback};
+pub use configuration::{
+    ChangeEvent, ChangeNotification, ChangeSet, ConfigKey, ConfigMetadata, ConfigScope,
+    ConfigValue, ConfigurationBuilder, ConfigurationError, ConfigurationHandle, ConfigurationLayer,
+    ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId, ProfileLayering,
+    ResolvedConfiguration, SourceMetadata, WatchToken,
+};
 pub use distributed::{
     ClusterMembershipProvider, DiscoveryEvent, MembershipEvent, NodeId, NodeInfo, NodeStatus,
     ServiceDiscoveryProvider,
