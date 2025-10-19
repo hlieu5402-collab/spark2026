@@ -22,9 +22,12 @@ pub enum SecurityProtocol {
     /// 量子安全或后量子握手算法。
     PostQuantum,
     /// 自定义协议，通过名称与参数说明。
-    ///   - **命名建议**：`name` 使用稳定标识（如 `acme.tpm_remote_attest`）。
-    ///   - **实现责任**：协商双方若不支持该协议，应返回
-    ///     [`crate::error::codes::APP_UNAUTHORIZED`] 并在参数中指出兼容的替代方案。
+    ///
+    /// # 实现责任 (Implementation Responsibility)
+    /// - **命名约定**：`name` 使用稳定标识（如 `acme.tpm_remote_attest` 或反向域名），方便双方匹配能力。
+    /// - **错误处理**：协商双方若不支持该协议，必须返回
+    ///   [`crate::error::codes::APP_UNAUTHORIZED`] 并在参数或日志中指出兼容的替代方案。
+    /// - **禁止降级**：不得在未确认的情况下自动回退到 `MutualTls` 等默认协议，避免绕过安全要求。
     Custom {
         name: String,
         parameters: Vec<(String, String)>,

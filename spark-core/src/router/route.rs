@@ -15,9 +15,12 @@ use alloc::vec::Vec;
 /// - `Stream`：面向长链接或持续数据流的路由（QUIC Streams、WebTransport）。
 /// - `Control`：管理/控制面操作（配置下发、健康检查）。
 /// - `Custom`：保留扩展口，允许宿主定义额外范式。
-///   - **命名约定**：推荐使用反向域名或组织前缀（如 `acme.command_stream`），确保跨团队唯一。
-///   - **实现责任**：路由器实现若无法识别某个 `Custom` 值，应返回 [`crate::error::codes::ROUTER_VERSION_CONFLICT`]
-///     或记录告警，而非静默降级，以便调用方快速定位不兼容的扩展。
+///
+/// # 实现责任 (Implementation Responsibility)
+/// - **命名约定**：推荐使用反向域名或组织前缀（如 `acme.command_stream`），确保跨团队唯一。
+/// - **错误处理**：路由器或策略引擎若无法识别该值，必须返回
+///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`] 并输出告警，指导调用方校准扩展版本。
+/// - **禁止降级**：不得自动回退为 `Rpc`/`Message` 等默认分类，避免错误路由或安全策略失效。
 ///
 /// # 使用约束（Pre/Post）
 /// - **前置条件**：调用方需基于业务语义选择恰当的枚举项，避免语义混淆。

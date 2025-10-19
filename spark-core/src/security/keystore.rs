@@ -23,9 +23,12 @@ pub enum KeyPurpose {
     /// 远程证明或机密计算场景需要的密钥。
     RemoteAttestation,
     /// 自定义用途。
-    ///   - **命名建议**：结合组织前缀（如 `acme.post_quantum_transport`）与用途语义。
-    ///   - **实现责任**：密钥管理服务若不支持该用途，应返回明确错误（建议使用
-    ///     [`crate::error::codes::APP_UNAUTHORIZED`])，并在审计日志中记录原因。
+    ///
+    /// # 实现责任 (Implementation Responsibility)
+    /// - **命名约定**：结合组织前缀（如 `acme.post_quantum_transport`）与用途语义，确保跨租户唯一。
+    /// - **错误处理**：密钥管理服务若不支持该用途，应返回
+    ///   [`crate::error::codes::APP_UNAUTHORIZED`] 并记录告警或审计日志说明原因。
+    /// - **禁止降级**：不可默认映射为其他已知用途或静默返回空结果，避免密钥误用。
     Custom(String),
 }
 

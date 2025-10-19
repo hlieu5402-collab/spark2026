@@ -124,9 +124,12 @@ pub struct ClusterMembershipSnapshot {
 /// - `ByRole`：限定角色（如 `RoleDescriptor::new("gateway")`）。
 /// - `ByShard`：限定逻辑分片或机架，使用字面字符串标识。
 /// - `Custom`：实现自定义过滤语法，字符串内容由双方协商（可采用 CEL、Rego 等表达式）。
-///   - **命名建议**：推荐以 `vendor://feature` 标识语法来源，避免同名冲突。
-///   - **实现责任**：若实现无法解析该语法，应返回 `cluster.unsupported_scope` 或
-///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，并附带错误描述。
+///
+/// # 实现责任 (Implementation Responsibility)
+/// - **命名约定**：推荐以 `vendor://feature` 标识语法来源，或遵循反向域名，避免与社区扩展冲突。
+/// - **错误处理**：若宿主或控制面无法解析该语法，必须返回 `cluster.unsupported_scope` 或
+///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，并附带详细错误描述。
+/// - **禁止降级**：不得静默忽略 `Custom` 选择器或退化为 `EntireCluster`，以免造成越权订阅。
 /// - **前置条件**：实现者需明确哪些分支受支持；若不支持应在运行时返回错误。
 /// - **后置条件**：选定范围内的事件必须保持顺序一致性。
 ///

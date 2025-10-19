@@ -83,9 +83,12 @@ pub enum NetworkProtocol {
     /// 基于 QUIC 的自定义协议。
     Quic,
     /// 宿主自行扩展的协议。
-    ///   - **命名建议**：使用稳定命名空间（如 `acme.meshdataplane`）。
-    ///   - **实现责任**：能力查询或连接工厂若无法识别该协议，应显式返回
-    ///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`] 并提供降级建议。
+    ///
+    /// # 实现责任 (Implementation Responsibility)
+    /// - **命名约定**：使用稳定命名空间（如 `acme.meshdataplane` 或 `vendor.protocol`）。
+    /// - **错误处理**：能力查询或连接工厂若无法识别该协议，必须返回
+    ///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，并在日志中记录推荐替代或修订方案。
+    /// - **禁止降级**：不得静默回退为默认协议或忽略该值，以免产生隐性兼容问题。
     Custom(String),
 }
 
@@ -99,9 +102,12 @@ pub enum NetworkAddressFamily {
     /// Unix Domain Socket。
     UnixDomain,
     /// 平台扩展。
-    ///   - **命名建议**：采用 `provider://` 前缀描述底层技术（如 `provider://aws/privatelink`）。
-    ///   - **实现责任**：未识别的地址族应导致明确错误或回退，而非静默忽略，推荐使用
-    ///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]。
+    ///
+    /// # 实现责任 (Implementation Responsibility)
+    /// - **命名约定**：采用 `provider://` 或反向域名前缀描述底层技术（如 `provider://aws/privatelink`）。
+    /// - **错误处理**：连接器或网络栈若无法解析该值，应返回
+    ///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`] 并输出告警日志，提示运维修正配置。
+    /// - **禁止降级**：严禁默认回退为 IPv4/IPv6 或忽略声明，防止连向错误的网络域。
     Custom(String),
 }
 
@@ -119,9 +125,12 @@ pub enum SecurityFeature {
     /// 可信执行环境。
     TrustedExecution,
     /// 可扩展特性。
-    ///   - **命名建议**：使用稳定前缀（如 `acme.attested_tls`）。
-    ///   - **实现责任**：若安全组件不支持该特性，应返回
-    ///     [`crate::error::codes::APP_UNAUTHORIZED`] 或在日志中指出未启用原因。
+    ///
+    /// # 实现责任 (Implementation Responsibility)
+    /// - **命名约定**：使用稳定前缀（如 `acme.attested_tls` 或 `vendor.feature`）。
+    /// - **错误处理**：若安全组件不支持该特性，应返回
+    ///   [`crate::error::codes::APP_UNAUTHORIZED`] 并在日志或告警中说明原因及替代方案。
+    /// - **禁止降级**：禁止默认将其视为 `Unsupported` 或静默吞掉，以免造成策略错判。
     Custom(String),
 }
 

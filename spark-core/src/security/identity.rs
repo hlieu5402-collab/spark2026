@@ -109,9 +109,12 @@ pub enum IdentityKind {
     /// 物理或虚拟机器身份。
     Machine,
     /// 自定义类型，通过字符串说明语义。
-    ///   - **命名建议**：遵循 `provider://domain/kind` 形式，确保跨系统唯一。
-    ///   - **实现责任**：策略引擎若无法识别该类型，应返回
-    ///     [`crate::error::codes::APP_UNAUTHORIZED`] 并附带指引，而非静默接受。
+    ///
+    /// # 实现责任 (Implementation Responsibility)
+    /// - **命名约定**：遵循 `provider://domain/kind` 或反向域名前缀，确保跨系统唯一且可追踪。
+    /// - **错误处理**：策略引擎或身份映射器若无法识别该类型，必须返回
+    ///   [`crate::error::codes::APP_UNAUTHORIZED`] 并附带修复指引。
+    /// - **禁止降级**：不得回退为通用 `User`/`Service` 类型或静默放行，避免授权绕过。
     Custom(String),
 }
 
@@ -141,9 +144,12 @@ pub enum IdentityProof {
     /// 裸公钥或指纹。
     PublicKey(Vec<u8>),
     /// 其他格式，由调用方自定义解释。
-    ///   - **命名建议**：`format` 使用稳定字符串（如 `did_jwt_vc`）。
-    ///   - **实现责任**：消费方若不支持该格式，应返回明确错误（推荐
-    ///     [`crate::error::codes::APP_UNAUTHORIZED`]），并注明降级方案。
+    ///
+    /// # 实现责任 (Implementation Responsibility)
+    /// - **命名约定**：`format` 使用稳定字符串（如 `did_jwt_vc` 或 `vendor.attestation`），方便跨团队协作。
+    /// - **错误处理**：消费方若不支持该格式，应返回
+    ///   [`crate::error::codes::APP_UNAUTHORIZED`] 并记录告警，同时提供降级或替代方案。
+    /// - **禁止降级**：不可默认为 `JsonWebToken` 等已知格式，也不得忽略载荷，避免验证缺失。
     Custom {
         /// 证明格式标识，如 `webauthn`, `vc+ldp`。
         format: String,
