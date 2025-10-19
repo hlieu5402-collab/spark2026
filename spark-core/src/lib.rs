@@ -71,7 +71,11 @@ pub use runtime::{
     TaskResult, TimeDriver,
 };
 pub use service::{Layer, Service};
-pub use transport::{Endpoint, ParamMap, ServerTransport, SparkSocketAddr, TransportFactory};
+pub use transport::{
+    AvailabilityRequirement, ConnectionIntent, Endpoint, EndpointKind, ListenerShutdown,
+    QualityOfService, SecurityMode, ServerTransport, SessionLifecycle, TransportFactory,
+    TransportParams, TransportSocketAddr,
+};
 
 use alloc::boxed::Box;
 use core::fmt;

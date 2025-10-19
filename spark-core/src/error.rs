@@ -1,4 +1,4 @@
-use crate::{Error, TraceContext, cluster::NodeId, transport::SparkSocketAddr};
+use crate::{Error, TraceContext, cluster::NodeId, transport::TransportSocketAddr};
 use alloc::{boxed::Box, string::String};
 use core::fmt;
 
@@ -25,7 +25,7 @@ pub struct SparkError {
     message: String,
     cause: Option<ErrorCause>,
     trace_context: Option<TraceContext>,
-    peer_addr: Option<SparkSocketAddr>,
+    peer_addr: Option<TransportSocketAddr>,
     node_id: Option<NodeId>,
 }
 
@@ -73,7 +73,7 @@ impl SparkError {
     }
 
     /// 附带通信对端地址，帮助定位网络问题。
-    pub fn with_peer_addr(mut self, peer: SparkSocketAddr) -> Self {
+    pub fn with_peer_addr(mut self, peer: TransportSocketAddr) -> Self {
         self.peer_addr = Some(peer);
         self
     }
@@ -90,7 +90,7 @@ impl SparkError {
     }
 
     /// 获取可选的对端地址。
-    pub fn peer_addr(&self) -> Option<&SparkSocketAddr> {
+    pub fn peer_addr(&self) -> Option<&TransportSocketAddr> {
         self.peer_addr.as_ref()
     }
 
