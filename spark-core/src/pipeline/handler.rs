@@ -1,4 +1,4 @@
-use crate::SparkError;
+use crate::CoreError;
 
 use super::{context::Context, middleware::MiddlewareDescriptor};
 
@@ -45,7 +45,7 @@ pub trait InboundHandler: Send + Sync + 'static {
     fn on_user_event(&self, ctx: &dyn Context, event: CoreUserEvent);
 
     /// 异常处理。
-    fn on_exception_caught(&self, ctx: &dyn Context, error: SparkError);
+    fn on_exception_caught(&self, ctx: &dyn Context, error: CoreError);
 
     /// 通道不再活跃。
     fn on_channel_inactive(&self, ctx: &dyn Context);
@@ -76,17 +76,17 @@ pub trait OutboundHandler: Send + Sync + 'static {
         &self,
         ctx: &dyn Context,
         msg: PipelineMessage,
-    ) -> Result<super::channel::WriteSignal, SparkError>;
+    ) -> Result<super::channel::WriteSignal, CoreError>;
 
     /// 刷新写缓冲。
-    fn on_flush(&self, ctx: &dyn Context) -> Result<(), SparkError>;
+    fn on_flush(&self, ctx: &dyn Context) -> Result<(), CoreError>;
 
     /// 优雅关闭。
     fn on_close_graceful(
         &self,
         ctx: &dyn Context,
         deadline: Option<core::time::Duration>,
-    ) -> Result<(), SparkError>;
+    ) -> Result<(), CoreError>;
 }
 
 /// 同时处理入站与出站事件的全双工 Handler。

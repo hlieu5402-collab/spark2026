@@ -1,4 +1,4 @@
-use crate::{buffer::PipelineMessage, error::SparkError, transport::TransportSocketAddr};
+use crate::{buffer::PipelineMessage, error::CoreError, transport::TransportSocketAddr};
 use core::time::Duration;
 
 use super::Controller;
@@ -103,7 +103,7 @@ pub trait Channel: Send + Sync + 'static {
     fn close(&self);
 
     /// 向通道写入消息，返回背压信号。
-    fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, SparkError>;
+    fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, CoreError>;
 
     /// 刷新底层缓冲。
     fn flush(&self);

@@ -1,5 +1,5 @@
 use super::metadata::CodecDescriptor;
-use crate::SparkError;
+use crate::CoreError;
 use crate::buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut};
 use alloc::boxed::Box;
 use core::fmt;
@@ -20,7 +20,7 @@ use core::fmt;
 /// - **后置条件**：成功租借的缓冲区由调用方负责归还或冻结为只读缓冲；上下文自身不持有状态。
 ///
 /// # 风险提示（Trade-offs）
-/// - 未内置重试逻辑；若租借失败（例如内存池耗尽），编码器需向上返回 `SparkError`，由调用者决定降级或背压。
+/// - 未内置重试逻辑；若租借失败（例如内存池耗尽），编码器需向上返回 `CoreError`，由调用者决定降级或背压。
 pub struct EncodeContext<'a> {
     allocator: &'a dyn BufferAllocator,
     max_frame_size: Option<usize>,
@@ -47,10 +47,7 @@ impl<'a> EncodeContext<'a> {
     }
 
     /// 租借一个满足最小容量的可写缓冲区。
-    pub fn acquire_buffer(
-        &self,
-        min_capacity: usize,
-    ) -> Result<Box<ErasedSparkBufMut>, SparkError> {
+    pub fn acquire_buffer(&self, min_capacity: usize) -> Result<Box<ErasedSparkBufMut>, CoreError> {
         self.allocator.acquire(min_capacity)
     }
 
@@ -120,7 +117,7 @@ impl fmt::Debug for EncodedPayload {
 ///
 /// # 契约说明（What）
 /// - **前置条件**：调用方需确保输入 `item` 满足业务协议约束，例如字段完整性、schema 兼容性。
-/// - **后置条件**：返回的 `EncodedPayload` 必须完全代表 `item` 的序列化结果；若发生错误，应通过 `SparkError` 携带稳定错误码。
+/// - **后置条件**：返回的 `EncodedPayload` 必须完全代表 `item` 的序列化结果；若发生错误，应通过 `CoreError` 携带稳定错误码。
 ///
 /// # 风险提示（Trade-offs）
 /// - 接口未强制 `&mut self`，方便实现者以无状态单例形式注册，但若内部需要缓存，应自行处理并发安全。
@@ -136,5 +133,5 @@ pub trait Encoder: Send + Sync + 'static {
         &self,
         item: &Self::Item,
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, SparkError>;
+    ) -> Result<EncodedPayload, CoreError>;
 }

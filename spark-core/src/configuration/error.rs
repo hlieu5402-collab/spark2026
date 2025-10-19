@@ -133,3 +133,10 @@ impl Error for SourceRegistrationError {
         None
     }
 }
+
+const _: fn() = || {
+    fn assert_error_traits<T: Error + Send + Sync + 'static>() {}
+
+    assert_error_traits::<ConfigurationError>();
+    assert_error_traits::<SourceRegistrationError>();
+};

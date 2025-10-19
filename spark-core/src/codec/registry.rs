@@ -1,7 +1,7 @@
 use super::decoder::{DecodeContext, DecodeOutcome, Decoder as DecoderTrait};
 use super::encoder::{EncodeContext, EncodedPayload, Encoder};
 use super::metadata::{CodecDescriptor, ContentEncoding, ContentType};
-use crate::SparkError;
+use crate::CoreError;
 use crate::buffer::ErasedSparkBuf;
 use crate::error::codes;
 use alloc::{boxed::Box, format, vec::Vec};
@@ -38,14 +38,14 @@ pub trait Codec: Send + Sync + 'static {
         &self,
         item: &Self::Outgoing,
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, SparkError>;
+    ) -> Result<EncodedPayload, CoreError>;
 
     /// 解码入站字节。
     fn decode(
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Self::Incoming>, SparkError>;
+    ) -> Result<DecodeOutcome<Self::Incoming>, CoreError>;
 }
 
 impl<T> Encoder for T
@@ -62,7 +62,7 @@ where
         &self,
         item: &Self::Item,
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, SparkError> {
+    ) -> Result<EncodedPayload, CoreError> {
         Codec::encode(self, item, ctx)
     }
 }
@@ -81,7 +81,7 @@ where
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Self::Item>, SparkError> {
+    ) -> Result<DecodeOutcome<Self::Item>, CoreError> {
         Codec::decode(self, src, ctx)
     }
 }
@@ -98,7 +98,7 @@ where
 ///
 /// # 契约说明（What）
 /// - **前置条件**：调用方必须确保传入的 `Any` 与编解码器的 `Outgoing` 类型一致。
-/// - **后置条件**：若类型不匹配，将返回 `SparkError::new(codes::PROTOCOL_TYPE_MISMATCH, ..)`，调用方需捕获并记录。
+/// - **后置条件**：若类型不匹配，将返回 `CoreError::new(codes::PROTOCOL_TYPE_MISMATCH, ..)`，调用方需捕获并记录。
 ///
 /// # 风险提示（Trade-offs）
 /// - 类型擦除带来运行时成本；在性能敏感路径应优先使用静态泛型 `Codec`。
@@ -111,14 +111,14 @@ pub trait DynCodec: Send + Sync + 'static {
         &self,
         item: &(dyn Any + Send + Sync),
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, SparkError>;
+    ) -> Result<EncodedPayload, CoreError>;
 
     /// 对象安全的解码入口。
     fn decode_dyn(
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, SparkError>;
+    ) -> Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, CoreError>;
 }
 
 /// `TypedCodecAdapter` 将静态泛型 `Codec` 包装为对象安全的 `DynCodec`。
@@ -172,10 +172,10 @@ where
         &self,
         item: &(dyn Any + Send + Sync),
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, SparkError> {
+    ) -> Result<EncodedPayload, CoreError> {
         match item.downcast_ref::<C::Outgoing>() {
             Some(typed) => self.inner.encode(typed, ctx),
-            None => Err(SparkError::new(
+            None => Err(CoreError::new(
                 codes::PROTOCOL_TYPE_MISMATCH,
                 format!(
                     "期待类型 `{}`，实际收到不兼容类型",
@@ -189,7 +189,7 @@ where
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, SparkError> {
+    ) -> Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, CoreError> {
         match self.inner.decode(src, ctx)? {
             DecodeOutcome::Complete(item) => Ok(DecodeOutcome::Complete(Box::new(item))),
             DecodeOutcome::Incomplete => Ok(DecodeOutcome::Incomplete),
@@ -258,7 +258,7 @@ impl NegotiatedCodec {
 /// - `instantiate` 根据协商结果创建新的编解码实例。
 ///
 /// # 契约说明（What）
-/// - **前置条件**：传入的 `NegotiatedCodec` 必须与工厂描述符兼容，否则应返回 `SparkError::new(codes::PROTOCOL_NEGOTIATION, ..)` 等错误；
+/// - **前置条件**：传入的 `NegotiatedCodec` 必须与工厂描述符兼容，否则应返回 `CoreError::new(codes::PROTOCOL_NEGOTIATION, ..)` 等错误；
 /// - **后置条件**：成功返回的对象必须独立、线程安全，允许并发使用。
 ///
 /// # 风险提示（Trade-offs）
@@ -268,7 +268,7 @@ pub trait DynCodecFactory: Send + Sync + 'static {
     fn descriptor(&self) -> &CodecDescriptor;
 
     /// 基于协商结果构建编解码实例。
-    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, SparkError>;
+    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, CoreError>;
 }
 
 /// `TypedCodecFactory` 将返回具体 `Codec` 的构造器包装为 `DynCodecFactory`。
@@ -320,7 +320,7 @@ where
         &self.descriptor
     }
 
-    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, SparkError> {
+    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, CoreError> {
         let codec = (self.constructor)(negotiated);
         Ok(Box::new(TypedCodecAdapter::new(codec)))
     }
@@ -343,18 +343,18 @@ where
 ///
 /// # 风险提示（Trade-offs）
 /// - 注册中心可能成为共享状态热点，实现时需注意并发控制与读写锁策略；
-/// - 协商失败时必须返回带有稳定错误码的 `SparkError`，以便客户端快速定位问题。
+/// - 协商失败时必须返回带有稳定错误码的 `CoreError`，以便客户端快速定位问题。
 pub trait CodecRegistry: Send + Sync + 'static {
     /// 注册新的编解码工厂。
-    fn register(&self, factory: Box<dyn DynCodecFactory>) -> Result<(), SparkError>;
+    fn register(&self, factory: Box<dyn DynCodecFactory>) -> Result<(), CoreError>;
 
     /// 根据客户端偏好协商编解码方案。
     fn negotiate(
         &self,
         preferred: &[ContentType],
         accepted_encodings: &[ContentEncoding],
-    ) -> Result<NegotiatedCodec, SparkError>;
+    ) -> Result<NegotiatedCodec, CoreError>;
 
     /// 基于协商结果创建编解码实例。
-    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, SparkError>;
+    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, CoreError>;
 }

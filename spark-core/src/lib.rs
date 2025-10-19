@@ -54,7 +54,10 @@ pub use configuration::{
     ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId, ProfileLayering,
     ResolvedConfiguration, SourceMetadata, WatchToken,
 };
-pub use error::{ErrorCause, SparkError};
+pub use error::{
+    CoreError, DomainError, DomainErrorKind, ErrorCause, ImplError, ImplErrorKind, IntoCoreError,
+    IntoDomainError,
+};
 pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use host::{
     CapabilityDescriptor, CapabilityLevel, ComponentDescriptor, ComponentFactory,

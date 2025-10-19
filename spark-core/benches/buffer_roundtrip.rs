@@ -1,5 +1,5 @@
 use criterion::{Criterion, black_box};
-use spark_core::{ReadableBuffer, SparkError, WritableBuffer};
+use spark_core::{CoreError, ReadableBuffer, WritableBuffer};
 use std::{env, time::Duration};
 
 /// 简单的基准测试：验证缓冲读写契约的往返成本。
@@ -67,9 +67,9 @@ impl ReadableBuffer for VecReader {
         &self.data[self.read..]
     }
 
-    fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, SparkError> {
+    fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
         if len > self.remaining() {
-            return Err(SparkError::new(
+            return Err(CoreError::new(
                 "buffer.out_of_range",
                 "split_to 超出剩余长度",
             ));
@@ -83,9 +83,9 @@ impl ReadableBuffer for VecReader {
         Ok(Box::new(segment))
     }
 
-    fn advance(&mut self, len: usize) -> Result<(), SparkError> {
+    fn advance(&mut self, len: usize) -> Result<(), CoreError> {
         if len > self.remaining() {
-            return Err(SparkError::new(
+            return Err(CoreError::new(
                 "buffer.out_of_range",
                 "advance 超出剩余长度",
             ));
@@ -94,9 +94,9 @@ impl ReadableBuffer for VecReader {
         Ok(())
     }
 
-    fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), SparkError> {
+    fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
         if dst.len() > self.remaining() {
-            return Err(SparkError::new(
+            return Err(CoreError::new(
                 "buffer.out_of_range",
                 "copy_into_slice 目标长度超出",
             ));
@@ -107,7 +107,7 @@ impl ReadableBuffer for VecReader {
         Ok(())
     }
 
-    fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, SparkError> {
+    fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
         let VecReader { data, read } = *self;
         Ok(data[read..].to_vec())
     }
@@ -126,18 +126,18 @@ impl WritableBuffer for VecWriter {
         self.data.len()
     }
 
-    fn reserve(&mut self, additional: usize) -> Result<(), SparkError> {
+    fn reserve(&mut self, additional: usize) -> Result<(), CoreError> {
         self.data
             .try_reserve(additional)
-            .map_err(|_| SparkError::new("buffer.reserve_failed", "Vec reserve 失败"))
+            .map_err(|_| CoreError::new("buffer.reserve_failed", "Vec reserve 失败"))
     }
 
-    fn put_slice(&mut self, src: &[u8]) -> Result<(), SparkError> {
+    fn put_slice(&mut self, src: &[u8]) -> Result<(), CoreError> {
         self.data.extend_from_slice(src);
         Ok(())
     }
 
-    fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> Result<(), SparkError> {
+    fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> Result<(), CoreError> {
         let segment = src.split_to(len)?;
         let chunk = segment.try_into_vec()?;
         self.data.extend_from_slice(&chunk);
@@ -148,7 +148,7 @@ impl WritableBuffer for VecWriter {
         self.data.clear();
     }
 
-    fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, SparkError> {
+    fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError> {
         let VecWriter { data } = *self;
         Ok(Box::new(VecReader { data, read: 0 }))
     }

@@ -1,7 +1,7 @@
 use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
 
 use crate::{
-    buffer::PipelineMessage, error::SparkError, observability::CoreUserEvent, runtime::CoreServices,
+    buffer::PipelineMessage, error::CoreError, observability::CoreUserEvent, runtime::CoreServices,
 };
 
 use super::{
@@ -169,7 +169,7 @@ pub trait Controller: Send + Sync + 'static {
         &self,
         middleware: &dyn Middleware,
         services: &CoreServices,
-    ) -> Result<(), SparkError>;
+    ) -> Result<(), CoreError>;
 
     /// 将通道标记为活跃并广播事件。
     fn emit_channel_activated(&self);
@@ -187,7 +187,7 @@ pub trait Controller: Send + Sync + 'static {
     fn emit_user_event(&self, event: CoreUserEvent);
 
     /// 广播异常，允许 Handler 做容错处理。
-    fn emit_exception(&self, error: SparkError);
+    fn emit_exception(&self, error: CoreError);
 
     /// 将通道标记为非活跃。
     fn emit_channel_deactivated(&self);
