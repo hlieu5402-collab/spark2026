@@ -43,7 +43,7 @@ pub trait Codec: Send + Sync + 'static {
     /// 解码入站字节。
     fn decode(
         &self,
-        src: &mut dyn ErasedSparkBuf,
+        src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
     ) -> Result<DecodeOutcome<Self::Incoming>, SparkError>;
 }
@@ -79,7 +79,7 @@ where
 
     fn decode(
         &self,
-        src: &mut dyn ErasedSparkBuf,
+        src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
     ) -> Result<DecodeOutcome<Self::Item>, SparkError> {
         Codec::decode(self, src, ctx)
@@ -116,7 +116,7 @@ pub trait DynCodec: Send + Sync + 'static {
     /// 对象安全的解码入口。
     fn decode_dyn(
         &self,
-        src: &mut dyn ErasedSparkBuf,
+        src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
     ) -> Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, SparkError>;
 }
@@ -187,7 +187,7 @@ where
 
     fn decode_dyn(
         &self,
-        src: &mut dyn ErasedSparkBuf,
+        src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
     ) -> Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, SparkError> {
         match self.inner.decode(src, ctx)? {

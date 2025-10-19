@@ -1,6 +1,6 @@
 use crate::{
     buffer::BufferPool,
-    distributed::{ClusterMembershipProvider, ServiceDiscoveryProvider},
+    cluster::{ClusterMembership, ServiceDiscovery},
     observability::{HealthCheckProvider, Logger, MetricsProvider, OpsEventBus},
 };
 use alloc::{sync::Arc, vec::Vec};
@@ -35,8 +35,8 @@ pub struct CoreServices {
     pub buffer_pool: Arc<dyn BufferPool>,
     pub metrics: Arc<dyn MetricsProvider>,
     pub logger: Arc<dyn Logger>,
-    pub membership: Option<Arc<dyn ClusterMembershipProvider>>,
-    pub discovery: Option<Arc<dyn ServiceDiscoveryProvider>>,
+    pub membership: Option<Arc<dyn ClusterMembership>>,
+    pub discovery: Option<Arc<dyn ServiceDiscovery>>,
     pub ops_bus: Arc<dyn OpsEventBus>,
     pub health_checks: Arc<Vec<Arc<dyn HealthCheckProvider>>>,
 }

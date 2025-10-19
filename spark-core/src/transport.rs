@@ -187,7 +187,7 @@ pub trait ServerTransport: Send + Sync + 'static {
 ///
 /// # 设计背景（Why）
 /// - 通过统一工厂接口，便于在运行时选择 TCP、QUIC 或内存通道等实现。
-/// - `srv://` 语义要求与服务发现集成，因此接口额外接受 `ServiceDiscoveryProvider`。
+/// - `srv://` 语义要求与服务发现集成，因此接口额外接受 `ServiceDiscovery`。
 ///
 /// # 契约说明（What）
 /// - `bind` 与 `connect` 均返回 `BoxFuture`，确保 `no_std + alloc` 环境下的异步能力。
@@ -210,6 +210,6 @@ pub trait TransportFactory: Send + Sync + 'static {
     fn connect(
         &self,
         endpoint: Endpoint,
-        discovery: Option<Arc<dyn crate::distributed::ServiceDiscoveryProvider>>,
+        discovery: Option<Arc<dyn crate::cluster::ServiceDiscovery>>,
     ) -> BoxFuture<'static, Result<Box<dyn crate::pipeline::Channel>, SparkError>>;
 }

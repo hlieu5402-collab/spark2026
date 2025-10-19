@@ -1,4 +1,4 @@
-use crate::{Error, TraceContext, distributed::NodeId, transport::SparkSocketAddr};
+use crate::{Error, TraceContext, cluster::NodeId, transport::SparkSocketAddr};
 use alloc::{boxed::Box, string::String};
 use core::fmt;
 

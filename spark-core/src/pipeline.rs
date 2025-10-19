@@ -1,7 +1,7 @@
 use crate::{
     SparkError,
     buffer::{BufferPool, PipelineMessage},
-    distributed::{ClusterMembershipProvider, ServiceDiscoveryProvider},
+    cluster::{ClusterMembership, ServiceDiscovery},
     observability::{CoreUserEvent, Logger, MetricsProvider, TraceContext},
     runtime::{CoreServices, TaskExecutor, TimeDriver},
     transport::SparkSocketAddr,
@@ -189,10 +189,10 @@ pub trait Context: Send + Sync {
     fn logger(&self) -> &dyn Logger;
 
     /// 集群成员能力。
-    fn membership(&self) -> Option<&dyn ClusterMembershipProvider>;
+    fn membership(&self) -> Option<&dyn ClusterMembership>;
 
     /// 服务发现能力。
-    fn discovery(&self) -> Option<&dyn ServiceDiscoveryProvider>;
+    fn discovery(&self) -> Option<&dyn ServiceDiscovery>;
 
     /// 继续向后传播读事件。
     fn fire_read(&self, msg: PipelineMessage);

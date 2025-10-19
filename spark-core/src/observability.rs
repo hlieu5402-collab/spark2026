@@ -1,6 +1,6 @@
 use crate::{
     BoxFuture, BoxStream, Error,
-    distributed::{DiscoveryEvent, MembershipEvent},
+    cluster::{ClusterMembershipEvent, DiscoveryEvent},
 };
 use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 use core::time::Duration;
@@ -282,7 +282,7 @@ pub enum OpsEvent {
         error_code: &'static str,
         count: u64,
     },
-    ClusterChange(MembershipEvent),
+    ClusterChange(ClusterMembershipEvent),
     DiscoveryJitter(DiscoveryEvent),
     BufferLeakDetected {
         count: usize,
