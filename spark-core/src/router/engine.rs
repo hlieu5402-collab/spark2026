@@ -55,9 +55,21 @@ where
 /// - **后置**：若成功返回 [`RouteDecision`]，则保证绑定的 Service 可以被安全地消费。
 ///
 /// # 错误契约（Error Contract）
-/// - 当路由表包含调用方未知的 `RouteKind::Custom` 或绑定能力缺失时，应返回
-///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，提示调用方与控制面协商版本。
-/// - 若底层服务在路由时不可达，可返回 [`crate::error::codes::CLUSTER_NODE_UNAVAILABLE`] 并附带恢复建议。
+/// - `route`：
+///   - 当路由表包含调用方未知的 `RouteKind::Custom`、策略引用未发布的能力或所需过滤器缺失时，
+///     必须通过 [`RouteError::ServiceNotReady`] 或 [`RouteError::Internal`] 的 `source` 映射为
+///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，提醒调用方刷新自身组件版本或协商配置。
+///   - 若路由依赖的服务发现/集群元数据在网络分区、领导者丢失时不可用，应将底层错误转换为
+///     [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 或 [`crate::error::codes::CLUSTER_LEADER_LOST`]，
+///     以便上游执行退避与重试。
+///   - 当绑定的服务池出现队列堆积、超过内部背压上限时，可暴露
+///     [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，提示调用方切换备用路由或降级流量。
+///   - 如果路由指向的实例在解析时返回陈旧视图，应以
+///     [`crate::error::codes::DISCOVERY_STALE_READ`] 返回，驱动调用方刷新快照或延后读。
+/// - `snapshot`：该方法不返回 `Result`，实现者应保证在网络分区等场景下退化为返回最近一次成功快照，
+///   并在观测日志中补充错误码，保持与路由路径一致的可观测性。
+/// - `validate`：当检测到未支持的扩展字段时，应在验证结果中附带
+///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，避免配置在控制面落地后才触发运行时错误。
 pub trait Router<Request> {
     /// 绑定的 Service 类型。
     type Service: Service<Request>;
