@@ -123,7 +123,8 @@ pub enum DiscoveryEvent {
 ///
 /// # 逻辑解析（How）
 /// - `resolve`：根据一致性等级返回最新快照，`Linearizable` 应通过读屏障保证；`Eventual` 可使用缓存。
-/// - `watch`：提供增量事件流，可指定修订号从断点继续，并允许通过 [`SubscriptionBackpressure`] 配置缓冲区与溢出策略。
+/// - `watch`：提供增量事件流，可指定修订号从断点继续，并允许通过 [`SubscriptionBackpressure`] 配置缓冲区与溢出策略；
+///   若调用方请求队列观测，实现需在返回的 [`SubscriptionStream::queue_probe`] 中提供探针。
 /// - `list_services`：可选实现，用于获取命名空间下的全部服务。
 ///
 /// # 契约说明（What）
@@ -134,7 +135,7 @@ pub enum DiscoveryEvent {
 ///   - `backpressure`：订阅背压配置，详见 [`SubscriptionBackpressure`]。
 /// - **返回值**：
 ///   - `resolve` 返回 [`DiscoverySnapshot`]。
-///   - `watch` 返回 [`SubscriptionStream<DiscoveryEvent>`]。
+///   - `watch` 返回 [`SubscriptionStream<DiscoveryEvent>`]；若 `queue_probe` 为 `Some`，表示实现支持队列观测。
 ///   - `list_services` 返回服务名列表，按字典序排序。
 /// - **前置条件**：实现方需在初始化阶段完成注册中心连接，确保契约调用时具备基础数据。
 /// - **后置条件**：消费者可将快照与事件结合用于本地缓存或负载均衡决策。
@@ -152,10 +153,14 @@ pub enum DiscoveryEvent {
 /// - `list_services` 可能导致全量扫描，应在实现中加入分页或速率限制。
 ///
 /// # 错误契约（Error Contract）
-/// - `resolve`：当读取到陈旧缓存时应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]；若控制面发生网络分区或领导者失效，可分别返回
-///   [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 与 [`crate::error::codes::CLUSTER_LEADER_LOST`]。
-/// - `watch`：当订阅缓冲耗尽且策略为 `FailStream` 时，应终止流并返回 [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]；网络分区或领导者失效同样推荐返回上述集群错误码。
-/// - `list_services`：遇到陈旧数据或读不到最新拓扑时，可返回 [`crate::error::codes::DISCOVERY_STALE_READ`] 供调用方重试。
+/// - `resolve`：
+///   - 当解析结果基于陈旧缓存或副本尚未同步最新拓扑时，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]，驱动调用方执行线性一致读或刷新缓存。
+///   - 若控制面发生网络分区或领导者失效，必须分别返回 [`crate::error::codes::CLUSTER_NETWORK_PARTITION`]、[`crate::error::codes::CLUSTER_LEADER_LOST`]，以便调用方执行退避并持续观测恢复状态。
+/// - `watch`：
+///   - 当订阅缓冲耗尽且策略为 `FailStream` 时，应终止流并返回 [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，提醒调用方提升消费速率或调整背压策略。
+///   - 遭遇网络分区、领导者失效、拓扑暂不可达时，应返回上述集群错误码（`network_partition` / `leader_lost`），并可附加降级快照帮助调用方保持一致性。
+/// - `list_services`：
+///   - 若注册中心提供的目录为陈旧视图或受网络分区影响无法返回完整数据，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]，提示调用方延迟重试或降级使用本地缓存。
 pub trait ServiceDiscovery: Send + Sync + 'static {
     /// 解析目标服务并返回快照。
     fn resolve(
@@ -168,7 +173,7 @@ pub trait ServiceDiscovery: Send + Sync + 'static {
     fn watch(
         &self,
         service: &ServiceName,
-        scope: ClusterConsistencyLevel,
+        consistency: ClusterConsistencyLevel,
         resume_from: Option<ClusterRevision>,
         backpressure: SubscriptionBackpressure,
     ) -> SubscriptionStream<DiscoveryEvent>;

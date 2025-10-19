@@ -223,7 +223,8 @@ pub enum ClusterMembershipEvent {
 /// # 逻辑解析（How）
 /// - `snapshot`：获取指定范围的全量视图，应尊重 `consistency` 的语义，例如 `Linearizable` 需要借助 Raft/etcd 的读屏障。
 /// - `subscribe`：返回一个流式事件源，可选起始修订号用于断点续传，并允许通过
-///   [`SubscriptionBackpressure`] 协商缓冲模式与队列探针。
+///   [`SubscriptionBackpressure`] 协商缓冲模式与队列探针；当启用观测时，应在
+///   [`SubscriptionStream::queue_probe`] 中填充实现提供的观测对象。
 /// - `self_profile`：提供运行时自身节点的画像，便于 Handler 决策。
 ///
 /// # 契约说明（What）
@@ -233,7 +234,8 @@ pub enum ClusterMembershipEvent {
 ///   - `backpressure`：订阅背压配置，详见 [`SubscriptionBackpressure`]。
 /// - **返回值**：
 ///   - `snapshot` 返回 `ClusterMembershipSnapshot`，若范围为空需返回空集合而非错误。
-///   - `subscribe` 返回 [`SubscriptionStream<ClusterMembershipEvent>`]，要求事件按修订号递增。
+///   - `subscribe` 返回 [`SubscriptionStream<ClusterMembershipEvent>`]，要求事件按修订号递增；若 `queue_probe`
+///     为 `Some`，表示实现已启用队列观测能力。
 ///   - `self_profile` 返回当前节点画像，若节点未注册应返回错误 `cluster.self_not_registered`。
 /// - **前置条件**：实现者需确保底层存储已初始化，且事件流在订阅前开始记录。
 /// - **后置条件**：调用成功后，消费者可将返回值作为权威真相来源并在本地缓存。
@@ -253,12 +255,17 @@ pub enum ClusterMembershipEvent {
 ///   `SubscriptionBackpressure::bounded` 且溢出时，应返回 `cluster.queue_overflow` 或在探针中增加丢弃计数。
 ///
 /// # 错误契约（Error Contract）
-/// - `snapshot`：网络分区或无法联通共识面时返回 [`crate::error::codes::CLUSTER_NETWORK_PARTITION`]；若当前主控节点丢失领导权，应返回
-///   [`crate::error::codes::CLUSTER_LEADER_LOST`]。
-/// - `subscribe`：当订阅背压容量耗尽且策略为 `FailStream` 时，应终止流并返回
-///   [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]；若底层控制面发生网络分区，同样推荐返回
-///   [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 并记录恢复建议。
-/// - `self_profile`：若读取到陈旧元数据，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`] 提示调用方刷新快照。
+/// - `snapshot`：
+///   - 网络分区或无法联通共识面时，必须返回 [`crate::error::codes::CLUSTER_NETWORK_PARTITION`]，引导调用方退避并观察集群恢复状态。
+///   - 若当前主控节点丢失领导权，应返回 [`crate::error::codes::CLUSTER_LEADER_LOST`]，提示上游等待新领导者确认后重试。
+/// - `subscribe`：
+///   - 当订阅背压容量耗尽且策略为 `FailStream` 时，应终止流并返回
+///     [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，提醒调用方提升处理速率或调整订阅策略。
+///   - 底层控制面发生网络分区或领导者失效时，需返回
+///     [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] / [`crate::error::codes::CLUSTER_LEADER_LOST`]，
+///     并在事件流中给出恢复建议（如切换到降级快照）。
+/// - `self_profile`：
+///   - 若读取到陈旧元数据或缓存尚未刷新，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]，驱动调用方刷新快照或执行线性一致读。
 pub trait ClusterMembership: Send + Sync + 'static {
     /// 获取指定范围的全量快照。
     fn snapshot(
