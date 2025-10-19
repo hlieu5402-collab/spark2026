@@ -61,8 +61,9 @@ pub use observability::{
     RateLimited, TlsInfo, TraceContext,
 };
 pub use pipeline::{
-    Channel, ChannelState, Context, ExtensionsMap, InboundHandler, OutboundHandler, Pipeline,
-    PipelineFactory, WriteSignal,
+    ChainBuilder, Channel, ChannelState, Context, Controller, ControllerEvent, ControllerEventKind,
+    ControllerFactory, DuplexHandler, ExtensionsMap, HandlerRegistry, InboundHandler, Middleware,
+    MiddlewareDescriptor, OutboundHandler, Pipeline, PipelineFactory, WriteSignal,
 };
 pub use runtime::{
     AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission, ManagedBlockingTask,

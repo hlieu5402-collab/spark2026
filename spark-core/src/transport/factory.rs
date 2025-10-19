@@ -3,7 +3,7 @@ use alloc::{boxed::Box, sync::Arc};
 use crate::{
     BoxFuture, SparkError,
     cluster::ServiceDiscovery,
-    pipeline::{Channel, PipelineFactory},
+    pipeline::{Channel, ControllerFactory},
 };
 
 use super::{ConnectionIntent, Endpoint, ServerTransport, TransportParams};
@@ -108,7 +108,7 @@ pub trait TransportFactory: Send + Sync + 'static {
     fn bind(
         &self,
         config: ListenerConfig,
-        pipeline_factory: Arc<dyn PipelineFactory>,
+        pipeline_factory: Arc<dyn ControllerFactory>,
     ) -> BoxFuture<'static, Result<Box<dyn ServerTransport>, SparkError>>;
 
     /// 连接客户端端点。
