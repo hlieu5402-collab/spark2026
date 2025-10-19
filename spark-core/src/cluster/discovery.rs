@@ -123,7 +123,8 @@ pub enum DiscoveryEvent {
 ///
 /// # 逻辑解析（How）
 /// - `resolve`：根据一致性等级返回最新快照，`Linearizable` 应通过读屏障保证；`Eventual` 可使用缓存。
-/// - `watch`：提供增量事件流，可指定修订号从断点继续，并允许通过 [`SubscriptionBackpressure`] 配置缓冲区与溢出策略。
+/// - `watch`：提供增量事件流，可指定修订号从断点继续，并允许通过 [`SubscriptionBackpressure`] 配置缓冲区与溢出策略；
+///   若调用方请求队列观测，实现需在返回的 [`SubscriptionStream::queue_probe`] 中提供探针。
 /// - `list_services`：可选实现，用于获取命名空间下的全部服务。
 ///
 /// # 契约说明（What）
@@ -134,7 +135,7 @@ pub enum DiscoveryEvent {
 ///   - `backpressure`：订阅背压配置，详见 [`SubscriptionBackpressure`]。
 /// - **返回值**：
 ///   - `resolve` 返回 [`DiscoverySnapshot`]。
-///   - `watch` 返回 [`SubscriptionStream<DiscoveryEvent>`]。
+///   - `watch` 返回 [`SubscriptionStream<DiscoveryEvent>`]；若 `queue_probe` 为 `Some`，表示实现支持队列观测。
 ///   - `list_services` 返回服务名列表，按字典序排序。
 /// - **前置条件**：实现方需在初始化阶段完成注册中心连接，确保契约调用时具备基础数据。
 /// - **后置条件**：消费者可将快照与事件结合用于本地缓存或负载均衡决策。
@@ -168,7 +169,7 @@ pub trait ServiceDiscovery: Send + Sync + 'static {
     fn watch(
         &self,
         service: &ServiceName,
-        scope: ClusterConsistencyLevel,
+        consistency: ClusterConsistencyLevel,
         resume_from: Option<ClusterRevision>,
         backpressure: SubscriptionBackpressure,
     ) -> SubscriptionStream<DiscoveryEvent>;
