@@ -235,12 +235,12 @@ pub enum ClusterMembershipEvent {
 /// - **后置条件**：调用成功后，消费者可将返回值作为权威真相来源并在本地缓存。
 ///
 /// # 性能契约（Performance Contract）
-/// - `snapshot` 与 `self_profile` 返回 [`BoxFuture`]，`subscribe` 返回 [`SubscriptionStream`]（内部事件流仍为 [`crate::BoxStream`]）；
-///   这些对象安全包装会引入一次堆分配与虚函数调用。
-/// - `async_contract_overhead` 基准显示 `BoxStream` 相比泛型 Stream 的额外轮询成本约为 3.8%（6.63ns vs 6.39ns/次），适用于绝大多
-///   数
-///   管控面场景。【e8841c†L4-L13】
-/// - 若实现面向高频事件（>10^6 qps），建议提供附加的泛型订阅接口或在内部复用缓冲池，以将分配与跳转降到最低。
+/// - `snapshot` 与 `self_profile` 返回 [`BoxFuture`]，`subscribe` 返回 [`SubscriptionStream`]（内部事件流仍为
+///   [`crate::BoxStream`]），这些对象安全包装会触发一次堆分配与通过虚表的 `poll` 跳转。
+/// - `async_contract_overhead` 基准量化了额外成本：Future 模拟场景中泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
+///   Stream 模拟场景中泛型 6.39ns/次、`BoxStream` 6.63ns/次（约 +3.8%），覆盖大多数控制面负载需求。【e8841c†L4-L13】
+/// - 若实现面向高频事件（>10^6 qps），建议提供附加泛型订阅接口、在内部复用 `Box` 缓冲池。
+///   也可允许性能敏感的调用方直接依赖具名实现类型，以将分配与虚表开销降至最低。
 ///
 /// # 设计取舍与风险（Trade-offs）
 /// - 接口未强制使用某种一致性算法，允许实现者选择 Raft、Viewstamped Replication、Gossip+Delta CRDT 等不同方案；但更强一致性会增

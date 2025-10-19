@@ -291,6 +291,8 @@ pub enum EventPolicy {
 ///
 /// # 性能契约（Performance Contract）
 /// - `subscribe` 返回 [`BoxStream`]，确保事件总线对象安全；每次订阅会分配 `Box` 并在轮询时通过虚表调度。
+/// - `async_contract_overhead` 基准显示泛型 Stream 平均 6.39ns/次、`BoxStream` 平均 6.63ns/次（约 +3.8%）。
+///   绝大多数运维事件风暴可接受该级别额外开销。【e8841c†L4-L13】
 /// - 若事件风暴频繁，可在实现层引入泛型订阅接口或无分配环形缓冲，将对象安全层仅暴露给需要动态装配的消费者。
 ///
 /// # 风险提示（Trade-offs）

@@ -59,8 +59,10 @@ impl MonotonicTimePoint {
 ///
 /// # 性能契约（Performance Contract）
 /// - `sleep` 与 `sleep_until` 返回 [`BoxFuture`]，实现与调用方之间以对象安全通信；每次调用包含一次堆分配与虚表调度。
-/// - 针对高频短延时（如定时心跳 1ms）可通过实现自定义 `TimeDriver`，在内部复用 `Box` 缓冲或提供泛型变体以避免分配。
-/// - 若运行时具备 GAT 支持，可暴露额外的 `fn sleep_raw(&self, ...) -> impl Future` 供性能敏感组件绕过对象安全层。
+/// - `async_contract_overhead` Future 场景基于 20 万次轮询测得泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
+///   结果表明调度面引入的额外 CPU 消耗可控。【e8841c†L4-L13】
+/// - 针对高频短延时（如 1ms 心跳），可复用内部 `Box` 缓冲或额外暴露泛型接口（例如 `fn sleep_typed(...) -> impl Future`）以避
+///   免动态分发；调用方也可在掌握实现类型时直接使用具体 API。
 ///
 /// # 风险提示（Trade-offs）
 /// - `sleep_until` 默认实现使用 `saturating_duration_since`，在系统时钟回拨情况下会立即完成；

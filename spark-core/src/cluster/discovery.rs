@@ -139,9 +139,12 @@ pub enum DiscoveryEvent {
 /// - **后置条件**：消费者可将快照与事件结合用于本地缓存或负载均衡决策。
 ///
 /// # 性能契约（Performance Contract）
-/// - `resolve` 与 `list_services` 返回 [`BoxFuture`]，`watch` 返回 [`SubscriptionStream`]（内部事件流仍为 [`crate::BoxStream`]），用于维持对象安全；每次调用/轮询都会产生堆分配与虚表跳转。
-/// - 对于热路径订阅，可在实现中提供额外的泛型 API（例如 `fn watch_typed<T: Stream<...>>`) 或复用内部缓冲，降低 `Box` 分配频率。
-/// - 调用方若能接受与具体实现耦合，可直接依赖实现类型并获取零分配的 Stream，实现性能与灵活度的权衡。
+/// - `resolve` 与 `list_services` 返回 [`BoxFuture`]，`watch` 返回 [`SubscriptionStream`]（内部事件流仍为
+///   [`crate::BoxStream`]），借由对象安全统一协议接入；每次调用或轮询会产生一次堆分配与虚表跳转。
+/// - `async_contract_overhead` 基准量化了成本：Future 场景中泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
+///   Stream 场景中泛型 6.39ns/次、`BoxStream` 6.63ns/次（约 +3.8%），整体可满足大多数注册中心访问频率。【e8841c†L4-L13】
+/// - 对于超高吞吐订阅，可在实现中提供泛型/具体返回值的旁路接口，或内部复用缓冲池。
+///   这样可以帮助调用方在必要时绕过分配与虚表开销。
 ///
 /// # 设计取舍与风险（Trade-offs）
 /// - 解析强一致性需牺牲一定延迟，应结合调用场景（配置下发 vs 实时路由）选择合适等级。
