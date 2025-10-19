@@ -252,12 +252,17 @@ pub enum ClusterMembershipEvent {
 ///   `SubscriptionBackpressure::bounded` 且溢出时，应返回 `cluster.queue_overflow` 或在探针中增加丢弃计数。
 ///
 /// # 错误契约（Error Contract）
-/// - `snapshot`：网络分区或无法联通共识面时返回 [`crate::error::codes::CLUSTER_NETWORK_PARTITION`]；若当前主控节点丢失领导权，应返回
-///   [`crate::error::codes::CLUSTER_LEADER_LOST`]。
-/// - `subscribe`：当订阅背压容量耗尽且策略为 `FailStream` 时，应终止流并返回
-///   [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]；若底层控制面发生网络分区，同样推荐返回
-///   [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 并记录恢复建议。
-/// - `self_profile`：若读取到陈旧元数据，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`] 提示调用方刷新快照。
+/// - `snapshot`：
+///   - 网络分区或无法联通共识面时，必须返回 [`crate::error::codes::CLUSTER_NETWORK_PARTITION`]，引导调用方退避并观察集群恢复状态。
+///   - 若当前主控节点丢失领导权，应返回 [`crate::error::codes::CLUSTER_LEADER_LOST`]，提示上游等待新领导者确认后重试。
+/// - `subscribe`：
+///   - 当订阅背压容量耗尽且策略为 `FailStream` 时，应终止流并返回
+///     [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，提醒调用方提升处理速率或调整订阅策略。
+///   - 底层控制面发生网络分区或领导者失效时，需返回
+///     [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] / [`crate::error::codes::CLUSTER_LEADER_LOST`]，
+///     并在事件流中给出恢复建议（如切换到降级快照）。
+/// - `self_profile`：
+///   - 若读取到陈旧元数据或缓存尚未刷新，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]，驱动调用方刷新快照或执行线性一致读。
 pub trait ClusterMembership: Send + Sync + 'static {
     /// 获取指定范围的全量快照。
     fn snapshot(

@@ -111,6 +111,28 @@ impl ListenerConfig {
 /// - 建连可能涉及 DNS、服务发现、握手，多步异步流程需尊重 `timeout` 与 `retry_budget`。
 /// - 绑定失败需提供明确错误原因，便于运维排查（端口占用、权限不足等）。
 /// - 若底层协议不支持 `NetworkProtocol::Custom`，应在错误中包含建议的替代协议，避免调用方盲目重试。
+///
+/// # 错误契约（Error Contract）
+/// - `scheme`：该方法仅返回静态标识，不触发错误码；实现者应在文档与日志中说明，当调用方请求未知协议时，
+///   会在 `bind`/`connect` 阶段返回带有标准错误码的 [`SparkError`]。
+/// - `bind`：
+///   - 当监听端口被占用、底层运行时资源耗尽或连接积压超过实现阈值时，应转换为
+///     [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，提醒运维扩容或调整限流策略。
+///   - 若绑定过程依赖控制面（如证书分发、成员认证），遇到网络分区或领导者失效时，必须返回
+///     [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 或 [`crate::error::codes::CLUSTER_LEADER_LOST`]，
+///     并在审计日志中注明影响范围及恢复指引。
+///   - 当安全策略拒绝（如凭证缺失、ACL 拒绝）时，应返回 [`crate::error::codes::APP_UNAUTHORIZED`]，
+///     避免调用方误判为瞬时故障。
+/// - `connect`：
+///   - 当服务发现返回陈旧快照、注册中心尚未感知最新拓扑时，需返回
+///     [`crate::error::codes::DISCOVERY_STALE_READ`]，以便调用方刷新缓存或执行线性一致读。
+///   - 当 Intent 中的扩展字段与工厂能力不兼容时，应返回
+///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，并在错误详情中给出兼容的能力标识。
+///   - 若建连过程中因网络分区、领导者失效而无实例可用，必须暴露
+///     [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 或 [`crate::error::codes::CLUSTER_LEADER_LOST`]，
+///     避免调用方误将其视作简单超时。
+///   - 当服务端或中间队列施加背压导致建连请求被拒绝时，需返回
+///     [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，支持调用方退避或切换备用线路。
 pub trait TransportFactory: Send + Sync + 'static {
     /// 返回支持的 scheme。
     fn scheme(&self) -> &'static str;
