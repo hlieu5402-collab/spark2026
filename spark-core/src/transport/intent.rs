@@ -50,6 +50,10 @@ pub enum SecurityMode {
     /// 明文传输，多用于内网或测试。
     Plaintext,
     /// 自定义安全插件，`identifier` 标识协议/算法。
+    ///   - **命名建议**：使用实现方的命名空间（如 `acme.post_quantum_tls`）。
+    ///   - **实现者责任**：传输工厂若无法识别 `identifier`，应返回
+    ///     [`crate::error::codes::APP_UNAUTHORIZED`] 或
+    ///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，明确告知调用方该能力未启用。
     Custom { identifier: String },
 }
 

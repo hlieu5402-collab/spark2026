@@ -110,6 +110,7 @@ pub trait Histogram: Send + Sync {
 /// # 契约说明（What）
 /// - **前置条件**：调用方在创建仪表前需提供符合规范的 [`InstrumentDescriptor`]。
 /// - **后置条件**：返回的仪表实例应可长期使用；实现可缓存实例避免重复创建。
+/// - **直接记录**：对于性能敏感路径，可使用 `record_*` 快捷方法，避免持有 `Arc` 并降低虚函数调用次数。
 ///
 /// # 风险提示（Trade-offs）
 /// - 后端初始化失败时，建议返回降级实现（如空操作仪表），而非直接 panic。
@@ -122,4 +123,49 @@ pub trait MetricsProvider: Send + Sync + 'static {
 
     /// 获取或创建直方图。
     fn histogram(&self, descriptor: &InstrumentDescriptor<'_>) -> Arc<dyn Histogram>;
+
+    /// 直接记录计数器增量，避免在调用方持有 `Arc`。
+    ///
+    /// # 设计动机（Why）
+    /// - 高频指标场景中，频繁克隆或持有 `Arc` 会增加引用计数开销；提供一次性记录接口允许实现者进行批处理或无锁聚合。
+    ///
+    /// # 契约说明（What）
+    /// - **参数**：`value` 必须非负；`attributes` 与 `counter` 方法一致。
+    /// - **默认实现**：回退到 `counter().add`，确保向后兼容。
+    fn record_counter_add(
+        &self,
+        descriptor: &InstrumentDescriptor<'_>,
+        value: u64,
+        attributes: AttributeSet<'_>,
+    ) {
+        self.counter(descriptor).add(value, attributes);
+    }
+
+    /// 直接设置或调整 Gauge 数值。
+    ///
+    /// # 契约说明
+    /// - `value` 表示目标值，若实现希望基于增量优化，可在内部缓存上一次值。
+    /// - 默认实现调用 `gauge().set`。
+    fn record_gauge_set(
+        &self,
+        descriptor: &InstrumentDescriptor<'_>,
+        value: f64,
+        attributes: AttributeSet<'_>,
+    ) {
+        self.gauge(descriptor).set(value, attributes);
+    }
+
+    /// 直接记录直方图样本。
+    ///
+    /// # 契约说明
+    /// - `value` 必须满足业务预期（如延迟 >= 0）。
+    /// - 默认实现调用 `histogram().record`。
+    fn record_histogram(
+        &self,
+        descriptor: &InstrumentDescriptor<'_>,
+        value: f64,
+        attributes: AttributeSet<'_>,
+    ) {
+        self.histogram(descriptor).record(value, attributes);
+    }
 }

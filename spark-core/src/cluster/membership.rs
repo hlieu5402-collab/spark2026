@@ -1,6 +1,9 @@
 use crate::{
-    BoxFuture, BoxStream,
-    cluster::topology::{ClusterConsistencyLevel, ClusterEpoch, ClusterRevision, RoleDescriptor},
+    BoxFuture,
+    cluster::{
+        backpressure::{SubscriptionBackpressure, SubscriptionStream},
+        topology::{ClusterConsistencyLevel, ClusterEpoch, ClusterRevision, RoleDescriptor},
+    },
     error::SparkError,
     transport::Endpoint,
 };
@@ -120,6 +123,9 @@ pub struct ClusterMembershipSnapshot {
 /// - `ByRole`：限定角色（如 `RoleDescriptor::new("gateway")`）。
 /// - `ByShard`：限定逻辑分片或机架，使用字面字符串标识。
 /// - `Custom`：实现自定义过滤语法，字符串内容由双方协商（可采用 CEL、Rego 等表达式）。
+///   - **命名建议**：推荐以 `vendor://feature` 标识语法来源，避免同名冲突。
+///   - **实现责任**：若实现无法解析该语法，应返回 `cluster.unsupported_scope` 或
+///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，并附带错误描述。
 /// - **前置条件**：实现者需明确哪些分支受支持；若不支持应在运行时返回错误。
 /// - **后置条件**：选定范围内的事件必须保持顺序一致性。
 ///
@@ -212,30 +218,43 @@ pub enum ClusterMembershipEvent {
 ///
 /// # 逻辑解析（How）
 /// - `snapshot`：获取指定范围的全量视图，应尊重 `consistency` 的语义，例如 `Linearizable` 需要借助 Raft/etcd 的读屏障。
-/// - `subscribe`：返回一个流式事件源，可选起始修订号用于断点续传。
+/// - `subscribe`：返回一个流式事件源，可选起始修订号用于断点续传，并允许通过
+///   [`SubscriptionBackpressure`] 协商缓冲模式与队列探针。
 /// - `self_profile`：提供运行时自身节点的画像，便于 Handler 决策。
 ///
 /// # 契约说明（What）
 /// - **输入参数**：
 ///   - `scope`：事件过滤器与一致性配置，详见 [`ClusterMembershipScope`].
 ///   - `resume_from`：可选修订号，表示消费端已经处理到的进度。
+///   - `backpressure`：订阅背压配置，详见 [`SubscriptionBackpressure`]。
 /// - **返回值**：
 ///   - `snapshot` 返回 `ClusterMembershipSnapshot`，若范围为空需返回空集合而非错误。
-///   - `subscribe` 返回 `BoxStream<'static, ClusterMembershipEvent>`，要求事件按修订号递增。
+///   - `subscribe` 返回 [`SubscriptionStream<ClusterMembershipEvent>`]，要求事件按修订号递增。
 ///   - `self_profile` 返回当前节点画像，若节点未注册应返回错误 `cluster.self_not_registered`。
 /// - **前置条件**：实现者需确保底层存储已初始化，且事件流在订阅前开始记录。
 /// - **后置条件**：调用成功后，消费者可将返回值作为权威真相来源并在本地缓存。
 ///
 /// # 性能契约（Performance Contract）
-/// - `snapshot` 与 `self_profile` 返回 [`BoxFuture`]，`subscribe` 返回 [`BoxStream`]；这些对象安全包装会引入一次堆分配与虚函数调
-///   用。
-/// - `async_contract_overhead` 基准显示 `BoxStream` 相比泛型 Stream 的额外轮询成本约为 3.8%（6.63ns vs 6.39ns/次），适用于绝大多数
+/// - `snapshot` 与 `self_profile` 返回 [`BoxFuture`]，`subscribe` 返回 [`SubscriptionStream`]（内部事件流仍为 [`crate::BoxStream`]）；
+///   这些对象安全包装会引入一次堆分配与虚函数调用。
+/// - `async_contract_overhead` 基准显示 `BoxStream` 相比泛型 Stream 的额外轮询成本约为 3.8%（6.63ns vs 6.39ns/次），适用于绝大多
+///   数
 ///   管控面场景。【e8841c†L4-L13】
 /// - 若实现面向高频事件（>10^6 qps），建议提供附加的泛型订阅接口或在内部复用缓冲池，以将分配与跳转降到最低。
 ///
 /// # 设计取舍与风险（Trade-offs）
-/// - 接口未强制使用某种一致性算法，允许实现者选择 Raft、Viewstamped Replication、Gossip+Delta CRDT 等不同方案；但更强一致性会增加延迟。
-/// - `subscribe` 必须在背压严重时提供自适应策略（如快照重置或事件压缩），否则可能导致内存膨胀。
+/// - 接口未强制使用某种一致性算法，允许实现者选择 Raft、Viewstamped Replication、Gossip+Delta CRDT 等不同方案；但更强一致性会增
+///   加延迟。
+/// - `subscribe` 必须在背压严重时提供自适应策略（如快照重置或事件压缩），否则可能导致内存膨胀；当启用
+///   `SubscriptionBackpressure::bounded` 且溢出时，应返回 `cluster.queue_overflow` 或在探针中增加丢弃计数。
+///
+/// # 错误契约（Error Contract）
+/// - `snapshot`：网络分区或无法联通共识面时返回 [`crate::error::codes::CLUSTER_NETWORK_PARTITION`]；若当前主控节点丢失领导权，应返回
+///   [`crate::error::codes::CLUSTER_LEADER_LOST`]。
+/// - `subscribe`：当订阅背压容量耗尽且策略为 `FailStream` 时，应终止流并返回
+///   [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]；若底层控制面发生网络分区，同样推荐返回
+///   [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 并记录恢复建议。
+/// - `self_profile`：若读取到陈旧元数据，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`] 提示调用方刷新快照。
 pub trait ClusterMembership: Send + Sync + 'static {
     /// 获取指定范围的全量快照。
     fn snapshot(
@@ -248,7 +267,8 @@ pub trait ClusterMembership: Send + Sync + 'static {
         &self,
         scope: ClusterMembershipScope,
         resume_from: Option<ClusterRevision>,
-    ) -> BoxStream<'static, ClusterMembershipEvent>;
+        backpressure: SubscriptionBackpressure,
+    ) -> SubscriptionStream<ClusterMembershipEvent>;
 
     /// 获取当前节点的画像。
     fn self_profile(&self) -> BoxFuture<'static, Result<ClusterNodeProfile, ClusterError>>;

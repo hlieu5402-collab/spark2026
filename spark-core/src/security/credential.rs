@@ -137,6 +137,9 @@ pub enum CredentialMaterial {
     /// 公钥材料（如 Ed25519、公钥指纹）。
     PublicKey(Vec<u8>),
     /// 其他类型，由 `format` 字段说明。
+    ///   - **命名建议**：`format` 推荐使用 IANA 或组织前缀（如 `acme.sgx_quote`）。
+    ///   - **实现责任**：凭证消费方若不支持该格式，应返回
+    ///     [`crate::error::codes::APP_UNAUTHORIZED`] 并在审计中记载未兼容原因。
     Custom { format: String, payload: Vec<u8> },
 }
 

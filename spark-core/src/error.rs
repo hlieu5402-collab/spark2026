@@ -139,6 +139,16 @@ pub mod codes {
     pub const CLUSTER_NODE_UNAVAILABLE: &str = "cluster.node_unavailable";
     /// 集群未找到服务。
     pub const CLUSTER_SERVICE_NOT_FOUND: &str = "cluster.service_not_found";
+    /// 集群控制面发生网络分区。
+    pub const CLUSTER_NETWORK_PARTITION: &str = "cluster.network_partition";
+    /// 集群当前领导者丢失（例如选举中）。
+    pub const CLUSTER_LEADER_LOST: &str = "cluster.leader_lost";
+    /// 集群内部事件队列溢出。
+    pub const CLUSTER_QUEUE_OVERFLOW: &str = "cluster.queue_overflow";
+    /// 服务发现返回陈旧数据。
+    pub const DISCOVERY_STALE_READ: &str = "discovery.stale_read";
+    /// 路由元数据版本冲突。
+    pub const ROUTER_VERSION_CONFLICT: &str = "router.version_conflict";
     /// 应用路由失败。
     pub const APP_ROUTING_FAILED: &str = "app.routing_failed";
     /// 应用鉴权失败。

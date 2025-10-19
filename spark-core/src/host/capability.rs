@@ -83,6 +83,9 @@ pub enum NetworkProtocol {
     /// 基于 QUIC 的自定义协议。
     Quic,
     /// 宿主自行扩展的协议。
+    ///   - **命名建议**：使用稳定命名空间（如 `acme.meshdataplane`）。
+    ///   - **实现责任**：能力查询或连接工厂若无法识别该协议，应显式返回
+    ///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`] 并提供降级建议。
     Custom(String),
 }
 
@@ -96,6 +99,9 @@ pub enum NetworkAddressFamily {
     /// Unix Domain Socket。
     UnixDomain,
     /// 平台扩展。
+    ///   - **命名建议**：采用 `provider://` 前缀描述底层技术（如 `provider://aws/privatelink`）。
+    ///   - **实现责任**：未识别的地址族应导致明确错误或回退，而非静默忽略，推荐使用
+    ///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]。
     Custom(String),
 }
 
@@ -113,6 +119,9 @@ pub enum SecurityFeature {
     /// 可信执行环境。
     TrustedExecution,
     /// 可扩展特性。
+    ///   - **命名建议**：使用稳定前缀（如 `acme.attested_tls`）。
+    ///   - **实现责任**：若安全组件不支持该特性，应返回
+    ///     [`crate::error::codes::APP_UNAUTHORIZED`] 或在日志中指出未启用原因。
     Custom(String),
 }
 

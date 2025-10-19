@@ -19,10 +19,15 @@
 //!   研究领域常见的 CRDT 修订号模型。实现者若仅需轻量能力，可选择性忽略部分枚举分支。
 //! - 模块拆分后，使用者需显式引入子模块，初期迁移成本略有提升，但换来长期的可维护性与可测试性。
 
+pub mod backpressure;
 pub mod discovery;
 pub mod membership;
 pub mod topology;
 
+pub use backpressure::{
+    BackpressureMode, OverflowPolicy, SubscriptionBackpressure, SubscriptionQueueProbe,
+    SubscriptionQueueSnapshot, SubscriptionStream,
+};
 pub use discovery::{
     DiscoveryEvent, DiscoverySnapshot, ServiceDiscovery, ServiceInstance, ServiceName,
 };

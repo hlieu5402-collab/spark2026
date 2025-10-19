@@ -33,8 +33,8 @@ pub use attributes::{
     AttributeKey, AttributeSet, KeyValue, MetricAttributeValue, OwnedAttributeSet,
 };
 pub use events::{
-    ApplicationEvent, CoreUserEvent, IdleDirection, IdleTimeout, OpsEvent, OpsEventBus,
-    RateDirection, RateLimited, TlsInfo,
+    ApplicationEvent, CoreUserEvent, EventPolicy, IdleDirection, IdleTimeout, OpsEvent,
+    OpsEventBus, OpsEventKind, RateDirection, RateLimited, TlsInfo,
 };
 pub use health::{ComponentHealth, HealthCheckProvider, HealthChecks, HealthState};
 pub use logging::{LogField, LogRecord, LogSeverity, Logger};
