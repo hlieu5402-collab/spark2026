@@ -11,6 +11,7 @@
 extern crate alloc;
 
 pub mod buffer;
+pub mod codec;
 pub mod common;
 pub mod configuration;
 pub mod distributed;
@@ -23,6 +24,11 @@ pub mod runtime;
 pub mod service;
 pub mod transport;
 
+pub use buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage};
+pub use codec::{
+    Codec, CodecDescriptor, CodecRegistry, ContentEncoding, ContentType, DecodeContext,
+    DecodeOutcome, DynCodec, DynCodecFactory, EncodeContext, EncodedPayload, Encoder,
+    NegotiatedCodec, SchemaDescriptor, TypedCodecAdapter, TypedCodecFactory,
 pub use buffer::{
     BufferPool, Bytes, PipelineMessage, PoolStatisticsView, ReadableBuffer, WritableBuffer,
 };

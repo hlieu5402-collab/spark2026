@@ -17,6 +17,12 @@ default = ["std"]
 alloc = []
 std = ["alloc"]
 
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "codec"
+harness = false
 [[bench]]
 name = "smoke"
 
