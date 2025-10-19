@@ -15,6 +15,7 @@ pub mod common;
 pub mod distributed;
 pub mod error;
 pub mod future;
+pub mod host;
 pub mod observability;
 pub mod pipeline;
 pub mod runtime;
@@ -29,6 +30,13 @@ pub use distributed::{
 };
 pub use error::{ErrorCause, SparkError};
 pub use future::{BoxFuture, BoxStream, Stream};
+pub use host::{
+    CapabilityDescriptor, CapabilityLevel, ComponentDescriptor, ComponentFactory,
+    ComponentHealthState, ComponentKind, ConfigChange, ConfigConsumer, ConfigEnvelope, ConfigQuery,
+    HostContext, HostLifecycle, HostMetadata, HostRuntimeProfile, NetworkAddressFamily,
+    NetworkProtocol, ProvisioningOutcome, SecurityFeature, ShutdownReason, StartupPhase,
+    ThroughputClass,
+};
 pub use observability::{
     ComponentHealth, CoreUserEvent, Counter, Gauge, HealthCheckProvider, HealthState, Histogram,
     IdleDirection, IdleTimeout, Logger, MetricsProvider, OpsEvent, OpsEventBus, RateDirection,
