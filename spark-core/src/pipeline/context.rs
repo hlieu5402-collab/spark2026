@@ -85,7 +85,7 @@ pub trait Context: Send + Sync {
     fn forward_read(&self, msg: PipelineMessage);
 
     /// 写消息。
-    fn write(&self, msg: PipelineMessage) -> Result<super::WriteSignal, crate::SparkError>;
+    fn write(&self, msg: PipelineMessage) -> Result<super::WriteSignal, crate::CoreError>;
 
     /// 刷新缓冲。
     fn flush(&self);

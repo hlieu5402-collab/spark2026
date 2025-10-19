@@ -4,7 +4,7 @@ use crate::{
         flow_control::{SubscriptionFlowControl, SubscriptionStream},
         topology::{ClusterConsistencyLevel, ClusterEpoch, ClusterRevision, RoleDescriptor},
     },
-    error::SparkError,
+    error::CoreError,
     transport::Endpoint,
 };
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
@@ -13,15 +13,16 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 ///
 /// # 设计背景（Why）
 /// - 对外暴露的 Trait 需要稳定错误域，方便上层做指标与重试策略决策。
-/// - 直接复用框架级的 `SparkError`，避免重复定义错误枚举，并兼容链路追踪元数据。
+/// - 直接复用框架级的 [`CoreError`]，避免重复定义错误枚举，并兼容链路追踪元数据。
 ///
 /// # 契约说明（What）
-/// - 所有实现必须返回该错误类型，且错误码需遵循 `cluster.*` 命名空间。
+/// - 所有实现必须返回该错误类型，且错误码需遵循 `cluster.*` 命名空间；若需额外的实现层上下文，可先转换为 `DomainError` 再调用
+///   [`IntoCoreError`](crate::IntoCoreError::into_core_error)。
 /// - 错误实例可以附带节点 ID、对端地址等上下文，帮助运行时定位异常。
 ///
 /// # 风险提示（Trade-offs）
 /// - 若实现者希望使用更轻量的错误类型，可在内部转换后再暴露为 `ClusterError`，但需承担额外的分配成本。
-pub type ClusterError = SparkError;
+pub type ClusterError = CoreError;
 
 /// 节点唯一标识。
 ///

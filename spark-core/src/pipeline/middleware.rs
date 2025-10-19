@@ -1,6 +1,6 @@
 use alloc::{borrow::Cow, boxed::Box, format};
 
-use crate::{SparkError, runtime::CoreServices};
+use crate::{CoreError, runtime::CoreServices};
 
 use super::handler::{InboundHandler, OutboundHandler};
 
@@ -104,5 +104,5 @@ pub trait Middleware: Send + Sync + 'static {
         &self,
         chain: &mut dyn ChainBuilder,
         services: &CoreServices,
-    ) -> Result<(), SparkError>;
+    ) -> Result<(), CoreError>;
 }

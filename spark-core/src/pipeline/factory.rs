@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::{error::SparkError, runtime::CoreServices};
+use crate::{error::CoreError, runtime::CoreServices};
 
 use super::controller::Controller;
 
@@ -21,5 +21,5 @@ use super::controller::Controller;
 /// - 工厂实现应确保幂等，支持在失败后重试或回滚。
 pub trait ControllerFactory: Send + Sync + 'static {
     /// 构建 Controller 实例。
-    fn build(&self, core_services: &CoreServices) -> Result<Box<dyn Controller>, SparkError>;
+    fn build(&self, core_services: &CoreServices) -> Result<Box<dyn Controller>, CoreError>;
 }

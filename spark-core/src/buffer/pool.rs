@@ -1,4 +1,4 @@
-use crate::SparkError;
+use crate::CoreError;
 use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 
 use super::WritableBuffer;
@@ -25,17 +25,17 @@ use super::WritableBuffer;
 ///
 /// # 设计考量（Trade-offs & Gotchas）
 /// - **分配策略**：允许实现根据场景选择固定大小、指数级或 TCMalloc 风格的分配策略，契约仅关注语义。
-/// - **背压处理**：当池容量不足时可返回 `SparkError`，或在错误中携带降级建议（如切换到 on-heap）。
+/// - **背压处理**：当池容量不足时可返回 `CoreError`，或在错误中携带降级建议（如切换到 on-heap）。
 /// - **观测性**：`statistics` 默认返回静态数据，鼓励实现者提供诸如“池使用率”“活跃租借数”等核心指标。
 pub trait BufferPool: Send + Sync + 'static {
     /// 租借一个最少具备 `min_capacity` 可写空间的缓冲区。
-    fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, SparkError>;
+    fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError>;
 
     /// 主动收缩池内冗余内存，返回实际回收的字节数。
-    fn shrink_to_fit(&self) -> Result<usize, SparkError>;
+    fn shrink_to_fit(&self) -> Result<usize, CoreError>;
 
     /// 返回池当前的核心统计指标（例如 `usage_bytes`、`lease_count`）。
-    fn statistics(&self) -> Result<PoolStats, SparkError>;
+    fn statistics(&self) -> Result<PoolStats, CoreError>;
 }
 
 /// 池统计快照，帮助调用方观测内存行为并执行自适应调度。

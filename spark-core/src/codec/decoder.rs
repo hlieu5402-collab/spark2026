@@ -1,5 +1,5 @@
 use super::metadata::CodecDescriptor;
-use crate::SparkError;
+use crate::CoreError;
 use crate::buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut};
 use alloc::boxed::Box;
 use core::fmt;
@@ -50,7 +50,7 @@ impl<'a> DecodeContext<'a> {
     pub fn acquire_scratch(
         &self,
         min_capacity: usize,
-    ) -> Result<Box<ErasedSparkBufMut>, SparkError> {
+    ) -> Result<Box<ErasedSparkBufMut>, CoreError> {
         self.allocator.acquire(min_capacity)
     }
 
@@ -84,7 +84,7 @@ impl fmt::Debug for DecodeContext<'_> {
 /// - **后置条件**：`Complete` 分支返回的值必须满足业务协议定义。
 ///
 /// # 风险提示（Trade-offs）
-/// - 状态枚举未区分可恢复与不可恢复错误；若遇不可解析数据，应直接返回 `SparkError`。
+/// - 状态枚举未区分可恢复与不可恢复错误；若遇不可解析数据，应直接返回 `CoreError`。
 #[derive(Debug)]
 pub enum DecodeOutcome<T> {
     /// 成功解析出完整对象。
@@ -123,5 +123,5 @@ pub trait Decoder: Send + Sync + 'static {
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Self::Item>, SparkError>;
+    ) -> Result<DecodeOutcome<Self::Item>, CoreError>;
 }

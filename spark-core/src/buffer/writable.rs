@@ -1,4 +1,4 @@
-use crate::SparkError;
+use crate::CoreError;
 use alloc::boxed::Box;
 
 use super::ReadableBuffer;
@@ -41,17 +41,17 @@ pub trait WritableBuffer: Send + Sync + 'static {
     fn written(&self) -> usize;
 
     /// 确保至少追加 `additional` 字节的可写空间。
-    fn reserve(&mut self, additional: usize) -> Result<(), SparkError>;
+    fn reserve(&mut self, additional: usize) -> Result<(), CoreError>;
 
     /// 将切片写入缓冲末尾。
-    fn put_slice(&mut self, src: &[u8]) -> Result<(), SparkError>;
+    fn put_slice(&mut self, src: &[u8]) -> Result<(), CoreError>;
 
     /// 从 `ReadableBuffer` 转写 `len` 字节。
-    fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> Result<(), SparkError>;
+    fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> Result<(), CoreError>;
 
     /// 清空已写内容但保留容量，便于重复使用。
     fn clear(&mut self);
 
     /// 冻结缓冲区，转换为只读视图。
-    fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, SparkError>;
+    fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError>;
 }

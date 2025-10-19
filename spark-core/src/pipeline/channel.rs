@@ -1,3 +1,5 @@
+use crate::{buffer::PipelineMessage, error::CoreError, transport::TransportSocketAddr};
+use core::time::Duration;
 use crate::{
     buffer::PipelineMessage,
     contract::{CloseReason, Deadline},
@@ -111,7 +113,7 @@ pub trait Channel: Send + Sync + 'static {
     fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>>;
 
     /// 向通道写入消息，返回背压信号。
-    fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, SparkError>;
+    fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, CoreError>;
 
     /// 刷新底层缓冲。
     fn flush(&self);

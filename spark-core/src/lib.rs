@@ -58,6 +58,10 @@ pub use configuration::{
     ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId, ProfileLayering,
     ResolvedConfiguration, SourceMetadata, WatchToken,
 };
+pub use error::{
+    CoreError, DomainError, DomainErrorKind, ErrorCause, ImplError, ImplErrorKind, IntoCoreError,
+    IntoDomainError,
+};
 pub use context::ExecutionContext;
 pub use contract::{
     Budget, BudgetDecision, BudgetKind, BudgetSnapshot, CallContext, CallContextBuilder,

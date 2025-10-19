@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use crate::{
-    BoxFuture, SparkError,
+    BoxFuture, CoreError,
     cluster::ServiceDiscovery,
     pipeline::{Channel, ControllerFactory},
 };
@@ -94,7 +94,7 @@ impl ListenerConfig {
 /// - `scheme`：工厂支持的协议方案，如 `tcp`、`quic`、`ws`。
 /// - `bind`：根据 [`ListenerConfig`] 与管线工厂创建监听器。
 /// - `connect`：基于 [`ConnectionIntent`] 构建客户端通道，可选结合服务发现。
-/// - **前置条件**：调用方需确保 `endpoint.scheme()` 与工厂匹配，否则返回 `SparkError::unsupported_protocol` 等语义化错误。
+/// - **前置条件**：调用方需确保 `endpoint.scheme()` 与工厂匹配，否则返回 `CoreError::unsupported_protocol` 等语义化错误。
 /// - **后置条件**：成功时返回动态分发的监听器或通道，生命周期由调用方管理。
 /// - **Custom 扩展处理**：若 `ConnectionIntent::security` 或 `intent.params()` 中包含 `Custom` 扩展，
 ///   工厂必须显式判定是否支持；不支持时应返回
@@ -114,7 +114,7 @@ impl ListenerConfig {
 ///
 /// # 错误契约（Error Contract）
 /// - `scheme`：该方法仅返回静态标识，不触发错误码；实现者应在文档与日志中说明，当调用方请求未知协议时，
-///   会在 `bind`/`connect` 阶段返回带有标准错误码的 [`SparkError`]。
+///   会在 `bind`/`connect` 阶段返回带有标准错误码的 [`CoreError`]。
 /// - `bind`：
 ///   - 当监听端口被占用、底层运行时资源耗尽或连接积压超过实现阈值时，应转换为
 ///     [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，提醒运维扩容或调整限流策略。
@@ -142,12 +142,12 @@ pub trait TransportFactory: Send + Sync + 'static {
         &self,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn ControllerFactory>,
-    ) -> BoxFuture<'static, Result<Box<dyn ServerTransport>, SparkError>>;
+    ) -> BoxFuture<'static, Result<Box<dyn ServerTransport>, CoreError>>;
 
     /// 连接客户端端点。
     fn connect(
         &self,
         intent: ConnectionIntent,
         discovery: Option<Arc<dyn ServiceDiscovery>>,
-    ) -> BoxFuture<'static, Result<Box<dyn Channel>, SparkError>>;
+    ) -> BoxFuture<'static, Result<Box<dyn Channel>, CoreError>>;
 }

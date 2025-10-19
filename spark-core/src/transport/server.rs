@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use crate::{BoxFuture, SparkError};
+use crate::{BoxFuture, CoreError};
 
 use super::TransportSocketAddr;
 
@@ -61,12 +61,12 @@ impl ListenerShutdown {
 /// - 若关闭过程位于超敏感控制环，可在实现类型上提供额外的同步/泛型 API，或复用 `Box` 缓冲让调用方在明确类型时绕过分配。
 ///
 /// # 风险提示（Trade-offs）
-/// - 如果底层 API 不支持优雅关闭，实现方应在超时后返回 `SparkError::operation_timeout` 等语义化错误。
+/// - 如果底层 API 不支持优雅关闭，实现方应在超时后返回 `CoreError::operation_timeout` 等语义化错误。
 /// - 建议在实现中暴露指标（如正在排空的连接数）以协助运维决策。
 pub trait ServerTransport: Send + Sync + 'static {
     /// 返回本地监听地址。
     fn local_addr(&self) -> TransportSocketAddr;
 
     /// 根据计划执行优雅关闭。
-    fn shutdown(&self, plan: ListenerShutdown) -> BoxFuture<'static, Result<(), SparkError>>;
+    fn shutdown(&self, plan: ListenerShutdown) -> BoxFuture<'static, Result<(), CoreError>>;
 }
