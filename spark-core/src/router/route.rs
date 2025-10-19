@@ -14,7 +14,10 @@ use alloc::vec::Vec;
 /// - `Message`：面向消息的路由（MQTT、NATS、Pulsar）。
 /// - `Stream`：面向长链接或持续数据流的路由（QUIC Streams、WebTransport）。
 /// - `Control`：管理/控制面操作（配置下发、健康检查）。
-/// - `Custom`：保留扩展口，允许宿主定义额外范式，但必须提供稳定的命名。
+/// - `Custom`：保留扩展口，允许宿主定义额外范式。
+///   - **命名约定**：推荐使用反向域名或组织前缀（如 `acme.command_stream`），确保跨团队唯一。
+///   - **实现责任**：路由器实现若无法识别某个 `Custom` 值，应返回 [`crate::error::codes::ROUTER_VERSION_CONFLICT`]
+///     或记录告警，而非静默降级，以便调用方快速定位不兼容的扩展。
 ///
 /// # 使用约束（Pre/Post）
 /// - **前置条件**：调用方需基于业务语义选择恰当的枚举项，避免语义混淆。

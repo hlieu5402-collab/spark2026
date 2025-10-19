@@ -1,9 +1,14 @@
 use crate::{
     BoxStream,
-    cluster::{ClusterMembershipEvent, DiscoveryEvent},
+    cluster::{ClusterMembershipEvent, DiscoveryEvent, backpressure::OverflowPolicy},
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
-use core::{any::Any, fmt, time::Duration};
+use core::{
+    any::Any,
+    fmt,
+    num::{NonZeroU32, NonZeroUsize},
+    time::Duration,
+};
 
 /// `ApplicationEvent` 为 `CoreUserEvent::ApplicationSpecific` 提供的类型安全扩展契约。
 ///
@@ -228,6 +233,52 @@ pub enum OpsEvent {
     HealthChange(super::health::ComponentHealth),
 }
 
+/// 运维事件种类，用于配置策略与分类统计。
+///
+/// # 契约说明（What）
+/// - 枚举值与 [`OpsEvent`] 变体保持一一对应，`Custom` 允许宿主扩展。
+/// - **命名建议**：扩展事件使用 `vendor.event_name` 形式，避免与内置事件冲突。
+/// - **实现责任**：对于未识别的自定义事件，策略配置应拒绝生效并返回错误。
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum OpsEventKind {
+    ShutdownTriggered,
+    BackpressureApplied,
+    FailureClusterDetected,
+    ClusterChange,
+    DiscoveryJitter,
+    BufferLeakDetected,
+    HealthChange,
+    Custom(String),
+}
+
+/// 事件策略配置，定义速率限制、采样与缓冲行为。
+///
+/// # 契约说明（What）
+/// - `Passthrough`：默认策略，不做额外限制。
+/// - `RateLimit`：采用令牌桶限速，`permits_per_sec` 表示平均速率，`burst` 表示桶容量。
+/// - `Sample`：按固定间隔采样，仅保留每 `every` 条事件中的第一条。
+/// - `Debounce`：在指定时间窗口内合并事件，适用于抖动频繁的信号。
+/// - `BoundedBuffer`：配置内部队列容量与溢出策略，复用 [`OverflowPolicy`] 语义。
+/// - **实现责任**：事件总线需尽力遵守策略；若硬件或实现限制导致策略无法生效，应在日志或返回值中明确说明。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EventPolicy {
+    Passthrough,
+    RateLimit {
+        permits_per_sec: NonZeroU32,
+        burst: NonZeroU32,
+    },
+    Sample {
+        every: NonZeroUsize,
+    },
+    Debounce {
+        window: Duration,
+    },
+    BoundedBuffer {
+        capacity: NonZeroUsize,
+        overflow: OverflowPolicy,
+    },
+}
+
 /// 运维事件总线契约。
 ///
 /// # 设计背景（Why）
@@ -250,4 +301,12 @@ pub trait OpsEventBus: Send + Sync + 'static {
 
     /// 订阅事件流。
     fn subscribe(&self) -> BoxStream<'static, OpsEvent>;
+
+    /// 为特定事件类型设置策略。
+    ///
+    /// # 契约说明（What）
+    /// - `kind`：目标事件类别，详见 [`OpsEventKind`]。
+    /// - `policy`：策略配置，详见 [`EventPolicy`]。
+    /// - **实现责任**：策略应即时生效，若无法应用应返回错误并保持原策略；建议在实现中输出日志帮助诊断。
+    fn set_event_policy(&self, kind: OpsEventKind, policy: EventPolicy);
 }

@@ -1,6 +1,9 @@
 use crate::{
-    BoxFuture, BoxStream,
-    cluster::topology::{ClusterConsistencyLevel, ClusterRevision},
+    BoxFuture,
+    cluster::{
+        backpressure::{SubscriptionBackpressure, SubscriptionStream},
+        topology::{ClusterConsistencyLevel, ClusterRevision},
+    },
     transport::Endpoint,
 };
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
@@ -119,7 +122,7 @@ pub enum DiscoveryEvent {
 ///
 /// # 逻辑解析（How）
 /// - `resolve`：根据一致性等级返回最新快照，`Linearizable` 应通过读屏障保证；`Eventual` 可使用缓存。
-/// - `watch`：提供增量事件流，可指定修订号从断点继续。
+/// - `watch`：提供增量事件流，可指定修订号从断点继续，并允许通过 [`SubscriptionBackpressure`] 配置缓冲区与溢出策略。
 /// - `list_services`：可选实现，用于获取命名空间下的全部服务。
 ///
 /// # 契约说明（What）
@@ -127,22 +130,28 @@ pub enum DiscoveryEvent {
 ///   - `service`：目标服务名。
 ///   - `consistency`：期待的一致性等级。
 ///   - `resume_from`：事件流起始修订号，`None` 表示从最新状态开始。
+///   - `backpressure`：订阅背压配置，详见 [`SubscriptionBackpressure`]。
 /// - **返回值**：
 ///   - `resolve` 返回 [`DiscoverySnapshot`]。
-///   - `watch` 返回 `BoxStream<'static, DiscoveryEvent>`。
+///   - `watch` 返回 [`SubscriptionStream<DiscoveryEvent>`]。
 ///   - `list_services` 返回服务名列表，按字典序排序。
 /// - **前置条件**：实现方需在初始化阶段完成注册中心连接，确保契约调用时具备基础数据。
 /// - **后置条件**：消费者可将快照与事件结合用于本地缓存或负载均衡决策。
 ///
 /// # 性能契约（Performance Contract）
-/// - `resolve` 与 `list_services` 返回 [`BoxFuture`]，`watch` 返回 [`BoxStream`]，用于维持对象安全；每次调用/轮询都会产生堆分配
-///   与虚表跳转。
+/// - `resolve` 与 `list_services` 返回 [`BoxFuture`]，`watch` 返回 [`SubscriptionStream`]（内部事件流仍为 [`crate::BoxStream`]），用于维持对象安全；每次调用/轮询都会产生堆分配与虚表跳转。
 /// - 对于热路径订阅，可在实现中提供额外的泛型 API（例如 `fn watch_typed<T: Stream<...>>`) 或复用内部缓冲，降低 `Box` 分配频率。
 /// - 调用方若能接受与具体实现耦合，可直接依赖实现类型并获取零分配的 Stream，实现性能与灵活度的权衡。
 ///
 /// # 设计取舍与风险（Trade-offs）
 /// - 解析强一致性需牺牲一定延迟，应结合调用场景（配置下发 vs 实时路由）选择合适等级。
 /// - `list_services` 可能导致全量扫描，应在实现中加入分页或速率限制。
+///
+/// # 错误契约（Error Contract）
+/// - `resolve`：当读取到陈旧缓存时应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]；若控制面发生网络分区或领导者失效，可分别返回
+///   [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 与 [`crate::error::codes::CLUSTER_LEADER_LOST`]。
+/// - `watch`：当订阅缓冲耗尽且策略为 `FailStream` 时，应终止流并返回 [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]；网络分区或领导者失效同样推荐返回上述集群错误码。
+/// - `list_services`：遇到陈旧数据或读不到最新拓扑时，可返回 [`crate::error::codes::DISCOVERY_STALE_READ`] 供调用方重试。
 pub trait ServiceDiscovery: Send + Sync + 'static {
     /// 解析目标服务并返回快照。
     fn resolve(
@@ -157,7 +166,8 @@ pub trait ServiceDiscovery: Send + Sync + 'static {
         service: &ServiceName,
         scope: ClusterConsistencyLevel,
         resume_from: Option<ClusterRevision>,
-    ) -> BoxStream<'static, DiscoveryEvent>;
+        backpressure: SubscriptionBackpressure,
+    ) -> SubscriptionStream<DiscoveryEvent>;
 
     /// 列举当前命名空间下的服务列表。
     fn list_services(&self) -> BoxFuture<'static, Result<Vec<ServiceName>, ClusterError>>;

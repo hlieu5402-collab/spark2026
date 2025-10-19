@@ -109,6 +109,9 @@ pub enum IdentityKind {
     /// 物理或虚拟机器身份。
     Machine,
     /// 自定义类型，通过字符串说明语义。
+    ///   - **命名建议**：遵循 `provider://domain/kind` 形式，确保跨系统唯一。
+    ///   - **实现责任**：策略引擎若无法识别该类型，应返回
+    ///     [`crate::error::codes::APP_UNAUTHORIZED`] 并附带指引，而非静默接受。
     Custom(String),
 }
 
@@ -138,6 +141,9 @@ pub enum IdentityProof {
     /// 裸公钥或指纹。
     PublicKey(Vec<u8>),
     /// 其他格式，由调用方自定义解释。
+    ///   - **命名建议**：`format` 使用稳定字符串（如 `did_jwt_vc`）。
+    ///   - **实现责任**：消费方若不支持该格式，应返回明确错误（推荐
+    ///     [`crate::error::codes::APP_UNAUTHORIZED`]），并注明降级方案。
     Custom {
         /// 证明格式标识，如 `webauthn`, `vc+ldp`。
         format: String,

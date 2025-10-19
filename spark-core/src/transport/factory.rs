@@ -96,6 +96,9 @@ impl ListenerConfig {
 /// - `connect`：基于 [`ConnectionIntent`] 构建客户端通道，可选结合服务发现。
 /// - **前置条件**：调用方需确保 `endpoint.scheme()` 与工厂匹配，否则返回 `SparkError::unsupported_protocol` 等语义化错误。
 /// - **后置条件**：成功时返回动态分发的监听器或通道，生命周期由调用方管理。
+/// - **Custom 扩展处理**：若 `ConnectionIntent::security` 或 `intent.params()` 中包含 `Custom` 扩展，
+///   工厂必须显式判定是否支持；不支持时应返回
+///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`] 或 [`crate::error::codes::APP_UNAUTHORIZED`]。
 ///
 /// # 性能契约（Performance Contract）
 /// - `bind` 与 `connect` 返回 [`BoxFuture`]，以对象安全换取实现自由度；每次调用会触发一次 `Box` 分配与 vtable 间接跳转。
@@ -106,6 +109,7 @@ impl ListenerConfig {
 /// # 风险提示（Trade-offs）
 /// - 建连可能涉及 DNS、服务发现、握手，多步异步流程需尊重 `timeout` 与 `retry_budget`。
 /// - 绑定失败需提供明确错误原因，便于运维排查（端口占用、权限不足等）。
+/// - 若底层协议不支持 `NetworkProtocol::Custom`，应在错误中包含建议的替代协议，避免调用方盲目重试。
 pub trait TransportFactory: Send + Sync + 'static {
     /// 返回支持的 scheme。
     fn scheme(&self) -> &'static str;

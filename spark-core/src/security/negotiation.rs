@@ -22,6 +22,9 @@ pub enum SecurityProtocol {
     /// 量子安全或后量子握手算法。
     PostQuantum,
     /// 自定义协议，通过名称与参数说明。
+    ///   - **命名建议**：`name` 使用稳定标识（如 `acme.tpm_remote_attest`）。
+    ///   - **实现责任**：协商双方若不支持该协议，应返回
+    ///     [`crate::error::codes::APP_UNAUTHORIZED`] 并在参数中指出兼容的替代方案。
     Custom {
         name: String,
         parameters: Vec<(String, String)>,

@@ -22,7 +22,7 @@ use crate::SparkError;
 use alloc::boxed::Box;
 
 pub use message::{Bytes, PipelineMessage, UserMessage};
-pub use pool::{BufferPool, PoolStatisticsView};
+pub use pool::{BufferPool, PoolStatDimension, PoolStats};
 pub use readable::ReadableBuffer;
 pub use writable::WritableBuffer;
 

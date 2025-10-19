@@ -32,13 +32,15 @@ pub mod transport;
 
 pub use buffer::{
     BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,
-    PoolStatisticsView, ReadableBuffer, UserMessage, WritableBuffer,
+    PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
 };
 pub use cluster::{
-    ClusterConsistencyLevel, ClusterEpoch, ClusterMembership, ClusterMembershipEvent,
-    ClusterMembershipScope, ClusterMembershipSnapshot, ClusterNodeProfile, ClusterNodeState,
-    ClusterRevision, ClusterScopeSelector, DiscoveryEvent, DiscoverySnapshot, NodeId,
-    RoleDescriptor, ServiceDiscovery, ServiceInstance, ServiceName,
+    BackpressureMode, ClusterConsistencyLevel, ClusterEpoch, ClusterMembership,
+    ClusterMembershipEvent, ClusterMembershipScope, ClusterMembershipSnapshot, ClusterNodeProfile,
+    ClusterNodeState, ClusterRevision, ClusterScopeSelector, DiscoveryEvent, DiscoverySnapshot,
+    NodeId, OverflowPolicy, RoleDescriptor, ServiceDiscovery, ServiceInstance, ServiceName,
+    SubscriptionBackpressure, SubscriptionQueueProbe, SubscriptionQueueSnapshot,
+    SubscriptionStream,
 };
 pub use codec::{
     Codec, CodecDescriptor, CodecRegistry, ContentEncoding, ContentType, DecodeContext,
@@ -62,11 +64,12 @@ pub use host::{
     ThroughputClass,
 };
 pub use observability::{
-    ApplicationEvent, AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter, Gauge,
-    HealthCheckProvider, HealthChecks, HealthState, Histogram, IdleDirection, IdleTimeout,
-    InstrumentDescriptor, KeyValue, LogField, LogRecord, LogSeverity, Logger, MetricAttributeValue,
-    MetricsProvider, OpsEvent, OpsEventBus, OwnedAttributeSet, RateDirection, RateLimited, TlsInfo,
-    TraceContext, TraceContextError, TraceFlags, TraceState, TraceStateEntry, TraceStateError,
+    ApplicationEvent, AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter,
+    EventPolicy, Gauge, HealthCheckProvider, HealthChecks, HealthState, Histogram, IdleDirection,
+    IdleTimeout, InstrumentDescriptor, KeyValue, LogField, LogRecord, LogSeverity, Logger,
+    MetricAttributeValue, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, OwnedAttributeSet,
+    RateDirection, RateLimited, TlsInfo, TraceContext, TraceContextError, TraceFlags, TraceState,
+    TraceStateEntry, TraceStateError,
 };
 pub use pipeline::{
     ChainBuilder, Channel, ChannelState, Context, Controller, ControllerEvent, ControllerEventKind,

@@ -53,6 +53,11 @@ where
 /// - **前置**：调用 `route` 前应通过 `Service::poll_ready` 检查目标服务，或在决策内部处理；
 ///   上下文必须保持有效生命周期。
 /// - **后置**：若成功返回 [`RouteDecision`]，则保证绑定的 Service 可以被安全地消费。
+///
+/// # 错误契约（Error Contract）
+/// - 当路由表包含调用方未知的 `RouteKind::Custom` 或绑定能力缺失时，应返回
+///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，提示调用方与控制面协商版本。
+/// - 若底层服务在路由时不可达，可返回 [`crate::error::codes::CLUSTER_NODE_UNAVAILABLE`] 并附带恢复建议。
 pub trait Router<Request> {
     /// 绑定的 Service 类型。
     type Service: Service<Request>;
