@@ -20,6 +20,7 @@ pub mod cluster;
 pub mod codec;
 pub mod common;
 pub mod configuration;
+pub mod context;
 pub mod contract;
 pub mod error;
 pub mod future;
@@ -33,7 +34,7 @@ pub mod service;
 pub mod status;
 pub mod transport;
 
-pub use backpressure::{BackpressureReason, PollReady};
+pub use backpressure::BackpressureReason;
 pub use buffer::{
     BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,
     PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
@@ -57,6 +58,7 @@ pub use configuration::{
     ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId, ProfileLayering,
     ResolvedConfiguration, SourceMetadata, WatchToken,
 };
+pub use context::ExecutionContext;
 pub use contract::{
     Budget, BudgetDecision, BudgetKind, BudgetSnapshot, CallContext, CallContextBuilder,
     Cancellation, CloseReason, DEFAULT_OBSERVABILITY_CONTRACT, Deadline, ObservabilityContract,
@@ -80,9 +82,10 @@ pub use observability::{
     TraceContext, TraceContextError, TraceFlags, TraceState, TraceStateEntry, TraceStateError,
 };
 pub use pipeline::{
-    ChainBuilder, Channel, ChannelState, Context, Controller, ControllerEvent, ControllerEventKind,
-    ControllerFactory, DuplexHandler, ExtensionsMap, HandlerRegistry, InboundHandler, Middleware,
-    MiddlewareDescriptor, OutboundHandler, Pipeline, PipelineFactory, WriteSignal,
+    ChainBuilder, Channel, ChannelState, Context as PipelineContext, Controller, ControllerEvent,
+    ControllerEventKind, ControllerFactory, DuplexHandler, ExtensionsMap, HandlerRegistry,
+    InboundHandler, Middleware, MiddlewareDescriptor, OutboundHandler, Pipeline, PipelineFactory,
+    WriteSignal,
 };
 pub use router::{
     RouteBinding, RouteCatalog, RouteDecision, RouteDescriptor, RouteError, RouteId, RouteKind,
@@ -103,11 +106,10 @@ pub use security::{
     ResourcePattern, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy, SecurityProtocol,
     SecurityProtocolOffer, SubjectMatcher,
 };
-pub use service::{Layer, Service};
+pub use service::{BoxService, DynService, Layer, Service, ServiceObject};
 pub use status::ready::{
     BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice, SubscriptionBudget,
 };
-pub use service::{BoxService, DynService, Layer, Service, ServiceObject};
 pub use transport::{
     AvailabilityRequirement, ConnectionIntent, Endpoint, EndpointKind, ListenerShutdown,
     QualityOfService, SecurityMode, ServerTransport, SessionLifecycle, TransportFactory,

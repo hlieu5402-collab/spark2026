@@ -2,6 +2,7 @@ use super::{channel::Channel, controller::Controller};
 use crate::{
     buffer::{BufferPool, PipelineMessage},
     cluster::{ClusterMembership, ServiceDiscovery},
+    context::ExecutionContext,
     contract::{CallContext, CloseReason, Deadline},
     observability::{Logger, MetricsProvider, TraceContext},
     runtime::{TaskExecutor, TimeDriver},
@@ -66,6 +67,19 @@ pub trait Context: Send + Sync {
 
     /// 当前调用上下文，携带取消/截止/预算等统一契约。
     fn call_context(&self) -> &CallContext;
+
+    /// 快速派生三元组视图，减少热路径中的上下文克隆。
+    ///
+    /// # 设计背景（Why）
+    /// - Handler 在执行 `poll_ready`、预算检查等操作时，只需访问取消/截止/预算三元组，
+    ///   若强制克隆整份 [`CallContext`] 将带来多余的 `Arc` 管理成本。
+    ///
+    /// # 契约说明（What）
+    /// - **前置条件**：`self` 必须保证返回的 [`CallContext`] 在 `ExecutionContext` 生命周期内有效；
+    /// - **后置条件**：返回值为 [`ExecutionContext`] 只读视图，禁止通过该视图修改预算或取消状态。
+    fn execution_context(&self) -> ExecutionContext<'_> {
+        self.call_context().execution()
+    }
 
     /// 继续向后传播读事件。
     fn forward_read(&self, msg: PipelineMessage);
