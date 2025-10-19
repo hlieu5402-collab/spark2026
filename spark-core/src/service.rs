@@ -1,18 +1,13 @@
-use crate::Error;
-use crate::status::ready::PollReady;
-use core::future::Future;
-use core::task::Context as TaskContext;
+use alloc::{boxed::Box, sync::Arc};
+use core::{future::Future, task::Context as TaskContext};
+
 use crate::{
     Error, SparkError,
-    backpressure::PollReady,
     buffer::PipelineMessage,
+    context::ExecutionContext,
     contract::{CallContext, CloseReason},
     future::BoxFuture,
-};
-use alloc::{boxed::Box, sync::Arc};
-use core::{
-    future::Future,
-    task::{Context as TaskContext, Poll},
+    status::ready::PollReady,
 };
 
 /// `Service` 抽象 L7 业务逻辑处理流程。
@@ -20,7 +15,8 @@ use core::{
 /// # 设计背景（Why）
 /// - 借鉴 Tower 模型，将请求处理拆分为可组合的服务与中间件，统一 RPC、HTTP 等协议栈。
 /// - `Service` 提供泛型零成本接口；[`DynService`] 则面向插件、脚本等场景提供对象安全能力，二者在语义上等价，满足“双层 API 模型”。
-/// - `CallContext` 将取消/截止/预算三元组、安全策略、可观测性契约一并携带，确保所有公共方法显式接纳统一上下文。
+/// - `CallContext` 将取消/截止/预算三元组、安全策略、可观测性契约一并携带，`ExecutionContext` 则提供三元组的轻量投影，
+///   确保所有公共方法显式接纳统一上下文同时保持热路径零分配。
 ///
 /// # 契约说明（What）
 /// - `Request` 泛型代表输入消息类型；`Response` 表示输出类型。
@@ -43,26 +39,27 @@ pub trait Service<Request>: Send + Sync + 'static {
     /// 检查服务是否准备好处理请求。
     ///
     /// # 契约说明（What）
-    /// - 返回 [`PollReady<Self::Error>`]：
+    /// - 返回 [`PollReady<Self::Error>`]（即 `Poll<ReadyCheck<Self::Error>>`）：
     ///   - `Poll::Ready(ReadyCheck::Ready(ReadyState::Ready))`：服务可立即处理请求；
     ///   - `Poll::Ready(ReadyCheck::Ready(ReadyState::Busy(_)))`：服务繁忙并附带原因；
     ///   - `Poll::Ready(ReadyCheck::Ready(ReadyState::BudgetExhausted(_)))`：调用预算已耗尽；
     ///   - `Poll::Ready(ReadyCheck::Ready(ReadyState::RetryAfter(_)))`：建议等待后重试；
     ///   - `Poll::Ready(ReadyCheck::Err(_))`：检查发生错误；
     ///   - `Poll::Pending`：仍在等待就绪。
+    /// - `ctx`：通过 [`ExecutionContext`] 提供取消/截止/预算三元组的只读视图；实现应在背压与预算检查中使用。
     ///
     /// # 前置条件（Contract）
-    /// - 调用方必须在 `call` 之前反复驱动该方法，直至获得 `ReadyState::Ready` 或选择根据繁忙状态退避。
+    /// - 调用方必须在 `call` 之前反复驱动该方法，直至获得 `ReadyState::Ready` 或选择根据繁忙状态退避；
+    /// - `ctx` 必须来源于同一个 `CallContext` 派生的视图，保证取消与预算语义一致。
     ///
     /// # 后置条件（Contract）
     /// - 当返回 `ReadyState::Ready` 时，服务保证下一次 `call` 可安全执行；
     /// - 若返回 `Busy`/`BudgetExhausted`，服务仅承诺保持内部状态一致，调用方需根据业务策略退避或告警。
-    fn poll_ready(&mut self, cx: &mut TaskContext<'_>) -> PollReady<Self::Error>;
     fn poll_ready(
         &mut self,
-        ctx: &CallContext,
+        ctx: &ExecutionContext<'_>,
         cx: &mut TaskContext<'_>,
-    ) -> Poll<PollReady<Self::Error>>;
+    ) -> PollReady<Self::Error>;
 
     /// 处理请求并返回异步响应。
     fn call(&mut self, ctx: CallContext, req: Request) -> Self::Future;
@@ -105,11 +102,15 @@ where
 /// - 对象安全接口带来一次虚表分发与堆分配；若场景可静态确定类型，应优先使用泛型 [`Service`] 以获得零成本调用。
 pub trait DynService: Send + Sync {
     /// 检查服务是否就绪。
+    ///
+    /// # 参数说明
+    /// - `ctx`：[`ExecutionContext`] 视图，供对象安全实现读取取消/截止/预算三元组；
+    /// - `cx`：任务上下文，由运行时驱动 `Future::poll`。
     fn poll_ready_dyn(
         &mut self,
-        ctx: &CallContext,
+        ctx: &ExecutionContext<'_>,
         cx: &mut TaskContext<'_>,
-    ) -> Poll<PollReady<SparkError>>;
+    ) -> PollReady<SparkError>;
 
     /// 消费消息并返回结果。
     fn call_dyn(
@@ -187,9 +188,9 @@ where
 {
     fn poll_ready_dyn(
         &mut self,
-        ctx: &CallContext,
+        ctx: &ExecutionContext<'_>,
         cx: &mut TaskContext<'_>,
-    ) -> Poll<PollReady<SparkError>> {
+    ) -> PollReady<SparkError> {
         self.inner.poll_ready(ctx, cx)
     }
 

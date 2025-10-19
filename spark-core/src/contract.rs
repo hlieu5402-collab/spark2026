@@ -1,5 +1,6 @@
 use crate::{
     SparkError,
+    context::ExecutionContext,
     security::{IdentityDescriptor, SecurityPolicy},
 };
 use alloc::{borrow::Cow, format, string::ToString, sync::Arc, vec, vec::Vec};
@@ -551,6 +552,24 @@ impl CallContext {
     /// 遍历所有预算。
     pub fn budgets(&self) -> impl Iterator<Item = &Budget> {
         self.inner.budgets.iter()
+    }
+
+    /// 返回三元组只读视图，便于在热路径中读取取消/截止/预算。
+    ///
+    /// # 使用场景（Why）
+    /// - `Service::poll_ready`、`DynService::poll_ready_dyn` 等接口仅需三元组即可决策背压；
+    ///   通过该方法避免克隆整个 [`CallContext`]，降低热路径负担。
+    ///
+    /// # 契约说明（What）
+    /// - **前置条件**：`self` 必须保持有效，且在返回的 [`ExecutionContext`] 存活期间不得释放；
+    /// - **后置条件**：返回视图仅提供只读访问；预算消费仍需通过原始 [`Budget`] 调用。
+    pub fn execution(&self) -> ExecutionContext<'_> {
+        ExecutionContext::from(self)
+    }
+
+    /// 供 `ExecutionContext` 生成零拷贝视图的内部辅助函数。
+    pub(crate) fn budgets_slice(&self) -> &[Budget] {
+        &self.inner.budgets
     }
 
     /// 获取安全上下文。
