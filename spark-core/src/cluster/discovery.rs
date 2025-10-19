@@ -1,7 +1,7 @@
 use crate::{
     BoxFuture,
     cluster::{
-        backpressure::{SubscriptionBackpressure, SubscriptionStream},
+        flow_control::{SubscriptionFlowControl, SubscriptionStream},
         topology::{ClusterConsistencyLevel, ClusterRevision},
     },
     transport::Endpoint,
@@ -123,7 +123,7 @@ pub enum DiscoveryEvent {
 ///
 /// # 逻辑解析（How）
 /// - `resolve`：根据一致性等级返回最新快照，`Linearizable` 应通过读屏障保证；`Eventual` 可使用缓存。
-/// - `watch`：提供增量事件流，可指定修订号从断点继续，并允许通过 [`SubscriptionBackpressure`] 配置缓冲区与溢出策略；
+/// - `watch`：提供增量事件流，可指定修订号从断点继续，并允许通过 [`SubscriptionFlowControl`] 配置缓冲区与溢出策略；
 ///   若调用方请求队列观测，实现需在返回的 [`SubscriptionStream::queue_probe`] 中提供探针。
 /// - `list_services`：可选实现，用于获取命名空间下的全部服务。
 ///
@@ -132,7 +132,7 @@ pub enum DiscoveryEvent {
 ///   - `service`：目标服务名。
 ///   - `consistency`：期待的一致性等级。
 ///   - `resume_from`：事件流起始修订号，`None` 表示从最新状态开始。
-///   - `backpressure`：订阅背压配置，详见 [`SubscriptionBackpressure`]。
+///   - `flow_control`：订阅流控配置，详见 [`SubscriptionFlowControl`]。
 /// - **返回值**：
 ///   - `resolve` 返回 [`DiscoverySnapshot`]。
 ///   - `watch` 返回 [`SubscriptionStream<DiscoveryEvent>`]；若 `queue_probe` 为 `Some`，表示实现支持队列观测。
@@ -175,7 +175,7 @@ pub trait ServiceDiscovery: Send + Sync + 'static {
         service: &ServiceName,
         consistency: ClusterConsistencyLevel,
         resume_from: Option<ClusterRevision>,
-        backpressure: SubscriptionBackpressure,
+        flow_control: SubscriptionFlowControl,
     ) -> SubscriptionStream<DiscoveryEvent>;
 
     /// 列举当前命名空间下的服务列表。

@@ -14,11 +14,14 @@
 
 extern crate alloc;
 
+pub mod backpressure;
 pub mod buffer;
 pub mod cluster;
 pub mod codec;
 pub mod common;
 pub mod configuration;
+pub mod context;
+pub mod contract;
 pub mod error;
 pub mod future;
 pub mod host;
@@ -28,19 +31,20 @@ pub mod router;
 pub mod runtime;
 pub mod security;
 pub mod service;
+pub mod status;
 pub mod transport;
 
+pub use backpressure::BackpressureReason;
 pub use buffer::{
     BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,
     PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
 };
 pub use cluster::{
-    BackpressureMode, ClusterConsistencyLevel, ClusterEpoch, ClusterMembership,
-    ClusterMembershipEvent, ClusterMembershipScope, ClusterMembershipSnapshot, ClusterNodeProfile,
-    ClusterNodeState, ClusterRevision, ClusterScopeSelector, DiscoveryEvent, DiscoverySnapshot,
+    ClusterConsistencyLevel, ClusterEpoch, ClusterMembership, ClusterMembershipEvent,
+    ClusterMembershipScope, ClusterMembershipSnapshot, ClusterNodeProfile, ClusterNodeState,
+    ClusterRevision, ClusterScopeSelector, DiscoveryEvent, DiscoverySnapshot, FlowControlMode,
     NodeId, OverflowPolicy, RoleDescriptor, ServiceDiscovery, ServiceInstance, ServiceName,
-    SubscriptionBackpressure, SubscriptionQueueProbe, SubscriptionQueueSnapshot,
-    SubscriptionStream,
+    SubscriptionFlowControl, SubscriptionQueueProbe, SubscriptionQueueSnapshot, SubscriptionStream,
 };
 pub use codec::{
     Codec, CodecDescriptor, CodecRegistry, ContentEncoding, ContentType, DecodeContext,
@@ -58,6 +62,13 @@ pub use error::{
     CoreError, DomainError, DomainErrorKind, ErrorCause, ImplError, ImplErrorKind, IntoCoreError,
     IntoDomainError,
 };
+pub use context::ExecutionContext;
+pub use contract::{
+    Budget, BudgetDecision, BudgetKind, BudgetSnapshot, CallContext, CallContextBuilder,
+    Cancellation, CloseReason, DEFAULT_OBSERVABILITY_CONTRACT, Deadline, ObservabilityContract,
+    SecurityContextSnapshot,
+};
+pub use error::{CoreError, ErrorCause, ImplError, SparkError};
 pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use host::{
     CapabilityDescriptor, CapabilityLevel, ComponentDescriptor, ComponentFactory,
@@ -75,9 +86,10 @@ pub use observability::{
     TraceContext, TraceContextError, TraceFlags, TraceState, TraceStateEntry, TraceStateError,
 };
 pub use pipeline::{
-    ChainBuilder, Channel, ChannelState, Context, Controller, ControllerEvent, ControllerEventKind,
-    ControllerFactory, DuplexHandler, ExtensionsMap, HandlerRegistry, InboundHandler, Middleware,
-    MiddlewareDescriptor, OutboundHandler, Pipeline, PipelineFactory, WriteSignal,
+    ChainBuilder, Channel, ChannelState, Context as PipelineContext, Controller, ControllerEvent,
+    ControllerEventKind, ControllerFactory, DuplexHandler, ExtensionsMap, HandlerRegistry,
+    InboundHandler, Middleware, MiddlewareDescriptor, OutboundHandler, Pipeline, PipelineFactory,
+    WriteSignal,
 };
 pub use router::{
     RouteBinding, RouteCatalog, RouteDecision, RouteDescriptor, RouteError, RouteId, RouteKind,
@@ -98,7 +110,10 @@ pub use security::{
     ResourcePattern, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy, SecurityProtocol,
     SecurityProtocolOffer, SubjectMatcher,
 };
-pub use service::{Layer, Service};
+pub use service::{BoxService, DynService, Layer, Service, ServiceObject};
+pub use status::ready::{
+    BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice, SubscriptionBudget,
+};
 pub use transport::{
     AvailabilityRequirement, ConnectionIntent, Endpoint, EndpointKind, ListenerShutdown,
     QualityOfService, SecurityMode, ServerTransport, SessionLifecycle, TransportFactory,

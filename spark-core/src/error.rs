@@ -20,11 +20,92 @@ use core::fmt;
 /// # 设计取舍与风险（Trade-offs）
 /// - 采用 `String` 保存消息，牺牲极少量堆分配换取在日志、跨语言桥接时的灵活性。
 /// - 允许附带可选的传输与链路信息，避免在轻量部署中产生不必要的依赖或复制成本。
+use alloc::{borrow::Cow, boxed::Box, string::String};
+use core::fmt;
+
+/// `CoreError` 提供稳定的错误码与根因链路，是框架错误分层的最底层。
+///
+/// # 设计背景（Why）
+/// - 错误分层共识要求“核心错误可稳定 round-trip”，因此该结构仅承载错误码、消息与底层 `source`。
+/// - 通过对象安全的 [`Error`] 实现，保证在 `no_std + alloc` 环境下同样可用。
+///
+/// # 契约说明（What）
+/// - `code`：稳定字符串，建议使用 `namespace.reason` 命名规范。
+/// - `message`：人类可读描述，避免包含敏感信息。
+/// - `cause`：可选底层原因；若不存在可设为 `None`。
+///
+/// # 风险提示（Trade-offs）
+/// - 结构体仅负责承载信息，不执行任何格式化或指标上报逻辑；调用方需自行处理。
 #[derive(Debug)]
 pub struct CoreError {
     code: &'static str,
-    message: String,
+    message: Cow<'static, str>,
     cause: Option<ErrorCause>,
+}
+
+impl CoreError {
+    /// 构造核心错误。
+    pub fn new(code: &'static str, message: impl Into<Cow<'static, str>>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            cause: None,
+        }
+    }
+
+    /// 附带底层原因并返回新的核心错误。
+    pub fn with_cause(mut self, cause: impl Error + Send + Sync + 'static) -> Self {
+        self.cause = Some(Box::new(cause));
+        self
+    }
+
+    /// 为现有错误设置底层原因。
+    pub fn set_cause(&mut self, cause: impl Error + Send + Sync + 'static) {
+        self.cause = Some(Box::new(cause));
+    }
+
+    /// 获取稳定错误码。
+    pub fn code(&self) -> &'static str {
+        self.code
+    }
+
+    /// 获取描述。
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// 获取底层原因。
+    pub fn cause(&self) -> Option<&ErrorCause> {
+        self.cause.as_ref()
+    }
+}
+
+impl fmt::Display for CoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}] {}", self.code, self.message)
+    }
+}
+
+impl Error for CoreError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.cause
+            .as_ref()
+            .map(|boxed| boxed.as_ref() as &(dyn Error + 'static))
+    }
+}
+
+/// `SparkError`（DomainError）在核心错误之上附加分布式上下文信息。
+///
+/// # 设计背景（Why）
+/// - 结合 Trace/Peer/Node 元信息，满足跨节点调试、审计与 AIOps 需求。
+/// - `source()` 始终返回内部的 [`CoreError`]，以保证错误链 `Impl → Domain → Core → Cause` 的 round-trip。
+///
+/// # 契约说明（What）
+/// - 所有 Builder 方法返回 `Self`，保持不可变语义，避免多线程情况下出现部分更新。
+/// - `with_cause` 实际调用核心错误的 `with_cause`，确保底层 cause 与核心层共享。
+#[derive(Debug)]
+pub struct SparkError {
+    core: CoreError,
     trace_context: Option<TraceContext>,
     peer_addr: Option<TransportSocketAddr>,
     node_id: Option<NodeId>,
@@ -40,11 +121,11 @@ impl CoreError {
     /// - **参数**：`code` 为 `'static` 字符串，`message` 为人类可读文本（通常来自域层或实现层错误）。
     /// - **前置条件**：调用方需确保 `code` 与域模型约定一致，且 `message` 不泄露敏感信息。
     /// - **后置条件**：返回的实例未携带底层原因或额外上下文，可继续通过 Builder 方法扩充。
+impl SparkError {
+    /// 使用稳定错误码与消息创建 `SparkError`。
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
-            code,
-            message: message.into(),
-            cause: None,
+            core: CoreError::new(code, Cow::Owned(message.into())),
             trace_context: None,
             peer_addr: None,
             node_id: None,
@@ -53,12 +134,12 @@ impl CoreError {
 
     /// 获取稳定错误码，供日志聚合或自动化修复策略使用。
     pub fn code(&self) -> &'static str {
-        self.code
+        self.core.code()
     }
 
     /// 获取人类可读的错误描述。
     pub fn message(&self) -> &str {
-        &self.message
+        self.core.message()
     }
 
     /// 附带一个底层原因，形成错误链。
@@ -73,7 +154,7 @@ impl CoreError {
     /// - **前置条件**：`cause` 必须满足线程安全约束。
     /// - **后置条件**：返回新的 `CoreError`，其 `source()` 指向 `cause`。
     pub fn with_cause(mut self, cause: impl Error + Send + Sync + 'static) -> Self {
-        self.cause = Some(Box::new(cause));
+        self.core.set_cause(cause);
         self
     }
 
@@ -112,21 +193,96 @@ impl CoreError {
 
     /// 获取可选的底层原因。
     pub fn cause(&self) -> Option<&ErrorCause> {
-        self.cause.as_ref()
+        self.core.cause()
+    }
+
+    /// 访问核心错误。
+    pub fn core(&self) -> &CoreError {
+        &self.core
     }
 }
 
 impl fmt::Display for CoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.code, self.message)
+        write!(f, "{}", self.core)
     }
 }
 
 impl Error for CoreError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.cause
-            .as_ref()
-            .map(|boxed| boxed.as_ref() as &(dyn Error + 'static))
+        Some(self.core() as &dyn Error)
+    }
+}
+
+/// `ImplError`（Implementation Error）包装领域错误并附加实现细节。
+///
+/// # 设计背景（Why）
+/// - 满足分层共识中“实现细节可扩展”的要求，便于在不同宿主/协议实现中记录私有信息。
+///
+/// # 契约说明（What）
+/// - `detail`：实现层描述，推荐使用稳定字符串便于日志聚合。
+/// - `source_cause`：实现层额外的底层错误，例如系统调用或第三方库异常。
+#[derive(Debug)]
+pub struct ImplError {
+    domain: SparkError,
+    detail: Option<Cow<'static, str>>,
+    source_cause: Option<ErrorCause>,
+}
+
+impl ImplError {
+    /// 使用领域错误创建实现错误。
+    pub fn new(domain: SparkError) -> Self {
+        Self {
+            domain,
+            detail: None,
+            source_cause: None,
+        }
+    }
+
+    /// 附加实现细节描述。
+    pub fn with_detail(mut self, detail: impl Into<Cow<'static, str>>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    /// 附加底层错误原因。
+    pub fn with_source(mut self, cause: impl Error + Send + Sync + 'static) -> Self {
+        self.source_cause = Some(Box::new(cause));
+        self
+    }
+
+    /// 获取领域错误。
+    pub fn domain(&self) -> &SparkError {
+        &self.domain
+    }
+
+    /// 消耗自身并返回领域错误。
+    pub fn into_domain(self) -> SparkError {
+        self.domain
+    }
+
+    /// 获取实现细节描述。
+    pub fn detail(&self) -> Option<&Cow<'static, str>> {
+        self.detail.as_ref()
+    }
+}
+
+impl fmt::Display for ImplError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.detail {
+            Some(detail) => write!(f, "{} ({})", self.domain, detail),
+            None => write!(f, "{}", self.domain),
+        }
+    }
+}
+
+impl Error for ImplError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        if let Some(ref cause) = self.source_cause {
+            Some(cause.as_ref())
+        } else {
+            Some(self.domain() as &dyn Error)
+        }
     }
 }
 

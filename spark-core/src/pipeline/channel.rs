@@ -1,5 +1,12 @@
 use crate::{buffer::PipelineMessage, error::CoreError, transport::TransportSocketAddr};
 use core::time::Duration;
+use crate::{
+    buffer::PipelineMessage,
+    contract::{CloseReason, Deadline},
+    error::SparkError,
+    future::BoxFuture,
+    transport::TransportSocketAddr,
+};
 
 use super::Controller;
 
@@ -29,7 +36,7 @@ pub enum ChannelState {
     Closed,
 }
 
-/// 写入反馈信号，贯穿 Netty Backpressure、NATS Flow Control、Tower Concurrency Limit 等策略。
+/// 写入反馈信号，贯穿 Netty 背压、NATS Flow Control、Tower Concurrency Limit 等策略。
 ///
 /// # 设计背景（Why）
 /// - 将常见的背压语义压缩为三种信号，既兼容硬件级（RDMA、DPDK）实现，也适配软件协议栈。
@@ -37,7 +44,7 @@ pub enum ChannelState {
 /// # 契约说明（What）
 /// - `Accepted`：消息进入缓冲但尚未刷出。
 /// - `AcceptedAndFlushed`：消息已成功写出或持久化。
-/// - `BackpressureApplied`：下游无法立即接收，调用方需减速或重试。
+/// - `FlowControlApplied`：下游无法立即接收，调用方需减速或重试。
 ///
 /// # 风险提示（Trade-offs）
 /// - 某些协议缺乏显式背压，需在实现内部以阈值模拟；调用方应尊重此信号以避免雪崩放大。
@@ -48,7 +55,7 @@ pub enum WriteSignal {
     /// 消息已经落盘或发送。
     AcceptedAndFlushed,
     /// 触发背压，调用方应重试或降速。
-    BackpressureApplied,
+    FlowControlApplied,
 }
 
 /// `Channel` 抽象单个 I/O 连接的控制面能力。
@@ -97,10 +104,13 @@ pub trait Channel: Send + Sync + 'static {
     fn local_addr(&self) -> Option<TransportSocketAddr>;
 
     /// 触发优雅关闭，允许在截止前冲刷缓冲。
-    fn close_graceful(&self, deadline: Option<Duration>);
+    fn close_graceful(&self, reason: CloseReason, deadline: Option<Deadline>);
 
     /// 立即终止连接。
     fn close(&self);
+
+    /// 等待连接完全关闭，用于满足“优雅关闭契约”。
+    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>>;
 
     /// 向通道写入消息，返回背压信号。
     fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, CoreError>;
