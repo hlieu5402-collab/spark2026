@@ -4,7 +4,7 @@ use crate::{
     cluster::{ClusterMembership, ServiceDiscovery},
     observability::{CoreUserEvent, Logger, MetricsProvider, TraceContext},
     runtime::{CoreServices, TaskExecutor, TimeDriver},
-    transport::SparkSocketAddr,
+    transport::TransportSocketAddr,
 };
 use alloc::boxed::Box;
 use core::{
@@ -83,10 +83,10 @@ pub trait Channel: Send + Sync + 'static {
     fn extensions(&self) -> &dyn ExtensionsMap;
 
     /// 获取对端地址。
-    fn peer_addr(&self) -> Option<SparkSocketAddr>;
+    fn peer_addr(&self) -> Option<TransportSocketAddr>;
 
     /// 获取本地地址。
-    fn local_addr(&self) -> Option<SparkSocketAddr>;
+    fn local_addr(&self) -> Option<TransportSocketAddr>;
 
     /// 触发优雅关闭，允许在截止前冲刷缓冲。
     fn close_graceful(&self, deadline: Option<Duration>);
