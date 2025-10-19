@@ -14,8 +14,13 @@ use core::time::Duration;
 /// - **后置条件**：解析成功时返回 `Some(value)`，失败时返回 `None` 并保持原值不变。
 ///
 /// # 设计取舍与风险（Trade-offs）
-/// - 使用 `BTreeMap` 保证遍历顺序稳定，利于配置 diff；牺牲部分插入性能。
+/// - 使用 [`BTreeMap`] 保证遍历顺序稳定，利于配置 diff；牺牲部分插入性能。
 /// - 未内建 schema 校验，保持轻量；若需强约束，可结合外部验证器。
+///
+/// # BTreeMap 访问策略
+/// - 性能敏感路径可通过 `TransportParams::as_map` 拿到有序视图，再 `cloned().collect::<HashMap<_, _>>()` 获得无序版本缓存。
+/// - 后续若出现广泛的 `HashMap` 需求，可新增 `into_inner` 或 `into_hash_map` 辅助函数；当前契约保持最小化以兼顾稳定排序与 API 简洁。
+/// - 由于 `BTreeMap` 提供对称的 `range`、`split_off` 能力，实现者也可利用其特性构建前缀查询或分页逻辑。
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TransportParams(BTreeMap<String, String>);
 

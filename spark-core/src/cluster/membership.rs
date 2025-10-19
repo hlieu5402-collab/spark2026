@@ -226,10 +226,16 @@ pub enum ClusterMembershipEvent {
 /// - **前置条件**：实现者需确保底层存储已初始化，且事件流在订阅前开始记录。
 /// - **后置条件**：调用成功后，消费者可将返回值作为权威真相来源并在本地缓存。
 ///
+/// # 性能契约（Performance Contract）
+/// - `snapshot` 与 `self_profile` 返回 [`BoxFuture`]，`subscribe` 返回 [`BoxStream`]；这些对象安全包装会引入一次堆分配与虚函数调
+///   用。
+/// - `async_contract_overhead` 基准显示 `BoxStream` 相比泛型 Stream 的额外轮询成本约为 3.8%（6.63ns vs 6.39ns/次），适用于绝大多数
+///   管控面场景。【e8841c†L4-L13】
+/// - 若实现面向高频事件（>10^6 qps），建议提供附加的泛型订阅接口或在内部复用缓冲池，以将分配与跳转降到最低。
+///
 /// # 设计取舍与风险（Trade-offs）
 /// - 接口未强制使用某种一致性算法，允许实现者选择 Raft、Viewstamped Replication、Gossip+Delta CRDT 等不同方案；但更强一致性会增加延迟。
 /// - `subscribe` 必须在背压严重时提供自适应策略（如快照重置或事件压缩），否则可能导致内存膨胀。
-/// - 性能评估：`async_contract_overhead` 基准显示 `BoxStream` 相比泛型 Stream 的额外轮询成本约为 3.8%（6.63ns vs 6.39ns/次），对长连接事件流影响可忽略，但仍建议配合批量合并降低频繁唤醒。【e8841c†L4-L13】
 pub trait ClusterMembership: Send + Sync + 'static {
     /// 获取指定范围的全量快照。
     fn snapshot(

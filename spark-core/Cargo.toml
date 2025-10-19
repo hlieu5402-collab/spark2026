@@ -14,6 +14,7 @@ bench = false
 
 [features]
 default = ["std"]
+# 所有 API 契约均依赖 `alloc` 类型（Box/Arc/Vec）；禁用 `alloc` 无法构建对象安全 Future/Stream。
 alloc = []
 std = ["alloc"]
 

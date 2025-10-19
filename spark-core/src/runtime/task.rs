@@ -125,6 +125,11 @@ impl fmt::Display for TaskError {
 /// - **前置条件**：句柄必须独立维护任务生命周期引用计数，确保在 `detach` 后仍能安全运行。
 /// - **后置条件**：`join` 完成后，运行时保证任务已结束，且不会再次调用该句柄上的其它方法。
 ///
+/// # 性能契约（Performance Contract）
+/// - `join` 返回 [`BoxFuture`]，确保 Trait 对象安全；每次调用会分配 `Box` 并通过虚表唤醒内部状态机。
+/// - 在批量等待场景，可直接持有具体实现类型（如运行时自定义的 `JoinHandle`），以规避分配；或在实现内部维护 `Box` 缓冲池。
+/// - `cancel` / `detach` 等同步方法保持零分配，确保常用控制操作不会引入额外开销。
+///
 /// # 风险提示（Trade-offs）
 /// - 接口对象安全，允许以 `Box<dyn TaskHandle>` 搭配注入；实现者需权衡性能与动态分发开销。
 pub trait TaskHandle: Send + Sync {

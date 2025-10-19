@@ -7,6 +7,10 @@
 #![doc = "1. 破坏性变更 (Breaking Change): 仅允许在 MAJOR 版本（如 11.x -> 12.0）中引入。"]
 #![doc = "2. 弃用 (Deprecation): API 弃用必须至少提前 1 个 MINOR 版本（如 11.2 弃用，11.3 保留，11.4 可移除）公告，并保留运行时告警。"]
 #![doc = "3. 契约测试: 任何对 `spark-core` 契约的实现或变更，必须同步更新 `spark-contract-tests` 并确保 100% 通过。"]
+#![doc = ""]
+#![doc = "== 内存分配依赖 (P2.4) =="]
+#![doc = "`spark-core` 运行在 `no_std + alloc` 环境：所有异步契约依赖 [`alloc`] 提供的 `Box`、`Arc`、`Vec` 等类型；不启用 `alloc` 时无法构建对象安全 Future/Stream，因此纯 `no_std`（无分配器）场景暂不支持。"]
+#![doc = "未来演进方向：如需在裸机或自定义分配器环境运行，可通过 feature flag 提供“瘦身版”契约（例如仅暴露同步 Trait 或由上层注入自定义分配器句柄），本版本先明确约束以避免误用。"]
 
 extern crate alloc;
 
