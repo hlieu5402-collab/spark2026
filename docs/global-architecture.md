@@ -91,6 +91,7 @@ Service (Tower Trait)
 - **实时反馈**：所有长时任务（测试、部署、仿真）返回 `operationId` 并支持 `GET /v1/operations/{id}` 轮询状态，或通过 SSE/WebSocket 订阅进度。
 - **智能默认值**：API 根据 `MiddlewareDescriptor.category` 自动推断监控模板、日志采集策略，减少表单填写工作量。
 - **强类型 Schema**：公开 OpenAPI + AsyncAPI 文档，并提供 Rust/Go/TypeScript SDK，确保多语言团队使用顺滑。
+- **类型安全扩展点**：`PipelineMessage::from_user` 与 `CoreUserEvent::from_application_event` 提供统一的对象安全封装，避免 `Any` 下转型遗漏错误处理。
 
 ## 8. 风险与治理策略
 - **配置漂移**：通过 `PipelineTemplate` 版本与审计日志对齐环境配置，异常时自动触发比对与回滚。

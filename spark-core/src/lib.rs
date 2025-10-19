@@ -28,7 +28,7 @@ pub mod transport;
 
 pub use buffer::{
     BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,
-    PoolStatisticsView, ReadableBuffer, WritableBuffer,
+    PoolStatisticsView, ReadableBuffer, UserMessage, WritableBuffer,
 };
 pub use cluster::{
     ClusterConsistencyLevel, ClusterEpoch, ClusterMembership, ClusterMembershipEvent,
@@ -58,7 +58,7 @@ pub use host::{
     ThroughputClass,
 };
 pub use observability::{
-    AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter, Gauge,
+    ApplicationEvent, AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter, Gauge,
     HealthCheckProvider, HealthChecks, HealthState, Histogram, IdleDirection, IdleTimeout,
     InstrumentDescriptor, KeyValue, LogField, LogRecord, LogSeverity, Logger, MetricAttributeValue,
     MetricsProvider, OpsEvent, OpsEventBus, OwnedAttributeSet, RateDirection, RateLimited, TlsInfo,

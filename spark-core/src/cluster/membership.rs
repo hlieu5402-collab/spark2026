@@ -229,6 +229,7 @@ pub enum ClusterMembershipEvent {
 /// # 设计取舍与风险（Trade-offs）
 /// - 接口未强制使用某种一致性算法，允许实现者选择 Raft、Viewstamped Replication、Gossip+Delta CRDT 等不同方案；但更强一致性会增加延迟。
 /// - `subscribe` 必须在背压严重时提供自适应策略（如快照重置或事件压缩），否则可能导致内存膨胀。
+/// - 性能评估：`async_contract_overhead` 基准显示 `BoxStream` 相比泛型 Stream 的额外轮询成本约为 3.8%（6.63ns vs 6.39ns/次），对长连接事件流影响可忽略，但仍建议配合批量合并降低频繁唤醒。【e8841c†L4-L13】
 pub trait ClusterMembership: Send + Sync + 'static {
     /// 获取指定范围的全量快照。
     fn snapshot(
