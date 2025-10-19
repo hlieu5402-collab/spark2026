@@ -127,8 +127,12 @@ pub mod codes {
     pub const TRANSPORT_TIMEOUT: &str = "transport.timeout";
     /// 协议解码失败。
     pub const PROTOCOL_DECODE: &str = "protocol.decode";
+    /// 协议内容协商失败。
+    pub const PROTOCOL_NEGOTIATION: &str = "protocol.negotiation";
     /// 协议预算超限。
     pub const PROTOCOL_BUDGET_EXCEEDED: &str = "protocol.budget_exceeded";
+    /// 编解码类型不匹配。
+    pub const PROTOCOL_TYPE_MISMATCH: &str = "protocol.type_mismatch";
     /// 运行时关闭。
     pub const RUNTIME_SHUTDOWN: &str = "runtime.shutdown";
     /// 集群节点不可用。

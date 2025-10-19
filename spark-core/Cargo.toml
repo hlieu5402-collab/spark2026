@@ -10,8 +10,16 @@ description = "spark-core: 高性能、协议无关、分布式原生的异步�
 [lib]
 name = "spark_core"
 path = "src/lib.rs"
+bench = false
 
 [features]
 default = ["std"]
 alloc = []
 std = ["alloc"]
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "codec"
+harness = false

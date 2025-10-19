@@ -11,6 +11,7 @@
 extern crate alloc;
 
 pub mod buffer;
+pub mod codec;
 pub mod common;
 pub mod distributed;
 pub mod error;
@@ -22,6 +23,11 @@ pub mod service;
 pub mod transport;
 
 pub use buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage};
+pub use codec::{
+    Codec, CodecDescriptor, CodecRegistry, ContentEncoding, ContentType, DecodeContext,
+    DecodeOutcome, DynCodec, DynCodecFactory, EncodeContext, EncodedPayload, Encoder,
+    NegotiatedCodec, SchemaDescriptor, TypedCodecAdapter, TypedCodecFactory,
+};
 pub use common::{Empty, IntoEmpty, Loopback};
 pub use distributed::{
     ClusterMembershipProvider, DiscoveryEvent, MembershipEvent, NodeId, NodeInfo, NodeStatus,
