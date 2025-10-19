@@ -1,9 +1,9 @@
 use crate::{
     buffer::BufferPool,
     cluster::{ClusterMembership, ServiceDiscovery},
-    observability::{HealthCheckProvider, Logger, MetricsProvider, OpsEventBus},
+    observability::{HealthChecks, Logger, MetricsProvider, OpsEventBus},
 };
-use alloc::{sync::Arc, vec::Vec};
+use alloc::sync::Arc;
 
 use super::{AsyncRuntime, TimeDriver};
 
@@ -38,7 +38,7 @@ pub struct CoreServices {
     pub membership: Option<Arc<dyn ClusterMembership>>,
     pub discovery: Option<Arc<dyn ServiceDiscovery>>,
     pub ops_bus: Arc<dyn OpsEventBus>,
-    pub health_checks: Arc<Vec<Arc<dyn HealthCheckProvider>>>,
+    pub health_checks: HealthChecks,
 }
 
 impl CoreServices {
