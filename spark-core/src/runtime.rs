@@ -1,6 +1,6 @@
 use crate::{
     BoxFuture,
-    buffer::BufferAllocator,
+    buffer::BufferPool,
     distributed::{ClusterMembershipProvider, ServiceDiscoveryProvider},
     observability::{HealthCheckProvider, Logger, MetricsProvider, OpsEventBus},
 };
@@ -77,7 +77,15 @@ impl<T> SparkRuntime for T where T: Executor + Timer + Send + Sync + 'static {}
 #[derive(Clone)]
 pub struct CoreServices {
     pub runtime: Arc<dyn SparkRuntime>,
-    pub allocator: Arc<dyn BufferAllocator>,
+    /// 缓冲池引用，供运行时及 Handler 租借写缓冲。
+    ///
+    /// # 契约说明
+    /// - 必须提供满足 [`BufferPool`] 契约的实现，以便统一管理内存与背压。
+    /// - 构建阶段需确保池生命周期覆盖整个运行时，否则可能导致悬挂引用。
+    ///
+    /// # 风险提示
+    /// - 极端高峰期若池内耗尽，应结合 [`BufferPool::statistics`] 进行调优或扩容。
+    pub buffer_pool: Arc<dyn BufferPool>,
     pub metrics: Arc<dyn MetricsProvider>,
     pub logger: Arc<dyn Logger>,
     pub membership: Option<Arc<dyn ClusterMembershipProvider>>,
