@@ -3,7 +3,7 @@ use crate::{
     buffer::{BufferPool, PipelineMessage},
     distributed::{ClusterMembershipProvider, ServiceDiscoveryProvider},
     observability::{CoreUserEvent, Logger, MetricsProvider, TraceContext},
-    runtime::{CoreServices, Executor, Timer},
+    runtime::{CoreServices, TaskExecutor, TimeDriver},
     transport::SparkSocketAddr,
 };
 use alloc::boxed::Box;
@@ -167,10 +167,10 @@ pub trait Context: Send + Sync {
     fn pipeline(&self) -> &dyn Pipeline;
 
     /// 执行器引用。
-    fn executor(&self) -> &dyn Executor;
+    fn executor(&self) -> &dyn TaskExecutor;
 
     /// 计时器引用。
-    fn timer(&self) -> &dyn Timer;
+    fn timer(&self) -> &dyn TimeDriver;
 
     /// 缓冲池访问接口。
     ///

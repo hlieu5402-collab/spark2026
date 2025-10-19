@@ -14,6 +14,16 @@ use core::{
 /// - 约束 Future 为 `Send + 'a`，可安全跨线程。
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// `LocalBoxFuture` 封装 `!Send` Future。
+///
+/// # 设计背景（Why）
+/// - 为了支撑单线程执行器（如浏览器 WebAssembly、嵌入式事件循环），需要一个不要求 `Send`
+///   的通用 Future 包装。
+///
+/// # 契约说明（What）
+/// - 仅需满足 `'a` 生命周期约束，允许运行在调用方指定的线程或任务上下文。
+pub type LocalBoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
+
 /// `Stream` 描述按需拉取元素的异步序列。
 ///
 /// # 设计背景（Why）
