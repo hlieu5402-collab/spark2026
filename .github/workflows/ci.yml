@@ -18,6 +18,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Consistency guardrails
+        run: tools/ci/check_consistency.sh
+
       - name: Install Rust 1.89 toolchain
         uses: dtolnay/rust-toolchain@master
         with:
