@@ -103,7 +103,8 @@ pub enum ReadyCheck<E> {
 /// # 兼容性说明（Trade-offs）
 /// - 该别名保持二进制兼容性：既可在 `no_std` 场景使用，也能与现有异步运行时（Tokio、async-std）直接集成。
 /// - 若后续需要扩展更多软状态，可在 [`ReadyState`] 枚举中新增分支，不影响 `PollReady` 的函数签名。
-pub type PollReady<E> = Poll<ReadyCheck<E>>;
+#[rustfmt::skip]
+pub/* 状态锚点别名 */ type PollReady<E> = Poll<ReadyCheck<E>>;
 
 /// 服务繁忙的原因描述，帮助调用方进行针对性调度或观测。
 ///

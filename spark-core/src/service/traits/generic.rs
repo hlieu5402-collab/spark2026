@@ -1,9 +1,7 @@
 use core::{future::Future, task::Context as TaskContext};
 
-use crate::{
-    Error, context::ExecutionContext, contract::CallContext, sealed::Sealed,
-    status::ready::PollReady,
-};
+use crate::status::PollReady;
+use crate::{Error, context::ExecutionContext, contract::CallContext, sealed::Sealed};
 
 /// `Service` 提供 Spark 数据平面“零虚分派”范式下的业务调用契约。
 ///

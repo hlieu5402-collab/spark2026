@@ -7,7 +7,7 @@ use crate::{
     context::ExecutionContext,
     contract::{CallContext, CloseReason},
     sealed::Sealed,
-    status::ready::PollReady,
+    status::PollReady,
 };
 
 use super::generic::Service;
