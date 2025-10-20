@@ -4,6 +4,7 @@
 >
 > - **CI 约束**：所有公共 API 变更需通过 `make ci-*` 系列任务，覆盖 `cargo fmt/clippy/build/doc/bench` 与自定义契约测试，确保契约不被破坏。
 > - **文档约束**：本文件与各模块内的教案级注释共同构成可审计的契约文档，任何修改须在 PR 中同步更新。
+> - **统一协议红线**：`tools/ci/check_unified_protocol_guard.sh` 会在 CI 早期检查公共协议 API 是否变更；若未同步提交 CEP（`docs/governance/CEP-*.md`），流水线将直接拒绝。
 
 ## 1. 双层 API 模型
 - **落地位置**：`spark-core/src/service.rs`、`buffer/mod.rs` 等提供泛型 `Service`/`Layer` 与对象安全 `DynService`/`ServiceObject`/`BoxService`。
@@ -67,4 +68,12 @@
 
 ---
 
-> **审计提示**：若公共 API 出现新增/变更，需同步更新本文件对应条目以及相关模块的教案级注释；CI 将通过 `make ci-doc-warning` 防止遗漏文档更新。
+## 统一协议红线治理
+
+- **覆盖范围**：凡位于 `spark-core` 及兄弟 crate 中以“统一协议”为核心的公共能力（如 `Service`、`DynService`、`Channel`、`CallContext`、`Cluster Discovery` 等）被新增、重命名或删除 `pub` 接口，均被视为触碰统一协议红线。
+- **流程要求**：
+  - 任何公共 API 调整必须提交 CEP，记录兼容性影响、迁移计划与 Owner 审批；CI 会通过 `tools/ci/check_unified_protocol_guard.sh` 强制校验。
+  - 如需紧急豁免，必须设置 `UNIFIED_PROTOCOL_OVERRIDE=allow` 并在 PR 模板的“触碰统一协议公共 API”核对框中勾选、说明原因，且事后补写 CEP。
+- **配套清单**：PR 模板新增统一协议核对框；若未勾选即表示明确声明“不触碰统一协议红线”。一旦后续审计发现偏离，该声明将作为回溯依据。
+
+> **审计提示**：若公共 API 出现新增/变更，需同步更新本文件对应条目以及相关模块的教案级注释；CI 将通过 `make ci-doc-warning` 与统一协议守卫脚本双重检查，防止遗漏文档更新与治理备案。
