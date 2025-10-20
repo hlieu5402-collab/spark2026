@@ -1,8 +1,35 @@
 use super::metadata::CodecDescriptor;
 use crate::buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut};
+use crate::contract::{Budget, BudgetDecision};
+use crate::error::codes;
 use crate::{CoreError, sealed::Sealed};
-use alloc::boxed::Box;
-use core::fmt;
+use alloc::{boxed::Box, format};
+use core::{convert::TryFrom, fmt, num::NonZeroU16};
+
+/// **内部工具：`FrameCharge`**
+///
+/// - **意图 (Why)**：集中处理帧长度到 `u64` 的安全转换，复用预算扣减错误信息。
+/// - **逻辑 (How)**：调用 [`FrameCharge::new`] 将 `usize` 长度转换为 `u64`，若溢出则返回稳定错误码。
+/// - **契约 (What)**：
+///   - 输入必须是业务欲消费的帧长度；
+///   - 返回值在成功时可安全用于 `Budget::try_consume`；
+///   - 失败时保证不修改预算剩余额度。
+struct FrameCharge(u64);
+
+impl FrameCharge {
+    fn new(len: usize) -> Result<Self, CoreError> {
+        u64::try_from(len).map(FrameCharge).map_err(|_| {
+            CoreError::new(
+                codes::PROTOCOL_BUDGET_EXCEEDED,
+                "frame length exceeds budget accounting capacity (u64::MAX)",
+            )
+        })
+    }
+
+    fn amount(&self) -> u64 {
+        self.0
+    }
+}
 
 /// `EncodeContext` 为编码过程提供共享资源视图。
 ///
@@ -24,6 +51,9 @@ use core::fmt;
 pub struct EncodeContext<'a> {
     allocator: &'a dyn BufferAllocator,
     max_frame_size: Option<usize>,
+    budget: Option<&'a Budget>,
+    max_recursion_depth: Option<NonZeroU16>,
+    current_depth: u16,
 }
 
 impl<'a> EncodeContext<'a> {
@@ -32,6 +62,9 @@ impl<'a> EncodeContext<'a> {
         Self {
             allocator,
             max_frame_size: None,
+            budget: None,
+            max_recursion_depth: None,
+            current_depth: 0,
         }
     }
 
@@ -43,6 +76,44 @@ impl<'a> EncodeContext<'a> {
         Self {
             allocator,
             max_frame_size,
+            budget: None,
+            max_recursion_depth: None,
+            current_depth: 0,
+        }
+    }
+
+    /// 构造同时携带预算与深度限制的上下文。
+    ///
+    /// # 教案式说明
+    /// - **目标 (Why)**：编解码通常需要在“长度预算”“嵌套深度”之间协同防御畸形输入。本方法统一注入三类约束，确保上层无需自行拼装。
+    /// - **执行 (How)**：
+    ///   1. `allocator` 负责后续缓冲租借；
+    ///   2. `budget` 若存在，则在 [`Self::check_frame_constraints`] 中按帧长度扣减；
+    ///   3. `max_frame_size` 为单帧硬上限；
+    ///   4. `max_recursion_depth` 控制 `enter_frame` 可嵌套的层级；
+    ///   5. 内部 `current_depth` 自增/自减以实现 RAII 管理。
+    /// - **契约 (What)**：
+    ///   - `budget`：引用需在上下文生命周期内有效；建议来自 `CallContext` 的 `BudgetKind::Flow` 等限额；
+    ///   - `max_frame_size`：单位字节；`None` 表示不设限；
+    ///   - `max_recursion_depth`：`None` 表示无限制；`Some` 必须非零；
+    ///   - **前置条件**：调用前无需持有任何深度锁；
+    ///   - **后置条件**：构造完成后深度计数归零，预算尚未消费。
+    /// - **设计考量 (Trade-offs)**：
+    ///   - 统一入口避免调用方遗漏其中任一限制；
+    ///   - 深度使用 `NonZeroU16` 存储上限，可在 `no_std` 场景保持轻量；
+    ///   - 若未来需要多级预算，可在此扩展额外字段，不破坏现有 API。
+    pub fn with_limits(
+        allocator: &'a dyn BufferAllocator,
+        budget: Option<&'a Budget>,
+        max_frame_size: Option<usize>,
+        max_recursion_depth: Option<NonZeroU16>,
+    ) -> Self {
+        Self {
+            allocator,
+            max_frame_size,
+            budget,
+            max_recursion_depth,
+            current_depth: 0,
         }
     }
 
@@ -55,13 +126,168 @@ impl<'a> EncodeContext<'a> {
     pub fn max_frame_size(&self) -> Option<usize> {
         self.max_frame_size
     }
+
+    /// 返回可选的剩余额度引用，方便上层记录指标或自定义扣减逻辑。
+    pub fn budget(&self) -> Option<&'a Budget> {
+        self.budget
+    }
+
+    /// 返回当前允许的最大递归深度。
+    pub fn max_recursion_depth(&self) -> Option<NonZeroU16> {
+        self.max_recursion_depth
+    }
+
+    /// 查询当前已经进入的嵌套层级。
+    pub fn current_depth(&self) -> u16 {
+        self.current_depth
+    }
+
+    /// 校验给定帧长度是否满足帧长与预算限制，并在成功时消费预算。
+    ///
+    /// # 教案式分解
+    /// - **意图 (Why)**：
+    ///   - 防御攻击者通过巨型帧或高频帧耗尽内存；
+    ///   - 与 `BudgetKind::Flow` 等限额协同，实现精细化背压。
+    /// - **逻辑步骤 (How)**：
+    ///   1. 若设置了 `max_frame_size`，先比较长度，超过立即返回 `protocol.budget_exceeded`；
+    ///   2. 若绑定预算，则将长度安全转换为 `u64`，调用 [`Budget::try_consume`]；
+    ///   3. 成功消费返回 `Ok(())`；若预算不足，结合快照生成具备剩余额度信息的错误消息。
+    /// - **契约 (What)**：
+    ///   - **输入**：`frame_len` 必须是即将写入的字节数；
+    ///   - **输出**：成功则表示预算已扣减，调用方无需再次消费；失败保持原始预算；
+    ///   - **前置条件**：调用方应避免在同一帧上重复调用，否则会重复扣减；
+    ///   - **后置条件**：若返回错误，内部状态（深度、预算）不发生变化。
+    /// - **风险提示 (Trade-offs & Gotchas)**：
+    ///   - 若调用方需要在失败后继续处理同一帧，需显式调用 [`Self::refund_budget`] 回滚此前的消费。
+    pub fn check_frame_constraints(&self, frame_len: usize) -> Result<(), CoreError> {
+        if let Some(max) = self.max_frame_size
+            && frame_len > max
+        {
+            return Err(CoreError::new(
+                codes::PROTOCOL_BUDGET_EXCEEDED,
+                format!(
+                    "frame length {} exceeds configured encoder limit {} bytes",
+                    frame_len, max
+                ),
+            ));
+        }
+
+        if let Some(budget) = self.budget {
+            let charge = FrameCharge::new(frame_len)?;
+            match budget.try_consume(charge.amount()) {
+                BudgetDecision::Granted { .. } => {}
+                BudgetDecision::Exhausted { snapshot } => {
+                    return Err(CoreError::new(
+                        codes::PROTOCOL_BUDGET_EXCEEDED,
+                        format!(
+                            "budget {:?} exhausted: required {}, remaining {} of limit {}",
+                            snapshot.kind(),
+                            charge.amount(),
+                            snapshot.remaining(),
+                            snapshot.limit()
+                        ),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 在帧处理期间尝试进入新的递归层级，返回 RAII 守卫以在离开时自动回退计数。
+    ///
+    /// # 教案式讲解
+    /// - **意图 (Why)**：避免 JSON/Proto 等嵌套结构在极端情况下递归过深，引发栈溢出或 CPU DoS。
+    /// - **实现 (How)**：
+    ///   1. 若设置上限并已达最大深度，立即返回 `protocol.budget_exceeded`；
+    ///   2. 使用 `checked_add` 防止 `u16` 溢出；
+    ///   3. 返回 [`EncodeFrameGuard`]，其 `Drop` 会在离开作用域时自动减一。
+    /// - **契约 (What)**：
+    ///   - **前置条件**：调用方在进入下一层逻辑前必须持有守卫；
+    ///   - **后置条件**：无论函数正常返回或 panic，守卫析构都会恢复深度计数；
+    ///   - **输入**：无需显式传参，当前上下文自身携带上限信息。
+    /// - **注意事项 (Trade-offs)**：
+    ///   - `EncodeFrameGuard` 标记为 `#[must_use]`，若立即丢弃则无法真正进入下一层（相当于空操作）。
+    pub fn enter_frame(&mut self) -> Result<EncodeFrameGuard<'_, 'a>, CoreError> {
+        if let Some(limit) = self.max_recursion_depth
+            && self.current_depth >= limit.get()
+        {
+            return Err(CoreError::new(
+                codes::PROTOCOL_BUDGET_EXCEEDED,
+                format!(
+                    "encoder recursion depth {} exceeds configured limit {}",
+                    self.current_depth + 1,
+                    limit
+                ),
+            ));
+        }
+
+        self.current_depth = self.current_depth.checked_add(1).ok_or_else(|| {
+            CoreError::new(
+                codes::PROTOCOL_BUDGET_EXCEEDED,
+                "encoder recursion depth counter overflow",
+            )
+        })?;
+
+        Ok(EncodeFrameGuard {
+            ctx: self,
+            active: true,
+        })
+    }
+
+    /// 在发生回滚时归还部分预算。
+    ///
+    /// # 教案式注解
+    /// - **场景 (Why)**：编码器可能在写入部分数据后因业务校验失败而中止，需要返还已扣减的预算避免“泄漏”。
+    /// - **做法 (How)**：
+    ///   - 尝试将 `amount` 转换为 `u64`；若超出表示数值异常，直接忽略，留待上层处理；
+    ///   - 存在预算时调用 [`Budget::refund`]，否则为幂等空操作。
+    /// - **契约 (What)**：
+    ///   - 仅在之前调用过 [`Self::check_frame_constraints`] 且成功扣减时调用；
+    ///   - 方法不返回错误，确保回滚路径不会遮蔽真正的业务错误。
+    /// - **风险提示 (Trade-offs)**：超大 `amount` 会被静默忽略，以避免在 fuzz 场景下产生未定义行为。
+    pub fn refund_budget(&self, amount: usize) {
+        if let (Some(budget), Ok(amount)) = (self.budget, u64::try_from(amount)) {
+            budget.refund(amount);
+        }
+    }
 }
 
 impl fmt::Debug for EncodeContext<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EncodeContext")
             .field("max_frame_size", &self.max_frame_size)
+            .field(
+                "budget_kind",
+                &self.budget.map(|budget| budget.kind().clone()),
+            )
+            .field("max_recursion_depth", &self.max_recursion_depth)
+            .field("current_depth", &self.current_depth)
             .finish()
+    }
+}
+
+/// 编码阶段的递归深度守卫，离开作用域时自动回退深度计数。
+///
+/// # 教案级注释
+/// - **目的 (Why)**：RAII 方式保证无论函数如何返回都能恢复深度，杜绝“借入未归还”导致的深度泄漏。
+/// - **工作原理 (How)**：内部持有对 [`EncodeContext`] 的可变引用；`Drop` 实现会在析构时将 `current_depth` 减 1。
+/// - **契约 (What)**：
+///   - 仅能通过 [`EncodeContext::enter_frame`] 获取；
+///   - 释放顺序与作用域一致，适合嵌套结构；
+///   - 不公开额外方法，避免误用。
+/// - **边界情况 (Trade-offs)**：若在逻辑中手动调用 `core::mem::forget`，需要确保自行维护计数，否则会造成深度泄漏。
+#[must_use = "guard drops to release encoder recursion depth"]
+pub struct EncodeFrameGuard<'ctx, 'a> {
+    ctx: &'ctx mut EncodeContext<'a>,
+    active: bool,
+}
+
+impl Drop for EncodeFrameGuard<'_, '_> {
+    fn drop(&mut self) {
+        if self.active {
+            self.ctx.current_depth = self.ctx.current_depth.saturating_sub(1);
+        }
     }
 }
 
