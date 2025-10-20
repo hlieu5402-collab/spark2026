@@ -318,8 +318,7 @@ impl ReadyState {
     ///
     /// ## 架构定位（Where）
     /// - 处于 `status::ready` 核心模块，供 `compat_v0` 及后续迁移逻辑调用；
-    /// - 与 [`SubscriptionBudget`]、`BackpressureReason::budget_ready_state`
-    ///   等工具函数配合，构成“契约判定 → 就绪信号”的标准路径。
+    /// - 与 [`SubscriptionBudget`] 等工具函数配合，构成“契约判定 → 就绪信号”的标准路径。
     ///
     /// ## 契约定义（What）
     /// - **输入**：`decision` 必须来源于 [`Budget::try_consume`](crate::contract::Budget::try_consume)

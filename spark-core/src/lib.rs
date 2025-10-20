@@ -20,7 +20,6 @@ pub use async_trait::async_trait;
 mod sealed;
 
 pub mod audit;
-pub mod backpressure;
 pub mod buffer;
 pub mod cluster;
 pub mod codec;

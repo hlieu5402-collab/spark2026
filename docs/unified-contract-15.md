@@ -14,8 +14,8 @@
 - **CI 约束**：`make ci-no-std-alloc` 确认新原语在 `no_std + alloc` 下可编译。
 
 ## 3. 背压语义统一
-- **落地位置**：`spark-core/src/backpressure.rs` 提供 `BackpressureReason`；`spark-core/src/status/ready.rs` 暴露 `ReadyState/ReadyCheck/PollReady`，统一 `Service::poll_ready` 返回值。
-- **CI 约束**：`cargo clippy -- -D warnings` 确保所有调用方显式处理统一状态，避免忽略背压信号。
+- **落地位置**：`spark-core/src/status/ready.rs` 提供唯一的 `ReadyState/ReadyCheck/PollReady` 语义出口，并通过 `BusyReason` 抽象繁忙原因。
+- **CI 约束**：`cargo clippy -- -D warnings` 确保所有调用方显式处理统一状态，避免忽略背压信号；`tools/ci/check_consistency.sh` 负责阻止旧的 `BackpressureReason` 再次出现。
 
 ## 4. 优雅关闭契约
 - **落地位置**：`contract::CloseReason`、`pipeline::channel::Channel::close_graceful/closed`、`Context::close_graceful/closed`、`DynService::graceful_close/closed`。
