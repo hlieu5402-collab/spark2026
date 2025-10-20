@@ -17,7 +17,7 @@ set -euo pipefail
 # ## 核心策略 (How)
 # - 使用 `ripgrep`/`git ls-files` 精准定位潜在违规：
 #   1. 禁止出现新的 `enum PollReady` 定义，避免重复的就绪状态枚举。
-#   2. 禁止将 `BackpressureReason` 以 `pub` 级别对外暴露，确保唯一的内聚实现只在 crate 内部使用。
+#   2. 若检测到旧的 `BackpressureReason` 关键词，立即失败，保证仓库内不存在第二套背压原因实现。
 #   3. 禁止新增 `backpressure*.rs` 顶层文件名（保留内部模块目录结构），防止模块命名分叉。
 # - 每一项检查均返回详细的错误提示，协助开发者理解违规原因和修复建议。
 #
@@ -33,9 +33,9 @@ set -euo pipefail
 #
 # ## 设计考量与权衡 (Trade-offs)
 # - 直接使用正则匹配可以快速覆盖大部分情况，但如果未来出现宏生成代码，需要额外 guard。
-# - 对 `BackpressureReason` 检查只允许 `pub(crate)`，比 `pub(super)` 更严格，
-#   以确保类型不会泄漏到 crate 之外；若未来需要更灵活的可见性，应同步更新本脚本。
-# - 文件名检查采用 allowlist（允许 `spark-core/src/backpressure.rs` 与内部子目录），
+# - 为彻底移除旧实现，我们直接禁止任何形式的 `BackpressureReason` 字面量出现，
+#   一旦迁移完毕无需再维护可见性 allowlist，降低脚本复杂度。
+# - 文件名检查采用 allowlist（允许位于目录 `*/backpressure/` 内的内部模块），
 #   可以与现有结构兼容，但如需重构文件布局需调整 allowlist。
 #
 # ## 风险提醒 (Gotchas)
@@ -66,20 +66,18 @@ check_forbidden_poll_ready() {
     fi
 }
 
-## 检查二：禁止 `BackpressureReason` 对外公开
-# - **意图**：避免重新暴露一套公共背压原因枚举，确保调用方统一依赖 `ReadyState`。
-# - **实现逻辑**：
-#   1. 使用正则匹配 `pub`（排除 `pub(crate)`）与 `BackpressureReason` 同行的语句。
-#   2. 既覆盖 `pub enum`、`pub struct`，也包含 `pub use` 重新导出的情况。
-# - **契约**：允许 `pub(crate)` 可见性，其余可见性均视为违规。
-check_public_backpressure_reason() {
+## 检查二：禁止遗留的 `BackpressureReason`
+# - **意图**：迁移完成后彻底清除旧的背压枚举，防止贡献者从历史提交中复制粘贴旧实现。
+# - **实现逻辑**：若仓库仍出现 `BackpressureReason` 字面量，立即报告违规。
+# - **契约**：允许在 Markdown 文档中保留历史记录，但要求在 Rust 源码中完全消除。
+check_forbidden_backpressure_reason() {
     local matches
-    mapfile -t matches < <(rg --color=never --pcre2 --glob '*.rs' -n '(?m)^\s*pub(?!\s*\(crate\))[^\n]*\bBackpressureReason\b' || true)
+    mapfile -t matches < <(rg --color=never --pcre2 --glob '*.rs' -n '\bBackpressureReason\b' || true)
     if ((${#matches[@]} > 0)); then
-        printf '错误：检测到公有的 `BackpressureReason` 暴露，仅允许 `pub(crate)` 可见性。\n' >&2
+        printf '错误：检测到遗留的 `BackpressureReason` 关键词，请彻底移除旧的背压枚举实现。\n' >&2
         printf '位置：\n' >&2
         printf '  %s\n' "${matches[@]}" >&2
-        printf '建议：请改为 `pub(crate)` 或移除对外重导出，统一通过内部状态转换表达背压。\n' >&2
+        printf '建议：统一使用 `status::ready` 模块中的 `ReadyState/BusyReason`。\n' >&2
         violation_count=1
     fi
 }
@@ -88,7 +86,7 @@ check_public_backpressure_reason() {
 # - **意图**：防止再次出现平行的背压模块命名，保持模块拓扑唯一。
 # - **实现逻辑**：
 #   1. 利用 `git ls-files` 枚举所有匹配 `backpressure*.rs` 的已跟踪文件。
-#   2. 允许既有的 `spark-core/src/backpressure.rs` 及位于目录 `*/backpressure/` 内的内部模块。
+#   2. 允许位于目录 `*/backpressure/` 内的内部模块（通常为私有实现细分目录）。
 #   3. 其余命名视为违规，提示改用已有模块或内部 mod 结构。
 # - **风险提示**：若未来调整目录结构，需要同步更新 allowlist。
 check_backpressure_filenames() {
@@ -96,9 +94,6 @@ check_backpressure_filenames() {
     mapfile -t files < <(git ls-files '*backpressure*.rs')
     for file in "${files[@]}"; do
         [[ -z "$file" ]] && continue
-        if [[ "$file" == "spark-core/src/backpressure.rs" ]]; then
-            continue
-        fi
         if [[ "$file" == */backpressure/* ]]; then
             continue
         fi
@@ -109,7 +104,7 @@ check_backpressure_filenames() {
 }
 
 check_forbidden_poll_ready
-check_public_backpressure_reason
+check_forbidden_backpressure_reason
 check_backpressure_filenames
 
 if ((violation_count > 0)); then
