@@ -127,10 +127,12 @@ pub use status::ready::{
     BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice, SubscriptionBudget,
 };
 pub use transport::{
-    AvailabilityRequirement, ConnectionIntent, DynServerTransport, DynTransportFactory, Endpoint,
-    EndpointKind, ListenerConfig, ListenerShutdown, QualityOfService, SecurityMode,
-    ServerTransport, ServerTransportObject, SessionLifecycle, TransportFactory,
-    TransportFactoryObject, TransportParams, TransportSocketAddr, describe_shutdown_target,
+    AvailabilityRequirement, Capability, CapabilityBitmap, ConnectionIntent, DowngradeReport,
+    DynServerTransport, DynTransportFactory, Endpoint, EndpointKind, HandshakeError,
+    HandshakeErrorKind, HandshakeOffer, HandshakeOutcome, ListenerConfig, ListenerShutdown,
+    NegotiationAuditContext, QualityOfService, SecurityMode, ServerTransport,
+    ServerTransportObject, SessionLifecycle, TransportFactory, TransportFactoryObject,
+    TransportParams, TransportSocketAddr, Version, describe_shutdown_target, negotiate,
 };
 
 use alloc::boxed::Box;
