@@ -22,11 +22,10 @@ mod decoder;
 mod encoder;
 mod metadata;
 mod registry;
+pub mod traits;
 
 pub use decoder::{DecodeContext, DecodeOutcome, Decoder};
 pub use encoder::{EncodeContext, EncodedPayload, Encoder};
 pub use metadata::{CodecDescriptor, ContentEncoding, ContentType, SchemaDescriptor};
-pub use registry::{
-    Codec, CodecRegistry, DynCodec, DynCodecFactory, NegotiatedCodec, TypedCodecAdapter,
-    TypedCodecFactory,
-};
+pub use registry::{CodecRegistry, DynCodecFactory, NegotiatedCodec, TypedCodecFactory};
+pub use traits::{Codec, DynCodec, TypedCodecAdapter};

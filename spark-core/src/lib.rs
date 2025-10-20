@@ -94,9 +94,9 @@ pub use pipeline::{
     WriteSignal,
 };
 pub use router::{
-    RouteBinding, RouteCatalog, RouteDecision, RouteDescriptor, RouteError, RouteId, RouteKind,
-    RouteMetadata, RoutePattern, RouteSegment, RouteValidation, Router, RoutingContext,
-    RoutingIntent, RoutingSnapshot,
+    DynRouter, RouteBinding, RouteBindingObject, RouteCatalog, RouteDecision, RouteDecisionObject,
+    RouteDescriptor, RouteError, RouteId, RouteKind, RouteMetadata, RoutePattern, RouteSegment,
+    RouteValidation, Router, RouterObject, RoutingContext, RoutingIntent, RoutingSnapshot,
 };
 pub use runtime::{
     AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission, ManagedBlockingTask,
