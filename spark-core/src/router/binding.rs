@@ -162,6 +162,18 @@ where
     pub fn warnings(&self) -> &[Cow<'static, str>] {
         &self.warnings
     }
+
+    /// 拆解路由决策，返回绑定与告警集合。
+    ///
+    /// # 设计动机（Why）
+    /// - 便于对象层适配器一次性取得所有权，将泛型绑定转换为 [`RouteBindingObject`](crate::router::traits::object::RouteBindingObject)。
+    ///
+    /// # 契约说明（What）
+    /// - **前置条件**：调用方持有 `self` 的独占所有权；
+    /// - **返回值**：返回原封不动的绑定与告警向量，供上层执行类型擦除或进一步处理。
+    pub fn into_parts(self) -> (RouteBinding<S, Request>, Vec<Cow<'static, str>>) {
+        (self.binding, self.warnings)
+    }
 }
 
 /// `RouteValidation` 提供在控制面写入路由前的预检结果。
