@@ -28,7 +28,7 @@ pub use builder::{
     ValidationReport, ValidationState,
 };
 pub use change::{ChangeEvent, ChangeNotification, ChangeSet};
-pub use error::{ConfigurationError, SourceRegistrationError};
+pub use error::{ConfigurationError, ConfigurationErrorKind, SourceRegistrationError};
 pub use key::{ConfigKey, ConfigScope};
 pub use profile::{ProfileDescriptor, ProfileId, ProfileLayering};
 pub use snapshot::{

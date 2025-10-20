@@ -19,6 +19,7 @@ pub use async_trait::async_trait;
 
 mod sealed;
 
+pub mod audit;
 pub mod backpressure;
 pub mod buffer;
 pub mod cluster;
@@ -39,6 +40,10 @@ pub mod service;
 pub mod status;
 pub mod transport;
 
+pub use audit::{
+    AuditActor, AuditChangeEntry, AuditChangeSet, AuditContext, AuditDeletedEntry, AuditEntityRef,
+    AuditError, AuditEventV1, AuditPipeline, AuditRecorder, AuditStateHasher, TsaEvidence,
+};
 pub use backpressure::BackpressureReason;
 pub use buffer::{
     BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,

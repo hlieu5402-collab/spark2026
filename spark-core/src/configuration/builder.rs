@@ -1,15 +1,19 @@
 use alloc::borrow::Cow;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{boxed::Box, sync::Arc};
 use core::fmt;
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use crate::audit::{AuditChangeSet, AuditEntityRef, AuditEventV1, AuditPipeline, AuditStateHasher};
+
 use super::{
     ChangeCallback, ChangeEvent, ChangeNotification, ChangeSet, ConfigKey, ConfigValue,
-    ConfigurationError, ConfigurationLayer, ConfigurationSnapshot, ConfigurationSource,
-    ProfileDescriptor, ProfileId, ProfileLayering, SourceRegistrationError, WatchToken,
+    ConfigurationError, ConfigurationErrorKind, ConfigurationLayer, ConfigurationSnapshot,
+    ConfigurationSource, ProfileDescriptor, ProfileId, ProfileLayering, SourceRegistrationError,
+    WatchToken,
 };
 
 /// 已解析的配置结果。
@@ -41,6 +45,8 @@ pub struct ResolvedConfiguration {
 /// - `profile`：当前句柄绑定的 Profile。
 /// - `layers`：存放原始 Layer，保持可追溯性。
 /// - `watchers`：记录回调，确保变更时能广播。
+/// - `audit`：可选的审计流水线，当存在时在变更后写入哈希链事件。
+/// - `audit_chain_tip`：最近一次成功写入的状态哈希，用于检测事件缺失。
 ///
 /// ### 设计取舍（Trade-offs）
 /// - 当前实现仅提供同步回调列表；异步扩展可在上层包装。
@@ -50,6 +56,8 @@ pub struct LayeredConfiguration {
     layers: Vec<ConfigurationLayer>,
     watchers: Vec<Arc<dyn ChangeCallback + Send + Sync>>, // 简化实现：直接存储回调引用
     version: AtomicU64,
+    audit: Option<AuditPipeline>,
+    audit_chain_tip: Option<String>,
 }
 
 impl LayeredConfiguration {
@@ -73,6 +81,8 @@ impl LayeredConfiguration {
             layers: Vec::new(),
             watchers: Vec::new(),
             version: AtomicU64::new(0),
+            audit: None,
+            audit_chain_tip: None,
         }
     }
 
@@ -536,6 +546,7 @@ pub struct ConfigurationBuilder {
     profile: Option<ProfileDescriptor>,
     sources: Vec<Box<dyn ConfigurationSource>>, // 采用 trait object 以兼容多种实现
     capacity: Option<usize>,
+    audit: Option<AuditPipeline>,
 }
 
 impl ConfigurationBuilder {
@@ -568,6 +579,19 @@ impl ConfigurationBuilder {
     /// - 仅限制数量，不限制来源类型，保持扩展自由度。
     pub fn with_capacity(mut self, capacity: usize) -> Self {
         self.capacity = Some(capacity);
+        self
+    }
+
+    /// 注入审计流水线。
+    ///
+    /// ### 设计意图（Why）
+    /// - 将审计记录逻辑与核心 Builder 解耦，允许调用方按需插拔不同的 Recorder 实现。
+    ///
+    /// ### 契约说明（What）
+    /// - **输入**：[`AuditPipeline`]，包含 Recorder 与静态上下文信息。
+    /// - **后置条件**：后续调用 `build` 时，增量变更会生成 [`AuditEventV1`](crate::audit::AuditEventV1)。
+    pub fn with_audit_pipeline(mut self, pipeline: AuditPipeline) -> Self {
+        self.audit = Some(pipeline);
         self
     }
 
@@ -670,7 +694,10 @@ impl ConfigurationBuilder {
     /// - 快照始终脱敏加密字段，若业务需要调试原文，需要在可信环境额外导出。
     pub fn build(self) -> Result<BuildOutcome, BuildError> {
         let ConfigurationBuilder {
-            profile, sources, ..
+            profile,
+            sources,
+            capacity: _,
+            audit,
         } = self;
         let mut report = ValidationReport::new();
 
@@ -789,6 +816,12 @@ impl ConfigurationBuilder {
         let snapshot = ConfigurationSnapshot::capture(&descriptor, &snapshot_layers, &resolved);
         report.record_pass("snapshot.capture", "redacted snapshot generated");
 
+        let initial_hash = AuditStateHasher::hash_configuration(resolved.values.iter());
+        if let Some(pipeline) = audit.clone() {
+            layered.audit = Some(pipeline);
+        }
+        layered.audit_chain_tip = Some(initial_hash);
+
         let build_report = BuildReport::new(report, snapshot);
         let handle = ConfigurationHandle {
             layered,
@@ -897,7 +930,8 @@ impl LayeredConfiguration {
     /// ### 执行逻辑（How）
     /// 1. 遍历事件，根据类型分别调用 `upsert_entry` 或 `remove_entry`。
     /// 2. 将受影响的键值收集到增量结果中。
-    /// 3. 自增版本号并调用 [`broadcast`](Self::broadcast)。
+    /// 3. 生成审计事件并写入 Recorder（若已配置）；失败时回滚并返回 [`ConfigurationErrorKind::Audit`]。
+    /// 4. 自增版本号并调用 [`broadcast`](Self::broadcast)。
     ///
     /// ### 风险提示（Trade-offs）
     /// - 若通知包含重复事件（同一键多次更新），后一个事件会覆盖前一事件，返回值亦体现最终状态。
@@ -905,6 +939,23 @@ impl LayeredConfiguration {
         &mut self,
         notification: ChangeNotification,
     ) -> Result<ChangeSet, ConfigurationError> {
+        let before_snapshot = self.resolve();
+        let state_prev_hash = AuditStateHasher::hash_configuration(before_snapshot.values.iter());
+        if let Some(chain_tip) = &self.audit_chain_tip {
+            if chain_tip != &state_prev_hash {
+                return Err(ConfigurationError::with_context(
+                    ConfigurationErrorKind::Conflict,
+                    "audit hash mismatch before applying change",
+                ));
+            }
+        } else {
+            self.audit_chain_tip = Some(state_prev_hash.clone());
+        }
+
+        let previous_layers = self.layers.clone();
+        let previous_chain_tip = self.audit_chain_tip.clone();
+        let previous_version = self.version.load(Ordering::SeqCst);
+
         let mut created = Vec::new();
         let mut updated = Vec::new();
         let mut deleted = Vec::new();
@@ -923,14 +974,55 @@ impl LayeredConfiguration {
             }
         }
 
-        self.version.fetch_add(1, Ordering::SeqCst);
-        self.broadcast(notification.clone())?;
+        self.version.store(previous_version + 1, Ordering::SeqCst);
 
-        Ok(ChangeSet {
+        let change_set = ChangeSet {
             created,
             updated,
             deleted,
-        })
+        };
+
+        let after_snapshot = self.resolve();
+        let state_curr_hash = AuditStateHasher::hash_configuration(after_snapshot.values.iter());
+
+        if let Some(pipeline) = &self.audit {
+            let audit_event = AuditEventV1 {
+                event_id: format!(
+                    "{}:{}:{}",
+                    self.profile.as_str(),
+                    notification.sequence,
+                    after_snapshot.version
+                ),
+                sequence: notification.sequence,
+                entity: AuditEntityRef {
+                    kind: pipeline.context.entity_kind.clone(),
+                    id: self.profile.as_str().to_string(),
+                    labels: pipeline.context.entity_labels.clone(),
+                },
+                action: pipeline.context.action.clone(),
+                state_prev_hash: state_prev_hash.clone(),
+                state_curr_hash: state_curr_hash.clone(),
+                actor: pipeline.context.actor.clone(),
+                occurred_at: notification.occurred_at,
+                tsa_evidence: pipeline.context.tsa_evidence.clone(),
+                changes: AuditChangeSet::from_change_set(&change_set),
+            };
+
+            if let Err(error) = pipeline.recorder.record(audit_event) {
+                self.layers = previous_layers;
+                self.version.store(previous_version, Ordering::SeqCst);
+                self.audit_chain_tip = previous_chain_tip;
+                return Err(ConfigurationError::with_context(
+                    ConfigurationErrorKind::Audit,
+                    format!("audit recorder failure: {}", error.message()),
+                ));
+            }
+        }
+
+        self.audit_chain_tip = Some(state_curr_hash);
+        self.broadcast(notification.clone())?;
+
+        Ok(change_set)
     }
 
     /// 在现有 Layer 中插入或更新配置项。
@@ -992,10 +1084,15 @@ impl LayeredConfiguration {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "std")]
+    use crate::audit::InMemoryAuditRecorder;
+    use crate::audit::{AuditActor, AuditContext, AuditError, AuditPipeline, AuditRecorder};
     use crate::configuration::error::ConfigurationErrorKind;
     use crate::configuration::{
         ConfigKey, ConfigMetadata, ConfigScope, ConfigValue, ProfileId, SourceMetadata,
     };
+    use alloc::borrow::Cow;
+    use alloc::sync::Arc;
 
     struct ControlledSource {
         layers: Vec<ConfigurationLayer>,
@@ -1032,6 +1129,204 @@ mod tests {
                 Ok(self.layers.clone())
             }
         }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn apply_change_emits_audit_event() {
+        let recorder = Arc::new(InMemoryAuditRecorder::new());
+        let pipeline = AuditPipeline {
+            recorder: recorder.clone() as Arc<dyn AuditRecorder>,
+            context: AuditContext::new(
+                Cow::Borrowed("configuration.profile"),
+                AuditActor {
+                    id: Cow::Borrowed("system"),
+                    display_name: Some(Cow::Borrowed("System")),
+                    tenant: None,
+                },
+                Cow::Borrowed("apply_changeset"),
+            ),
+        };
+
+        let profile = ProfileDescriptor::new(
+            ProfileId::new("test"),
+            Vec::new(),
+            ProfileLayering::BaseFirst,
+            "unit",
+        );
+        let mut builder = ConfigurationBuilder::new()
+            .with_profile(profile.clone())
+            .with_audit_pipeline(pipeline);
+
+        let key = ConfigKey::new("demo", "message", ConfigScope::Global, "demo message");
+        let metadata = ConfigMetadata::default();
+        let layer = ConfigurationLayer {
+            metadata: SourceMetadata::new("inline", 0, None),
+            entries: vec![(
+                key.clone(),
+                ConfigValue::Text(Cow::Borrowed("hello"), metadata.clone()),
+            )],
+        };
+        builder
+            .register_source(Box::new(ControlledSource::success(vec![layer])))
+            .expect("register source");
+
+        let mut handle = builder.build().expect("build").handle;
+        let previous_hash = handle
+            .layered
+            .audit_chain_tip
+            .clone()
+            .expect("initial hash set");
+
+        let notification = ChangeNotification::new(
+            2,
+            1_700_000_000_000,
+            vec![ChangeEvent::Updated {
+                key: key.clone(),
+                value: ConfigValue::Text(Cow::Borrowed("world"), metadata.clone()),
+            }],
+        );
+
+        let change_set = handle
+            .layered
+            .apply_change(notification.clone())
+            .expect("apply change");
+
+        assert_eq!(change_set.created.len(), 0);
+        assert_eq!(change_set.updated.len(), 1);
+        assert_eq!(change_set.deleted.len(), 0);
+
+        let events = recorder.events();
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        assert_eq!(event.sequence, 2);
+        assert_eq!(event.state_prev_hash, previous_hash);
+        assert_eq!(event.entity.id, profile.identifier.as_str());
+        assert_eq!(event.changes.updated.len(), 1);
+        assert_eq!(event.changes.updated[0].key, key);
+        assert_eq!(
+            event.changes.updated[0].value,
+            ConfigValue::Text(Cow::Borrowed("world"), metadata.clone())
+        );
+        assert_eq!(event.occurred_at, 1_700_000_000_000);
+
+        let new_hash = handle
+            .layered
+            .audit_chain_tip
+            .clone()
+            .expect("hash updated");
+        assert_eq!(event.state_curr_hash, new_hash);
+    }
+
+    #[test]
+    fn apply_change_detects_hash_gap() {
+        let profile = ProfileDescriptor::new(
+            ProfileId::new("test"),
+            Vec::new(),
+            ProfileLayering::BaseFirst,
+            "unit",
+        );
+        let mut builder = ConfigurationBuilder::new().with_profile(profile);
+        let key = ConfigKey::new("demo", "message", ConfigScope::Global, "demo message");
+        let metadata = ConfigMetadata::default();
+        let layer = ConfigurationLayer {
+            metadata: SourceMetadata::new("inline", 0, None),
+            entries: vec![(
+                key.clone(),
+                ConfigValue::Text(Cow::Borrowed("hello"), metadata.clone()),
+            )],
+        };
+        builder
+            .register_source(Box::new(ControlledSource::success(vec![layer])))
+            .expect("register source");
+
+        let mut handle = builder.build().expect("build").handle;
+        handle.layered.audit_chain_tip = Some("bogus".to_string());
+
+        let notification = ChangeNotification::new(
+            2,
+            1_700_000_000_000,
+            vec![ChangeEvent::Updated {
+                key,
+                value: ConfigValue::Text(Cow::Borrowed("world"), metadata),
+            }],
+        );
+
+        let error = handle
+            .layered
+            .apply_change(notification)
+            .expect_err("hash gap should fail");
+        assert_eq!(error.kind(), ConfigurationErrorKind::Conflict);
+    }
+
+    struct FailingRecorder;
+
+    impl AuditRecorder for FailingRecorder {
+        fn record(&self, _event: AuditEventV1) -> Result<(), AuditError> {
+            Err(AuditError::new("forced failure"))
+        }
+    }
+
+    #[test]
+    fn apply_change_rolls_back_on_audit_failure() {
+        let profile = ProfileDescriptor::new(
+            ProfileId::new("test"),
+            Vec::new(),
+            ProfileLayering::BaseFirst,
+            "unit",
+        );
+        let pipeline = AuditPipeline {
+            recorder: Arc::new(FailingRecorder) as Arc<dyn AuditRecorder>,
+            context: AuditContext::new(
+                Cow::Borrowed("configuration.profile"),
+                AuditActor {
+                    id: Cow::Borrowed("system"),
+                    display_name: None,
+                    tenant: None,
+                },
+                Cow::Borrowed("apply_changeset"),
+            ),
+        };
+
+        let mut builder = ConfigurationBuilder::new()
+            .with_profile(profile)
+            .with_audit_pipeline(pipeline);
+        let key = ConfigKey::new("demo", "message", ConfigScope::Global, "demo message");
+        let metadata = ConfigMetadata::default();
+        let layer = ConfigurationLayer {
+            metadata: SourceMetadata::new("inline", 0, None),
+            entries: vec![(
+                key.clone(),
+                ConfigValue::Text(Cow::Borrowed("hello"), metadata.clone()),
+            )],
+        };
+        builder
+            .register_source(Box::new(ControlledSource::success(vec![layer])))
+            .expect("register source");
+
+        let mut handle = builder.build().expect("build").handle;
+        let notification = ChangeNotification::new(
+            2,
+            1_700_000_000_000,
+            vec![ChangeEvent::Updated {
+                key: key.clone(),
+                value: ConfigValue::Text(Cow::Borrowed("world"), metadata.clone()),
+            }],
+        );
+
+        let error = handle
+            .layered
+            .apply_change(notification)
+            .expect_err("audit failure should abort");
+        assert_eq!(error.kind(), ConfigurationErrorKind::Audit);
+
+        let snapshot = handle.layered.resolve();
+        let value = snapshot
+            .values
+            .get(&key)
+            .expect("value retained after rollback");
+        assert_eq!(value, &ConfigValue::Text(Cow::Borrowed("hello"), metadata));
+        assert_eq!(snapshot.version, 1);
     }
 
     #[test]

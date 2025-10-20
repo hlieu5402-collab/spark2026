@@ -13,6 +13,7 @@ use core::fmt;
 /// - `Decode`：原始数据解析失败，提供上下文说明。
 /// - `Validation`：业务规则校验失败，例如缺失必填字段。
 /// - `Conflict`：多源合并发生冲突，需要人工介入。
+/// - `Audit`：审计链路写入失败，需要上层触发重试或人工干预。
 ///
 /// ### 契约说明（What）
 /// - 实现 [`crate::Error`]，在 `no_std` 环境中保持错误链的可追踪性。
@@ -27,6 +28,7 @@ pub enum ConfigurationError {
     Decode { context: Cow<'static, str> },
     Validation { context: Cow<'static, str> },
     Conflict { context: Cow<'static, str> },
+    Audit { context: Cow<'static, str> },
 }
 
 impl ConfigurationError {
@@ -48,6 +50,9 @@ impl ConfigurationError {
             ConfigurationErrorKind::Conflict => Self::Conflict {
                 context: context.into(),
             },
+            ConfigurationErrorKind::Audit => Self::Audit {
+                context: context.into(),
+            },
         }
     }
 
@@ -58,6 +63,7 @@ impl ConfigurationError {
             Self::Decode { .. } => ConfigurationErrorKind::Decode,
             Self::Validation { .. } => ConfigurationErrorKind::Validation,
             Self::Conflict { .. } => ConfigurationErrorKind::Conflict,
+            Self::Audit { .. } => ConfigurationErrorKind::Audit,
         }
     }
 
@@ -67,7 +73,8 @@ impl ConfigurationError {
             Self::Source { context }
             | Self::Decode { context }
             | Self::Validation { context }
-            | Self::Conflict { context } => context,
+            | Self::Conflict { context }
+            | Self::Audit { context } => context,
         }
     }
 }
@@ -92,6 +99,7 @@ pub enum ConfigurationErrorKind {
     Decode,
     Validation,
     Conflict,
+    Audit,
 }
 
 impl fmt::Display for ConfigurationErrorKind {
@@ -101,6 +109,7 @@ impl fmt::Display for ConfigurationErrorKind {
             Self::Decode => "decode",
             Self::Validation => "validation",
             Self::Conflict => "conflict",
+            Self::Audit => "audit",
         };
         f.write_str(name)
     }
