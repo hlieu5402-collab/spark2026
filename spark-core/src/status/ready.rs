@@ -1,3 +1,25 @@
+//! 服务就绪与背压语义的权威锚点模块。
+//!
+//! ## 设计目标（Why）
+//! - **统一语义出口**：集中定义 `ReadyState`、`ReadyCheck` 与 [`PollReady`]，避免在路由、服务 Trait
+//!   等子域重复声明枚举导致语义漂移。
+//! - **支撑统一文档**：通过 `cargo doc` 仅生成此处的类型说明，让调用方在查阅 API 时不会遇到多个冲突
+//!   定义，降低认知成本。
+//!
+//! ## 契约说明（What）
+//! - 所有对外暴露的就绪检查函数必须返回 [`PollReady`]，错误类型由调用场景自定义；
+//! - 唯一合法的别名声明形如 `type PollReady = Poll<ReadyCheck<_>>`，不得额外定义平行枚举；
+//! - 模块同时提供 [`BusyReason`]、[`RetryAdvice`] 等上下文结构，作为上层实现的组成部分。
+//!
+//! ## 集成指引（How）
+//! - 上层若需要扩展状态，须在 [`ReadyState`] 中新增分支，并更新相关构造函数或文档；
+//! - 若现有代码存在自定义 `PollReady` 枚举，必须迁移至 `type PollReady<E> = Poll<ReadyCheck<E>>` 的别名，
+//!   以便框架内的泛型与对象层均能共享一致的签名；
+//! - 扩展文档或教程时，请引用 `spark-core::status::ready` 作为唯一的 API 链接，确保“单一事实来源”。
+//!
+//! ## 风险与注意事项（Trade-offs）
+//! - 在 `no_std` 环境下依赖 `alloc`，需要调用方在启用 `alloc` 特性时同步链接；
+//! - 扩展状态时须评估对序列化、兼容层的影响，避免新分支破坏旧版本调用方的匹配逻辑。
 use crate::contract::BudgetSnapshot;
 use alloc::{borrow::Cow, fmt};
 use core::convert::TryFrom;
