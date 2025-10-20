@@ -1,0 +1,32 @@
+name: 文档质量守卫
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  rustdoc-and-links:
+    name: Rust 文档与链接检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-docs
+
+      - name: Build docs with warnings denied
+        env:
+          RUSTDOCFLAGS: -D warnings -D rustdoc::broken_intra_doc_links
+        run: cargo doc --workspace --all-features --no-deps
+
+      - name: Check documentation links
+        uses: lycheeverse/lychee-action@v1.10.0
+        with:
+          args: --config .lychee.toml docs/**/*.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

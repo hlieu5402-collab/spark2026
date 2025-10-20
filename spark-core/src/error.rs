@@ -47,6 +47,32 @@ pub struct CoreError {
 
 impl CoreError {
     /// 构造核心错误。
+    ///
+    /// # 设计意图（Why）
+    /// - 为框架与业务扩展提供统一的错误入口，确保所有错误码、消息在进入可观测链路前完成标准化封装。
+    /// - 结合 [`crate::error::codes`] 模块的稳定枚举，帮助审计、SLO 与补救流程做精确分类。
+    ///
+    /// # 契约定义（What）
+    /// - **输入参数**：
+    ///   - `code`：遵循 `<领域>.<语义>` 约定的稳定错误码；调用方需保证其已在设计规范中备案。
+    ///   - `message`：面向排障人员的自然语言描述，可为 `&'static str` 或堆分配字符串。
+    /// - **前置条件**：调用场景已经根据业务上下文选定合适的错误码，且 `message` 不包含敏感信息。
+    /// - **后置条件**：返回的 [`CoreError`] 拥有独立所有权，可在线程间安全传递，并准备好被进一步附加 Trace、节点信息或底层原因。
+    ///
+    /// # 执行步骤（How）
+    /// 1. 将 `code` 与 `message` 按值存储，必要时触发一次堆分配以持有动态描述。
+    /// 2. 将 `cause` 初始化为空，调用方可稍后通过 [`with_cause`](Self::with_cause) 或 [`set_cause`](Self::set_cause) 填充。
+    ///
+    /// # 示例（Examples）
+    /// ```rust
+    /// use spark_core::CoreError;
+    /// use spark_core::error::codes;
+    ///
+    /// let err = CoreError::new(codes::APP_UNAUTHORIZED, "token expired");
+    /// assert_eq!(err.code(), codes::APP_UNAUTHORIZED);
+    /// assert_eq!(err.message(), "token expired");
+    /// assert!(err.cause().is_none(), "初始错误默认不含底层原因");
+    /// ```
     pub fn new(code: &'static str, message: impl Into<Cow<'static, str>>) -> Self {
         Self {
             code,
