@@ -141,8 +141,8 @@ impl Default for Deadline {
 /// # 契约说明（What）
 /// - 框架预置 `Decode` 与 `Flow` 两种常见预算；`Custom` 可用于扩展其他资源类型（例如 CPU、数据库连接数）。
 /// - 自定义标识建议使用 `namespace.key` 形式，便于在日志与指标中区分来源。
-#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum BudgetKind {
     /// 协议解码预算（单位自定义，如字节、消息数）。
     Decode,
@@ -194,8 +194,8 @@ impl BudgetSnapshot {
 }
 
 /// 预算消费决策，用于背压枚举与 Service::poll_ready 返回值。
-#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BudgetDecision {
     /// 预算充足，允许继续执行。
     Granted { snapshot: BudgetSnapshot },

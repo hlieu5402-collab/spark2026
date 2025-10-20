@@ -48,6 +48,7 @@ pub struct ConfigMetadata {
 /// - 未引入 `serde::Deserialize` 约束，避免强绑序列化方案；实际落地时可在上层实现转换。
 /// - `List` 与 `Dictionary` 采用 `Vec` 以保持顺序性，便于与 YAML/JSON 对齐；若需高性能查询可在业务侧转换。
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum ConfigValue {
     Boolean(bool, ConfigMetadata),
     Integer(i64, ConfigMetadata),

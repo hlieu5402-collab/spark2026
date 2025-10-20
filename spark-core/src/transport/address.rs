@@ -19,6 +19,7 @@ use core::net::Ipv6Addr;
 /// - 未对 IPv6 进行零压缩优化，优先保证直观可读；若需最小化字符串长度，可在上层做缓存。
 /// - 暂未内建 Unix Domain Socket/管道支持，避免在 `no_std` 环境引入额外依赖；可在未来新增枚举变体。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum TransportSocketAddr {
     /// IPv4 地址。
     V4 { addr: [u8; 4], port: u16 },

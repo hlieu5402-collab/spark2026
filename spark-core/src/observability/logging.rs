@@ -1,5 +1,5 @@
 use super::{attributes::AttributeSet, trace::TraceContext};
-use crate::Error;
+use crate::{Error, sealed::Sealed};
 use alloc::borrow::Cow;
 
 /// 日志级别枚举，参考 OpenTelemetry `SeverityNumber` 与 `tracing` crate 的交集。
@@ -12,6 +12,7 @@ use alloc::borrow::Cow;
 /// - **前置条件**：使用者需根据业务重要性正确选择级别，以便告警系统匹配阈值。
 /// - **后置条件**：日志导出器可依据级别映射到目标系统（如 syslog、OpenTelemetry LogData）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum LogSeverity {
     Trace,
     Debug,
@@ -105,7 +106,7 @@ impl<'a> LogRecord<'a> {
 ///
 /// # 风险提示（Trade-offs）
 /// - 在高吞吐场景中，请谨慎使用拥有所有权的复制以免重复分配；建议通过批处理或环形缓冲优化。
-pub trait Logger: Send + Sync + 'static {
+pub trait Logger: Send + Sync + 'static + Sealed {
     /// 提交结构化日志。
     fn log(&self, record: &LogRecord<'_>);
 

@@ -99,6 +99,7 @@ impl IdentityDescriptor {
 /// - **机器**：吸收 AWS IAM 机器身份、SSH 主机密钥场景，强调宿主级别认证。
 /// - **自定义**：允许对接私有身份系统，避免枚举膨胀。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum IdentityKind {
     /// 运行在容器、虚拟机或函数上的工作负载。
     Workload,
@@ -134,6 +135,7 @@ pub enum IdentityKind {
 /// # 风险提示
 /// - 字节数组未做保密处理，敏感信息在加载后需尽快清理或移交安全内存管理组件。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum IdentityProof {
     /// DER 编码的 X.509 证书链。
     X509Chain(Vec<u8>),

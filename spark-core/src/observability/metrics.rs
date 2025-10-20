@@ -1,6 +1,8 @@
 use super::attributes::AttributeSet;
 use alloc::sync::Arc;
 
+use crate::sealed::Sealed;
+
 /// 指标仪表的元数据描述。
 ///
 /// # 设计背景（Why）
@@ -53,7 +55,7 @@ impl<'a> InstrumentDescriptor<'a> {
 ///
 /// # 风险提示（Trade-offs）
 /// - 高频调用建议批量聚合后再提交，避免对远端后端造成压力。
-pub trait Counter: Send + Sync {
+pub trait Counter: Send + Sync + Sealed {
     /// 累加指标值。
     fn add(&self, value: u64, attributes: AttributeSet<'_>);
 
@@ -74,7 +76,7 @@ pub trait Counter: Send + Sync {
 ///
 /// # 风险提示（Trade-offs）
 /// - 若底层实现使用互斥锁，在高频场景可能成为瓶颈；可结合原子类型或分片计数器优化。
-pub trait Gauge: Send + Sync {
+pub trait Gauge: Send + Sync + Sealed {
     /// 直接设置数值。
     fn set(&self, value: f64, attributes: AttributeSet<'_>);
 
@@ -96,7 +98,7 @@ pub trait Gauge: Send + Sync {
 ///
 /// # 风险提示（Trade-offs）
 /// - 高精度配置可能带来内存与 CPU 开销；建议根据场景权衡桶数量。
-pub trait Histogram: Send + Sync {
+pub trait Histogram: Send + Sync + Sealed {
     /// 记录样本值。
     fn record(&self, value: f64, attributes: AttributeSet<'_>);
 }
@@ -115,7 +117,7 @@ pub trait Histogram: Send + Sync {
 ///
 /// # 风险提示（Trade-offs）
 /// - 后端初始化失败时，建议返回降级实现（如空操作仪表），而非直接 panic。
-pub trait MetricsProvider: Send + Sync + 'static {
+pub trait MetricsProvider: Send + Sync + 'static + Sealed {
     /// 获取或创建单调递增计数器。
     fn counter(&self, descriptor: &InstrumentDescriptor<'_>) -> Arc<dyn Counter>;
 

@@ -113,6 +113,7 @@ impl CredentialDescriptor {
 /// # 设计参考
 /// - 结合 OAuth2 token scopes、Envoy SDS secret 类型、gRPC channel credentials 分类，将范围划分为连接/会话/消息层。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CredentialScope {
     /// 面向传输连接（如 TLS 握手、QUIC 路径验证）。
     Connection,
@@ -127,6 +128,7 @@ pub enum CredentialScope {
 /// # 背景
 /// - 提供统一封装，便于在 `no_std` 环境通过 `Vec<u8>` 或字符串传输不同格式的密钥和令牌。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CredentialMaterial {
     /// DER 编码证书或私钥。
     CertificateChain(Vec<u8>),
@@ -227,6 +229,7 @@ impl Credential {
 
 /// 凭证状态枚举。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CredentialState {
     /// 凭证仍可使用。
     Active,

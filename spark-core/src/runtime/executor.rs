@@ -1,6 +1,8 @@
 use super::task::{BlockingTaskSubmission, LocalTaskSubmission, SendTaskSubmission, TaskHandle};
 use alloc::boxed::Box;
 
+use crate::sealed::Sealed;
+
 /// `TaskExecutor` 定义运行时的任务调度契约。
 ///
 /// # 设计背景（Why）
@@ -20,7 +22,7 @@ use alloc::boxed::Box;
 ///
 /// # 风险提示（Trade-offs）
 /// - 对象安全接口牺牲部分泛型性能，但换取运行时注入灵活性；对极端性能敏感场景可在宿主侧提供特化接口。
-pub trait TaskExecutor: Send + Sync + 'static {
+pub trait TaskExecutor: Send + Sync + 'static + Sealed {
     /// 提交一个跨线程可调度的异步任务。
     fn spawn(&self, task: SendTaskSubmission) -> Box<dyn TaskHandle>;
 

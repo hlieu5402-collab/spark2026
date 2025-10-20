@@ -1,7 +1,6 @@
 use alloc::borrow::Cow;
 
-use crate::Error;
-use crate::service::Service;
+use crate::{Error, sealed::Sealed, service::Service};
 
 use super::binding::{RouteDecision, RouteValidation};
 use super::context::RoutingContext;
@@ -20,6 +19,7 @@ use super::route::{RouteId, RoutePattern};
 /// - `ServiceUnavailable`：路由存在但绑定的 Service 当前不可用，包含路由 ID 与底层错误。
 /// - `Internal`：其他内部错误，直接暴露底层原因以便调试。
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum RouteError<E>
 where
     E: Error,
@@ -70,7 +70,7 @@ where
 ///   并在观测日志中补充错误码，保持与路由路径一致的可观测性。
 /// - `validate`：当检测到未支持的扩展字段时，应在验证结果中附带
 ///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，避免配置在控制面落地后才触发运行时错误。
-pub trait Router<Request> {
+pub trait Router<Request>: Sealed {
     /// 绑定的 Service 类型。
     type Service: Service<Request>;
     /// 路由过程中产生的错误类型。

@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::result_large_err)]
+#![allow(private_bounds)]
 #![doc = "spark-core: 高性能、协议无关、分布式原生的异步通信框架核心契约。"]
 #![doc = ""]
 #![doc = "== 兼容性与版本治理 (P1.10) =="]
@@ -13,6 +14,8 @@
 #![doc = "纯 `no_std`（无分配器）环境暂不支持；若在无堆平台使用，需由调用方提供等价的内存与调度设施。最新的可行性研究（参见 docs/no-std-compatibility-report.md）已探索通过泛型化消息体、外部 Arena Trait、静态容量容器等思路，引入以 feature flag 控制的“极简契约”作为长期演进方向。现阶段该能力仍处于调研期，我们会在确定迁移策略后再发布实验性接口。"]
 
 extern crate alloc;
+
+mod sealed;
 
 pub mod backpressure;
 pub mod buffer;
@@ -58,17 +61,16 @@ pub use configuration::{
     ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId, ProfileLayering,
     ResolvedConfiguration, SourceMetadata, WatchToken,
 };
-pub use error::{
-    CoreError, DomainError, DomainErrorKind, ErrorCause, ImplError, ImplErrorKind, IntoCoreError,
-    IntoDomainError,
-};
 pub use context::ExecutionContext;
 pub use contract::{
     Budget, BudgetDecision, BudgetKind, BudgetSnapshot, CallContext, CallContextBuilder,
     Cancellation, CloseReason, DEFAULT_OBSERVABILITY_CONTRACT, Deadline, ObservabilityContract,
     SecurityContextSnapshot,
 };
-pub use error::{CoreError, ErrorCause, ImplError, SparkError};
+pub use error::{
+    CoreError, DomainError, DomainErrorKind, ErrorCause, ImplError, ImplErrorKind, IntoCoreError,
+    IntoDomainError, SparkError,
+};
 pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use host::{
     CapabilityDescriptor, CapabilityLevel, ComponentDescriptor, ComponentFactory,
@@ -140,7 +142,7 @@ use core::fmt;
 /// # 设计取舍与风险（Trade-offs）
 /// - 我们没有引入 `Send + Sync` 约束，避免对 `no_std` 设备强加多余负担；需要线程安全时请使用 `ErrorCause` 类型别名。
 /// - 调用方需注意：若底层错误不提供 `source`，则错误链会在此处终止，这是设计上允许的边界情况。
-pub trait Error: fmt::Debug + fmt::Display {
+pub trait Error: fmt::Debug + fmt::Display + crate::sealed::Sealed {
     /// 返回当前错误的上游来源。
     fn source(&self) -> Option<&(dyn Error + 'static)>;
 }

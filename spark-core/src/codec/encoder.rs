@@ -1,6 +1,6 @@
 use super::metadata::CodecDescriptor;
-use crate::CoreError;
 use crate::buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut};
+use crate::{CoreError, sealed::Sealed};
 use alloc::boxed::Box;
 use core::fmt;
 
@@ -121,7 +121,7 @@ impl fmt::Debug for EncodedPayload {
 ///
 /// # 风险提示（Trade-offs）
 /// - 接口未强制 `&mut self`，方便实现者以无状态单例形式注册，但若内部需要缓存，应自行处理并发安全。
-pub trait Encoder: Send + Sync + 'static {
+pub trait Encoder: Send + Sync + 'static + Sealed {
     /// 编码输入的具体业务类型。
     type Item: Send + Sync + 'static;
 

@@ -1,5 +1,5 @@
-use crate::Error;
 use crate::host::context::HostContext;
+use crate::{Error, sealed::Sealed};
 use alloc::string::String;
 
 /// 宿主生命周期阶段。
@@ -8,6 +8,7 @@ use alloc::string::String;
 /// - 汇总 Kubernetes Pod Phase、Envoy Warmup 以及 Dapr Runtime 生命周期钩子的最佳实践。
 /// - 统一阶段定义有助于组件实现延迟加载、灰度发布等策略。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StartupPhase {
     /// 宿主刚启动，尚未暴露网络端口。
     Bootstrapping,
@@ -19,6 +20,7 @@ pub enum StartupPhase {
 
 /// 宿主停止的原因枚举。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ShutdownReason {
     /// 正常滚动升级或运维。
     Graceful,
@@ -45,7 +47,7 @@ pub enum ShutdownReason {
 ///
 /// # 风险提示（Trade-offs）
 /// - 生命周期回调设计为同步方法，以保持调用顺序的可预测性；若回调逻辑耗时，应由实现方自行开启异步流程，避免阻塞宿主线程。
-pub trait HostLifecycle {
+pub trait HostLifecycle: Sealed {
     /// 错误类型。
     type Error: Error;
 

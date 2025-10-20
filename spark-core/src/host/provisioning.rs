@@ -1,5 +1,5 @@
-use crate::Error;
 use crate::host::context::HostContext;
+use crate::{Error, sealed::Sealed};
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -118,6 +118,7 @@ impl ConfigChange {
 /// - `Rejected`：组件拒绝配置，必须说明原因，宿主应停止推进。
 /// - `Deferred`：组件暂缓应用配置，例如等待依赖加载。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ProvisioningOutcome {
     /// 成功应用配置。
     Applied { details: Option<String> },
@@ -159,7 +160,7 @@ impl ProvisioningOutcome {
 /// # 前置/后置条件
 /// - **前置条件**：宿主保证回调时 `HostContext` 仍然有效。
 /// - **后置条件**：返回 `ProvisioningOutcome`，宿主据此决定是否继续推送或重试。
-pub trait ConfigConsumer {
+pub trait ConfigConsumer: Sealed {
     /// 错误类型。
     type Error: Error;
 

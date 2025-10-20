@@ -71,6 +71,7 @@ impl CapabilityDescriptor {
 
 /// 宿主支持协议的行业共识枚举。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NetworkProtocol {
     /// gRPC/HTTP2 语义。
     Grpc,
@@ -94,6 +95,7 @@ pub enum NetworkProtocol {
 
 /// 网络寻址族，兼容容器、边缘和本地部署。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NetworkAddressFamily {
     /// IPv4 地址。
     Ipv4,
@@ -113,6 +115,7 @@ pub enum NetworkAddressFamily {
 
 /// 安全特性的行业共识枚举。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SecurityFeature {
     /// mTLS 双向认证。
     MutualTls,
@@ -136,6 +139,7 @@ pub enum SecurityFeature {
 
 /// 能力支持等级。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CapabilityLevel {
     /// 未支持。
     Unsupported,
@@ -147,6 +151,7 @@ pub enum CapabilityLevel {
 
 /// 宿主的吞吐/延迟偏好枚举。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ThroughputClass {
     /// 更关注端到端延迟。
     LatencyOptimized,

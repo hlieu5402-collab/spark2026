@@ -5,6 +5,7 @@ use crate::{
         topology::{ClusterConsistencyLevel, ClusterEpoch, ClusterRevision, RoleDescriptor},
     },
     error::CoreError,
+    sealed::Sealed,
     transport::Endpoint,
 };
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
@@ -56,6 +57,7 @@ pub type NodeId = String;
 /// # 风险提示（Trade-offs）
 /// - 状态枚举不含 `Unknown` 分支，以鼓励实现尽快给出明确判定；若无法判断，可在事件中附带原因并暂存为 `Degraded`。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ClusterNodeState {
     Active,
     Degraded,
@@ -137,6 +139,7 @@ pub struct ClusterMembershipSnapshot {
 /// # 风险提示（Trade-offs）
 /// - `Custom` 分支解析成本可能较高，建议缓存解析结果或限制表达式复杂度。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ClusterScopeSelector {
     EntireCluster,
     ByRole(RoleDescriptor),
@@ -190,6 +193,7 @@ impl ClusterMembershipScope {
 /// # 风险提示（Trade-offs）
 /// - 事件流需要有界缓冲；当消费者处理过慢时，建议实现回退到推送快照并重置订阅，以避免无限阻塞。
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum ClusterMembershipEvent {
     SnapshotApplied(ClusterMembershipSnapshot),
     MemberJoined {
@@ -267,7 +271,7 @@ pub enum ClusterMembershipEvent {
 ///     并在事件流中给出恢复建议（如切换到降级快照）。
 /// - `self_profile`：
 ///   - 若读取到陈旧元数据或缓存尚未刷新，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]，驱动调用方刷新快照或执行线性一致读。
-pub trait ClusterMembership: Send + Sync + 'static {
+pub trait ClusterMembership: Send + Sync + 'static + Sealed {
     /// 获取指定范围的全量快照。
     fn snapshot(
         &self,

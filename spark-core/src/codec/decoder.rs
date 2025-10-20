@@ -1,6 +1,6 @@
 use super::metadata::CodecDescriptor;
-use crate::CoreError;
 use crate::buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut};
+use crate::{CoreError, sealed::Sealed};
 use alloc::boxed::Box;
 use core::fmt;
 
@@ -86,6 +86,7 @@ impl fmt::Debug for DecodeContext<'_> {
 /// # 风险提示（Trade-offs）
 /// - 状态枚举未区分可恢复与不可恢复错误；若遇不可解析数据，应直接返回 `CoreError`。
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum DecodeOutcome<T> {
     /// 成功解析出完整对象。
     Complete(T),
@@ -111,7 +112,7 @@ pub enum DecodeOutcome<T> {
 ///
 /// # 风险提示（Trade-offs）
 /// - 若实现内部维护状态（如分片缓存），需自行处理并发安全，契约未强制 `&mut self`。
-pub trait Decoder: Send + Sync + 'static {
+pub trait Decoder: Send + Sync + 'static + Sealed {
     /// 解码输出的业务类型。
     type Item: Send + Sync + 'static;
 

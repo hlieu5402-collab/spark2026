@@ -1,4 +1,4 @@
-use crate::BoxFuture;
+use crate::{BoxFuture, sealed::Sealed};
 use core::time::Duration;
 
 /// `MonotonicTimePoint` 以相对时间刻度表达单调时钟读数。
@@ -67,7 +67,7 @@ impl MonotonicTimePoint {
 /// # 风险提示（Trade-offs）
 /// - `sleep_until` 默认实现使用 `saturating_duration_since`，在系统时钟回拨情况下会立即完成；
 ///   如需不同策略，可在实现中覆写该方法。
-pub trait TimeDriver: Send + Sync + 'static {
+pub trait TimeDriver: Send + Sync + 'static + Sealed {
     fn now(&self) -> MonotonicTimePoint;
 
     fn sleep(&self, duration: Duration) -> BoxFuture<'static, ()>;

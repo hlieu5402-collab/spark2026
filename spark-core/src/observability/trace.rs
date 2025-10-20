@@ -110,6 +110,7 @@ impl TraceContext {
 
 /// 链路追踪上下文校验失败时的错误类型。
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TraceContextError {
     InvalidTraceId,
     InvalidSpanId,
@@ -287,6 +288,7 @@ impl TraceStateEntry {
 
 /// `TraceState` 校验失败时的错误类型。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum TraceStateError {
     InvalidKey,
     InvalidValue,

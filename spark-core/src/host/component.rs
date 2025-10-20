@@ -1,5 +1,5 @@
-use crate::Error;
 use crate::host::context::HostContext;
+use crate::{Error, sealed::Sealed};
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -22,6 +22,7 @@ use alloc::vec::Vec;
 ///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，同时输出告警日志帮助诊断。
 /// - **禁止降级**：严禁静默忽略或回退至默认组件类别，避免以未知权限运行造成安全风险。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ComponentKind {
     TransportAdapter,
     ServiceRuntime,
@@ -75,6 +76,7 @@ impl ComponentDescriptor {
 
 /// 组件健康状态，参考 Kubernetes `Probe` 与 Dapr Health API。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ComponentHealthState {
     /// 组件已就绪，可对外提供服务。
     Ready,
@@ -103,7 +105,7 @@ pub enum ComponentHealthState {
 ///
 /// # 风险提示（Trade-offs）
 /// - 该接口默认同步返回实例，若组件初始化需要异步步骤，可在实例内部暴露 `Future`。
-pub trait ComponentFactory {
+pub trait ComponentFactory: Sealed {
     /// 组件实例类型。
     type Instance;
     /// 错误类型。

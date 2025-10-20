@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use crate::{BoxFuture, CoreError};
+use crate::{BoxFuture, CoreError, sealed::Sealed};
 
 use super::TransportSocketAddr;
 
@@ -63,7 +63,7 @@ impl ListenerShutdown {
 /// # 风险提示（Trade-offs）
 /// - 如果底层 API 不支持优雅关闭，实现方应在超时后返回 `CoreError::operation_timeout` 等语义化错误。
 /// - 建议在实现中暴露指标（如正在排空的连接数）以协助运维决策。
-pub trait ServerTransport: Send + Sync + 'static {
+pub trait ServerTransport: Send + Sync + 'static + Sealed {
     /// 返回本地监听地址。
     fn local_addr(&self) -> TransportSocketAddr;
 

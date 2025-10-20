@@ -4,6 +4,7 @@ use crate::{
     BoxFuture, CoreError,
     cluster::ServiceDiscovery,
     pipeline::{Channel, ControllerFactory},
+    sealed::Sealed,
 };
 
 use super::{ConnectionIntent, Endpoint, ServerTransport, TransportParams};
@@ -133,7 +134,7 @@ impl ListenerConfig {
 ///     避免调用方误将其视作简单超时。
 ///   - 当服务端或中间队列施加背压导致建连请求被拒绝时，需返回
 ///     [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，支持调用方退避或切换备用线路。
-pub trait TransportFactory: Send + Sync + 'static {
+pub trait TransportFactory: Send + Sync + 'static + Sealed {
     /// 返回支持的 scheme。
     fn scheme(&self) -> &'static str;
 

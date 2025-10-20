@@ -2,6 +2,7 @@ use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
 
 use crate::{
     buffer::PipelineMessage, error::CoreError, observability::CoreUserEvent, runtime::CoreServices,
+    sealed::Sealed,
 };
 
 use super::{
@@ -15,6 +16,7 @@ use super::{
 /// - 综合 Netty ChannelPipeline 事件、Envoy Stream Callback、Tower Service 调度生命周期，提炼统一事件集合。
 /// - 为科研场景提供事件分类基准，可用于统计、追踪或模型检查。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ControllerEventKind {
     /// 通道变为活跃。
     ChannelActivated,
@@ -115,6 +117,7 @@ impl HandlerRegistration {
 
 /// Handler 注册方向，用于区分入站与出站链路。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HandlerDirection {
     /// 入站方向。
     Inbound,
@@ -130,7 +133,7 @@ pub enum HandlerDirection {
 /// # 契约说明（What）
 /// - `snapshot`：返回当前链路的 Handler 列表快照，顺序与执行顺序一致。
 /// - 返回值应为新分配的容器，避免外部修改内部状态。
-pub trait HandlerRegistry: Send + Sync {
+pub trait HandlerRegistry: Send + Sync + Sealed {
     /// 返回链路快照。
     fn snapshot(&self) -> Vec<HandlerRegistration>;
 }
@@ -157,7 +160,7 @@ pub trait HandlerRegistry: Send + Sync {
 /// # 风险提示（Trade-offs）
 /// - 在高负载场景下，Middleware 装配应尽量避免动态分配，可预先缓存 Handler 实例。
 /// - 若实现支持热更新，需保证 `install_middleware` 幂等且可回滚。
-pub trait Controller: Send + Sync + 'static {
+pub trait Controller: Send + Sync + 'static + Sealed {
     /// 注册入站 Handler。
     fn register_inbound_handler(&self, label: &str, handler: Box<dyn InboundHandler>);
 

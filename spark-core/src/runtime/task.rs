@@ -1,4 +1,4 @@
-use crate::{BoxFuture, LocalBoxFuture};
+use crate::{BoxFuture, LocalBoxFuture, sealed::Sealed};
 use alloc::{borrow::Cow, boxed::Box, string::String};
 use core::fmt;
 
@@ -16,6 +16,7 @@ use core::fmt;
 /// # 风险提示（Trade-offs）
 /// - 过度依赖优先级可能导致饥饿；实现者应结合老化策略避免长期低优先级任务饿死。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum TaskPriority {
     Critical,
     High,
@@ -36,6 +37,7 @@ pub enum TaskPriority {
 /// # 风险提示（Trade-offs）
 /// - 选择 `Forceful` 可能导致任务绕过析构流程；调用方需确保资源已通过其它途径安全释放。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum TaskCancellationStrategy {
     #[default]
     Cooperative,
@@ -91,6 +93,7 @@ pub type TaskResult<T = ()> = Result<T, TaskError>;
 /// # 风险提示（Trade-offs）
 /// - `Panicked` 仅包含静态信息；实际运行时若需捕获 panic payload，需额外在宿主实现层处理。
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum TaskError {
     Cancelled,
     Panicked,
@@ -134,7 +137,7 @@ impl fmt::Display for TaskError {
 ///
 /// # 风险提示（Trade-offs）
 /// - 接口对象安全，允许以 `Box<dyn TaskHandle>` 搭配注入；实现者需权衡性能与动态分发开销。
-pub trait TaskHandle: Send + Sync {
+pub trait TaskHandle: Send + Sync + Sealed {
     fn cancel(&self, strategy: TaskCancellationStrategy);
     fn is_finished(&self) -> bool;
     fn is_cancelled(&self) -> bool;

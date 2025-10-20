@@ -1,10 +1,9 @@
-use crate::{buffer::PipelineMessage, error::CoreError, transport::TransportSocketAddr};
-use core::time::Duration;
 use crate::{
     buffer::PipelineMessage,
     contract::{CloseReason, Deadline},
-    error::SparkError,
+    error::{CoreError, SparkError},
     future::BoxFuture,
+    sealed::Sealed,
     transport::TransportSocketAddr,
 };
 
@@ -25,6 +24,7 @@ use super::Controller;
 /// # 设计取舍（Trade-offs）
 /// - 为兼顾 TCP、QUIC、内存传输等实现，本枚举保持最小状态集合；如需更细粒度状态，应通过扩展属性暴露，避免破坏共识。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum ChannelState {
     /// 初始态：资源已分配但尚未进入活跃读写。
     Initialized,
@@ -49,6 +49,7 @@ pub enum ChannelState {
 /// # 风险提示（Trade-offs）
 /// - 某些协议缺乏显式背压，需在实现内部以阈值模拟；调用方应尊重此信号以避免雪崩放大。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum WriteSignal {
     /// 消息进入缓冲，尚待刷出。
     Accepted,
@@ -81,7 +82,7 @@ pub enum WriteSignal {
 /// # 风险提示（Trade-offs）
 /// - 部分实现可能将 `write` 视为异步操作，返回 `Accepted` 不代表落盘；若需要持久化保证，应结合 ACK 或上层协议确认。
 /// - 在多线程环境中实现者需注意 `controller()` 与 `extensions()` 可能返回内部引用，需保持线程安全。
-pub trait Channel: Send + Sync + 'static {
+pub trait Channel: Send + Sync + 'static + Sealed {
     /// 返回便于日志关联的 Channel 唯一 ID。
     fn id(&self) -> &str;
 

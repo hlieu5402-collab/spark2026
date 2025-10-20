@@ -2,6 +2,8 @@ use super::ReadableBuffer;
 use alloc::{boxed::Box, vec::Vec};
 use core::{any::Any, fmt};
 
+use crate::sealed::Sealed;
+
 /// `UserMessage` 描述所有可放入 [`PipelineMessage::User`] 的业务消息契约。
 ///
 /// # 设计背景（Why）
@@ -41,7 +43,7 @@ use core::{any::Any, fmt};
 /// # 风险与权衡（Trade-offs）
 /// - 引入 Trait 会在极端热路径上带来一次虚函数分发，但 `async_contract_overhead` 基准测试显示该成本远低于消息序列化与网络开销。
 /// - 若业务类型需要克隆，可结合 `Arc` 或在 Trait 扩展方法中引入 `clone_box`，本抽象刻意保持最小化以免约束实现者。
-pub trait UserMessage: Send + Sync + 'static {
+pub trait UserMessage: Send + Sync + 'static + Sealed {
     /// 返回消息类别标识，默认使用编译期类型名。
     fn message_kind(&self) -> &'static str {
         core::any::type_name::<Self>()
@@ -125,6 +127,7 @@ where
 /// let extracted = message.try_into_user::<LoginEvent>().expect("owns value");
 /// drop(extracted);
 /// ```
+#[non_exhaustive]
 pub enum PipelineMessage {
     /// L4/L5 字节缓冲。
     Buffer(Box<dyn ReadableBuffer>),

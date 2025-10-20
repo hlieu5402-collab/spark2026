@@ -1,4 +1,4 @@
-use crate::CoreError;
+use crate::{CoreError, sealed::Sealed};
 use alloc::{boxed::Box, vec::Vec};
 
 /// `ReadableBuffer` 定义了对象安全的只读缓冲契约。
@@ -28,7 +28,7 @@ use alloc::{boxed::Box, vec::Vec};
 /// - **零拷贝支持**：`chunk` 允许返回分片视图，便于对接 io-uring、DPDK 等前沿 IO 技术；但实现需注意其生命周期仅在下一次可变访问前有效。
 /// - **错误处理**：统一使用 `CoreError`，鼓励实现者在容量不足时返回稳定错误码（如 `protocol.budget_exceeded`）。
 /// - **性能提示**：频繁调用 `try_into_vec` 会导致复制，应仅在跨安全边界（如 FFI）时使用。
-pub trait ReadableBuffer: Send + Sync + 'static {
+pub trait ReadableBuffer: Send + Sync + 'static + Sealed {
     /// 返回剩余可读字节数。
     fn remaining(&self) -> usize;
 

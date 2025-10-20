@@ -81,6 +81,7 @@ impl ClusterRevision {
 /// # 风险提示（Trade-offs）
 /// - 较强的一致性通常伴随更高延迟和更低可用性；`BoundedStaleness` 要求实现方维护可靠时钟或租约机制。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ClusterConsistencyLevel {
     Eventual,
     Sequential,

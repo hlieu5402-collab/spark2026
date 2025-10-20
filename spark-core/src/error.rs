@@ -1,5 +1,9 @@
-use crate::{Error, TraceContext, cluster::NodeId, transport::TransportSocketAddr};
-use alloc::{borrow::ToOwned, boxed::Box, string::String};
+use crate::{Error, TraceContext, cluster::NodeId, sealed::Sealed, transport::TransportSocketAddr};
+use alloc::{
+    borrow::{Cow, ToOwned},
+    boxed::Box,
+    string::String,
+};
 use core::fmt;
 
 /// `CoreError` 表示 `spark-core` 跨层共享的稳定错误域，是所有可观察错误的最终形态。
@@ -20,9 +24,7 @@ use core::fmt;
 /// # 设计取舍与风险（Trade-offs）
 /// - 采用 `String` 保存消息，牺牲极少量堆分配换取在日志、跨语言桥接时的灵活性。
 /// - 允许附带可选的传输与链路信息，避免在轻量部署中产生不必要的依赖或复制成本。
-use alloc::{borrow::Cow, boxed::Box, string::String};
-use core::fmt;
-
+///
 /// `CoreError` 提供稳定的错误码与根因链路，是框架错误分层的最底层。
 ///
 /// # 设计背景（Why）
@@ -114,13 +116,6 @@ pub struct SparkError {
 /// `ErrorCause` 封装底层原因，保持 `Send + Sync` 以方便跨线程传递。
 pub type ErrorCause = Box<dyn Error + Send + Sync + 'static>;
 
-impl CoreError {
-    /// 使用稳定错误码与消息创建 `CoreError`。
-    ///
-    /// # 契约说明
-    /// - **参数**：`code` 为 `'static` 字符串，`message` 为人类可读文本（通常来自域层或实现层错误）。
-    /// - **前置条件**：调用方需确保 `code` 与域模型约定一致，且 `message` 不泄露敏感信息。
-    /// - **后置条件**：返回的实例未携带底层原因或额外上下文，可继续通过 Builder 方法扩充。
 impl SparkError {
     /// 使用稳定错误码与消息创建 `SparkError`。
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
@@ -202,19 +197,19 @@ impl SparkError {
     }
 }
 
-impl fmt::Display for CoreError {
+impl fmt::Display for SparkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.core)
     }
 }
 
-impl Error for CoreError {
+impl Error for SparkError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(self.core() as &dyn Error)
     }
 }
 
-/// `ImplError`（Implementation Error）包装领域错误并附加实现细节。
+/// `ImplError`（Implementation Error）包装领域错误并附加实现细节，同时保留实现侧的分类信息以供指标和降级策略使用。
 ///
 /// # 设计背景（Why）
 /// - 满足分层共识中“实现细节可扩展”的要求，便于在不同宿主/协议实现中记录私有信息。
@@ -224,15 +219,22 @@ impl Error for CoreError {
 /// - `source_cause`：实现层额外的底层错误，例如系统调用或第三方库异常。
 #[derive(Debug)]
 pub struct ImplError {
+    kind: ImplErrorKind,
     domain: SparkError,
     detail: Option<Cow<'static, str>>,
     source_cause: Option<ErrorCause>,
 }
 
 impl ImplError {
-    /// 使用领域错误创建实现错误。
-    pub fn new(domain: SparkError) -> Self {
+    /// 使用实现层分类与领域错误上下文创建实现错误，确保错误链能够指明责任边界。
+    ///
+    /// # 契约说明
+    /// - **参数**：`kind` 指向实现层发生故障的子系统；`domain` 为已封装领域语义的错误。
+    /// - **前置条件**：`domain` 的 `cause` 可选；若已存在，将在链路上传递给上层。
+    /// - **后置条件**：返回的实现错误默认不含额外明细，可通过 [`Self::with_detail`] 补充。
+    pub fn new(kind: ImplErrorKind, domain: SparkError) -> Self {
         Self {
+            kind,
             domain,
             detail: None,
             source_cause: None,
@@ -254,6 +256,17 @@ impl ImplError {
     /// 获取领域错误。
     pub fn domain(&self) -> &SparkError {
         &self.domain
+    }
+
+    /// 获取实现层分类，用于在日志或测试中断言具体的故障子域。
+    ///
+    /// # 返回值
+    /// - 返回 `ImplErrorKind` 枚举，可直接用于匹配或指标打点。
+    ///
+    /// # 设计考量
+    /// - 通过保留枚举值，而非仅输出字符串，调用方可以在编译期穷举处理逻辑，避免遗漏。
+    pub fn kind(&self) -> ImplErrorKind {
+        self.kind
     }
 
     /// 消耗自身并返回领域错误。
@@ -343,6 +356,7 @@ pub mod codes {
 
 /// 表征域层错误的类别，帮助评审者在文档中快速定位责任边界。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum DomainErrorKind {
     /// 传输层或底层 I/O 场景。
     Transport,
@@ -364,6 +378,7 @@ pub enum DomainErrorKind {
 
 /// 表征实现层（Impl）错误的精细分类，用于辅助诊断具体实现细节。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ImplErrorKind {
     /// 对象池或缓冲区容量不足。
     BufferExhausted,
@@ -377,97 +392,6 @@ pub enum ImplErrorKind {
     StateViolation,
     /// 未分类或暂未归档的实现细节错误。
     Uncategorized,
-}
-
-/// 实现层错误，记录最细粒度的故障信息，并负责与域层组装。
-///
-/// # 设计背景（Why）
-/// - 框架中存在大量面向资源、协议的实现细节，直接暴露给核心错误会导致语义混乱；需要显式的 Impl 层来承载这些细节。
-///
-/// # 逻辑解析（How）
-/// - 记录实现分类、短消息、可选的详细说明与底层原因；`source()` 统一回溯到内部的 `cause`。
-///
-/// # 契约说明（What）
-/// - **构造约束**：`message` 面向域层，需描述具体故障；`detail` 可提供面向开发者的额外上下文。
-/// - **行为保证**：实现层错误自身 `Send + Sync + 'static`，可安全装箱并跨线程传递。
-#[derive(Debug)]
-pub struct ImplError {
-    kind: ImplErrorKind,
-    message: String,
-    detail: Option<String>,
-    cause: Option<ErrorCause>,
-}
-
-impl ImplError {
-    /// 创建实现层错误。
-    ///
-    /// # 契约说明
-    /// - **参数**：`kind` 指出实现分类；`message` 描述对域层可见的问题。
-    /// - **后置条件**：返回值未附带详细说明或底层原因。
-    pub fn new(kind: ImplErrorKind, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            message: message.into(),
-            detail: None,
-            cause: None,
-        }
-    }
-
-    /// 为错误添加开发者可见的详细说明。
-    ///
-    /// # 设计动机
-    /// - 在不暴露给终端用户的前提下，为日志或调试提供额外语境。
-    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
-        self.detail = Some(detail.into());
-        self
-    }
-
-    /// 附加更底层的错误原因。
-    ///
-    /// # 契约
-    /// - **前置条件**：`cause` 满足线程安全约束。
-    /// - **后置条件**：`source()` 返回该原因。
-    pub fn with_cause(mut self, cause: impl Error + Send + Sync + 'static) -> Self {
-        self.cause = Some(Box::new(cause));
-        self
-    }
-
-    /// 返回实现错误的分类。
-    pub fn kind(&self) -> ImplErrorKind {
-        self.kind
-    }
-
-    /// 返回面向域层的错误描述。
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    /// 返回额外的详细说明。
-    pub fn detail(&self) -> Option<&str> {
-        self.detail.as_deref()
-    }
-
-    /// 返回底层原因。
-    pub fn cause(&self) -> Option<&ErrorCause> {
-        self.cause.as_ref()
-    }
-}
-
-impl fmt::Display for ImplError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.detail {
-            Some(detail) => write!(f, "{} ({detail})", self.message),
-            None => f.write_str(&self.message),
-        }
-    }
-}
-
-impl Error for ImplError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.cause
-            .as_ref()
-            .map(|boxed| boxed.as_ref() as &(dyn Error + 'static))
-    }
 }
 
 /// 域层错误，承载面向调用者的语义，并向核心错误映射。
@@ -508,9 +432,9 @@ impl DomainError {
     ///
     /// # 契约
     /// - **参数**：`kind` 表示域分类；`code` 指定核心错误码；`impl_error` 为实现层错误。
-    /// - **行为**：消息将沿用 `impl_error.message()`，确保 Round-trip 不丢语义。
+    /// - **行为**：消息将沿用 `impl_error.domain().message()`，确保 Round-trip 不丢语义。
     pub fn from_impl(kind: DomainErrorKind, code: &'static str, impl_error: ImplError) -> Self {
-        let message = impl_error.message().to_owned();
+        let message = impl_error.domain().message().to_owned();
         let core = CoreError::new(code, message);
         Self {
             kind,
@@ -556,7 +480,7 @@ impl Error for DomainError {
 }
 
 /// 定义从域层映射到核心错误的统一接口，避免跳级转换。
-pub trait IntoCoreError {
+pub trait IntoCoreError: Sealed {
     /// 将当前错误转换为核心错误，保持消息、错误码与链路来源。
     fn into_core_error(self) -> CoreError;
 }
@@ -571,7 +495,7 @@ impl IntoCoreError for DomainError {
 }
 
 /// 定义实现层向域层上浮的映射接口。
-pub trait IntoDomainError {
+pub trait IntoDomainError: Sealed {
     /// 将实现层错误映射为域层错误，调用者需显式提供域分类与核心错误码，避免层级混淆。
     fn into_domain_error(self, kind: DomainErrorKind, code: &'static str) -> DomainError;
 }
@@ -598,9 +522,12 @@ mod tests {
     #[test]
     fn impl_to_domain_to_core_roundtrip_preserves_message_and_cause() {
         // 准备一个实现层错误，包含详细信息与底层原因。
-        let impl_cause = ImplError::new(ImplErrorKind::BufferExhausted, "buffer depleted")
-            .with_detail("pool=ingress")
-            .with_cause(CoreError::new("inner.code", "inner message"));
+        let impl_cause = ImplError::new(
+            ImplErrorKind::BufferExhausted,
+            SparkError::new(codes::PROTOCOL_BUDGET_EXCEEDED, "buffer depleted"),
+        )
+        .with_detail("pool=ingress")
+        .with_source(CoreError::new("inner.code", "inner message"));
 
         // 域层将其映射为核心错误码，并保持消息与 cause。
         let domain_error =
@@ -609,7 +536,7 @@ mod tests {
         // 提前检查：域层应能访问实现层 cause。
         let cause = domain_error.impl_cause().expect("impl cause must exist");
         assert_eq!(cause.kind(), ImplErrorKind::BufferExhausted);
-        assert_eq!(cause.message(), "buffer depleted");
+        assert_eq!(cause.domain().message(), "buffer depleted");
 
         // 转换到核心错误后，错误码与消息保持一致，source 链仍可回溯。
         let core_error = domain_error.into_core_error();
@@ -621,7 +548,10 @@ mod tests {
         let first = current
             .source()
             .expect("core error should expose impl error");
-        assert_eq!(format!("{}", first), "buffer depleted (pool=ingress)");
+        assert_eq!(
+            format!("{}", first),
+            "[protocol.budget_exceeded] buffer depleted (pool=ingress)"
+        );
 
         // 第二层 source：实现层中的底层 cause。
         let second = first

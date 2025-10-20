@@ -26,6 +26,7 @@ use core::fmt;
 /// - 未额外引入 `Tenant` 等领域专用枚举，避免降低通用性；若需扩展，请在上层自定义。
 /// - `Session` 配置通常具备高频更新特性，使用者需评估缓存或推送策略，以免产生性能瓶颈。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ConfigScope {
     Global,
     Cluster,
