@@ -25,6 +25,8 @@ pub mod buffer;
 pub mod cluster;
 pub mod codec;
 pub mod common;
+#[cfg(feature = "compat_v0")]
+pub mod compat;
 pub mod configuration;
 pub mod context;
 pub mod contract;
