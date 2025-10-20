@@ -136,8 +136,14 @@ pub use security::{
     SecurityProtocolOffer, SubjectMatcher,
 };
 pub use service::{BoxService, DynService, Layer, Service, ServiceObject};
-pub use status::ready::{
-    BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice, SubscriptionBudget,
+#[rustfmt::skip]
+pub use status::{
+    BusyReason,
+    PollReady,
+    ReadyCheck,
+    ReadyState,
+    RetryAdvice,
+    SubscriptionBudget,
 };
 pub use transport::{
     AvailabilityRequirement, Capability, CapabilityBitmap, ConnectionIntent, DowngradeReport,

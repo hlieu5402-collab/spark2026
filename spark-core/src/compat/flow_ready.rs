@@ -1,6 +1,6 @@
 use core::task::Poll;
 
-use crate::status::ready::{PollReady, ReadyCheck, ReadyState};
+use crate::status::{PollReady, ReadyCheck, ReadyState};
 
 /// # 教案级函数说明：`to_ready_state`
 ///
@@ -61,7 +61,9 @@ where
 /// ## 设计权衡与风险（Trade-offs）
 /// - 采用常量时间、无分支实现，确保兼容层不会成为性能瓶颈。
 /// - 调用方若需要返回 `Pending`，应在调用本函数前自行判断；这里不处理重试逻辑，以保持语义清晰。
+#[rustfmt::skip]
 #[inline]
-pub fn to_poll_ready<E>(state: ReadyState) -> PollReady<E> {
+pub fn to_poll_ready<E>(state: ReadyState) ->
+    PollReady<E> {
     Poll::Ready(ReadyCheck::Ready(state))
 }
