@@ -75,6 +75,12 @@ pub enum WriteSignal {
 /// - `close_graceful` / `close`：优雅或立即关闭连接。
 /// - `write` / `flush`：写入消息与冲刷缓冲。
 ///
+/// # 线程安全与生命周期说明
+/// - `Channel: Send + Sync + 'static`：
+///   - **原因**：通道可能被封装在 `Arc<dyn Channel>` 中跨线程调度，且生命周期覆盖整个连接周期；
+///   - **对比**：传入的 [`PipelineMessage`] 不要求 `'static`，允许实现按需转移所有权或在写入前完成序列化。
+/// - `extensions()` 返回的 Map 仅要求 `Send + Sync`（由实现负责），其值必须 `'static` 以支持跨 Handler 共享。
+///
 /// # 前置/后置条件（Contract）
 /// - **前置**：调用者需确保对象来源于有效的传输工厂；在 `Closed` 状态下调用写相关方法应立即失败或被忽略。
 /// - **后置**：成功写入后，至少有一次 `flush` 才能保证消息实际发送；`close_graceful` 应推进状态至 `Draining` 或 `Closed`。

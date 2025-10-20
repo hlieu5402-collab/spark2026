@@ -80,6 +80,10 @@ pub trait WatchToken: Send + Sync + Sealed {
 /// ### 设计权衡（Trade-offs）
 /// - 使用 `Vec` 而非 `Iterator`，简化 FFI 场景下的跨语言传递。
 /// - `watch` 默认返回 `None`，避免对不支持热更新的数据源施加负担。
+///
+/// # 线程安全与生命周期说明
+/// - Trait 仅要求 `Send + Sync`，刻意**不**附加 `'static`：配置源通常与底层连接句柄或缓存绑定，其生命周期可能短于进程；
+/// - 若需要跨进程级全局共享，可配合 `boxed_static_source` 借用适配器在 Builder 侧托管 `'static` 引用。
 pub trait ConfigurationSource: Send + Sync + Sealed {
     /// 返回指定 Profile 的配置层集合。
     fn load(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError>;
@@ -91,6 +95,31 @@ pub trait ConfigurationSource: Send + Sync + Sealed {
         _callback: Box<dyn ChangeCallback + Send + Sync>,
     ) -> Result<Option<Box<dyn WatchToken>>, ConfigurationError> {
         Ok(None)
+    }
+}
+
+/// 将 `'static` 配置源引用转换为拥有型 `Box`，用于桥接借用/拥有双入口。
+pub(crate) fn boxed_static_source(
+    source: &'static (dyn ConfigurationSource),
+) -> Box<dyn ConfigurationSource> {
+    Box::new(BorrowedConfigurationSource { inner: source })
+}
+
+struct BorrowedConfigurationSource {
+    inner: &'static (dyn ConfigurationSource),
+}
+
+impl ConfigurationSource for BorrowedConfigurationSource {
+    fn load(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError> {
+        self.inner.load(profile)
+    }
+
+    fn watch(
+        &self,
+        profile: &ProfileId,
+        callback: Box<dyn ChangeCallback + Send + Sync>,
+    ) -> Result<Option<Box<dyn WatchToken>>, ConfigurationError> {
+        self.inner.watch(profile, callback)
     }
 }
 

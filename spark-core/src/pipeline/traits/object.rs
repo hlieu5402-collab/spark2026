@@ -66,12 +66,28 @@ impl Controller for ControllerHandle {
         self.inner.register_inbound_handler(label, handler)
     }
 
+    fn register_inbound_handler_static(
+        &self,
+        label: &str,
+        handler: &'static (dyn crate::pipeline::InboundHandler),
+    ) {
+        self.inner.register_inbound_handler_static(label, handler)
+    }
+
     fn register_outbound_handler(
         &self,
         label: &str,
         handler: Box<dyn crate::pipeline::OutboundHandler>,
     ) {
         self.inner.register_outbound_handler(label, handler)
+    }
+
+    fn register_outbound_handler_static(
+        &self,
+        label: &str,
+        handler: &'static (dyn crate::pipeline::OutboundHandler),
+    ) {
+        self.inner.register_outbound_handler_static(label, handler)
     }
 
     fn install_middleware(

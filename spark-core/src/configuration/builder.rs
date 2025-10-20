@@ -253,6 +253,23 @@ impl ConfigurationBuilder {
         Ok(())
     }
 
+    /// 注册 `'static` 生命周期的配置源引用，复用借用型入口。
+    ///
+    /// ### 设计动机（Why）
+    /// - 某些内建数据源以单例形式存在（如内存快照、只读嵌入资源），调用方更倾向于共享引用；
+    /// - 通过本方法可避免重复分配 `Box`，并在 API 层显式标注生命周期假设。
+    ///
+    /// ### 契约说明（What）
+    /// - **输入**：`source` 必须在进程生命周期内有效；
+    /// - **执行**：内部借助 `super::source::boxed_static_source` 适配为拥有型对象，再复用 [`Self::register_source`] 的去重与容量检查；
+    /// - **后置条件**：Builder 仅持有对单例的引用包装，不负责析构。
+    pub fn register_source_static(
+        &mut self,
+        source: &'static (dyn ConfigurationSource),
+    ) -> Result<(), SourceRegistrationError> {
+        self.register_source(super::source::boxed_static_source(source))
+    }
+
     /// 构建最终的 [`ConfigurationHandle`]。
     ///
     /// ### 设计意图（Why）

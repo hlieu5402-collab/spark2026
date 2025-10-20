@@ -28,6 +28,11 @@ use crate::{
 /// - **前置**：调用者应在事件回调内部使用 Context；跨线程持有引用需要实现保证线程安全。
 /// - **后置**：`write` 返回 [`crate::pipeline::WriteSignal`]，调用方需根据反馈调整速率；`close_graceful` 必须确保控制器收到关闭事件。
 ///
+/// # 线程安全与生命周期说明
+/// - Trait 约束为 `Send + Sync` 而非 `'static`：上下文仅在单次事件调度中存活，由控制器管理释放；
+/// - `channel()` / `controller()` 返回的引用可跨线程复用，因为底层对象满足 `Send + Sync + 'static`；
+/// - 若实现需要在事件回调外持有 Context，应先克隆必要的数据（如 `Arc`），避免悬垂引用。
+///
 /// # 风险提示（Trade-offs）
 /// - 若实现使用 `Rc`/`RefCell` 等单线程结构，将无法满足 `Send + Sync` 要求，应在构造阶段检测。
 /// - `forward_read` 在 Handler 链中是立即调用的同步行为，重计算或阻塞逻辑应移交给 `executor()`。

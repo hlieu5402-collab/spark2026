@@ -1,3 +1,5 @@
+use alloc::boxed::Box;
+
 use crate::{CoreError, sealed::Sealed};
 
 use super::{context::Context, middleware::MiddlewareDescriptor};
@@ -100,3 +102,116 @@ pub trait OutboundHandler: Send + Sync + 'static + Sealed {
 pub trait DuplexHandler: InboundHandler + OutboundHandler + Sealed {}
 
 impl<T> DuplexHandler for T where T: InboundHandler + OutboundHandler {}
+
+/// 将 `'static` 生命周期的 Handler 引用适配为 `Box<dyn InboundHandler>`。
+///
+/// # 设计动机（Why）
+/// - 中心运行时经常在常量或懒加载阶段构造 Handler，并以 `'static` 引用暴露给多条链路。
+/// - 传统 `register_*` API 仅接受拥有所有权的 `Box`，迫使调用方复制或重新分配对象。
+/// - 本适配器为“借用入口”提供零拷贝桥接：保留原始 `'static` 引用，仅在外层包裹一个轻量代理。
+///
+/// # 工作方式（How）
+/// - [`BorrowedInboundHandlerAdapter`] 内部保存对源 Handler 的引用，所有回调直接转发至原实现；
+/// - 适配器自身满足 `Send + Sync + 'static`，符合 `InboundHandler` 的线程安全约束；
+/// - `Box` 仅承载代理对象，不重新分配底层资源。
+///
+/// # 契约说明（What）
+/// - **输入**：`handler` 必须指向 `'static` 生命周期的 `InboundHandler` 实例，常见于 `lazy_static!` 或 `OnceLock` 场景；
+/// - **返回值**：可直接传递给 `Controller::register_inbound_handler` 等拥有型入口；
+/// - **前置条件**：调用方需保证底层 Handler 在系统生命周期内有效；
+/// - **后置条件**：代理仅负责转发，不拥有底层资源，关闭时不会触发额外析构。
+///
+/// # 风险提示（Trade-offs）
+/// - 若底层 Handler 非 `'static`，请使用 `Box` 拥有型入口避免悬垂引用；
+/// - 代理不会拦截或扩展回调，如需在转发前后注入逻辑，仍应实现自定义 Handler。
+pub(crate) fn box_inbound_from_static(
+    handler: &'static (dyn InboundHandler),
+) -> Box<dyn InboundHandler> {
+    Box::new(BorrowedInboundHandlerAdapter { inner: handler })
+}
+
+/// 将 `'static` 生命周期的出站 Handler 引用适配为 `Box<dyn OutboundHandler>`。
+///
+/// # 设计动机（Why）
+/// - 配置驱动的链路经常以全局单例形式存放出站 Handler；
+/// - 通过借用适配器即可在保持零拷贝的同时复用既有拥有型注册入口。
+///
+/// # 契约说明（What）
+/// - **输入**：`handler` 为 `'static` 出站 Handler；
+/// - **返回值**：可交由 `Controller::register_outbound_handler` 继续处理；
+/// - **前置条件/后置条件**：与 [`box_inbound_from_static`] 一致。
+pub(crate) fn box_outbound_from_static(
+    handler: &'static (dyn OutboundHandler),
+) -> Box<dyn OutboundHandler> {
+    Box::new(BorrowedOutboundHandlerAdapter { inner: handler })
+}
+
+/// 代理入站 Handler，将所有调用转发给底层 `'static` 引用。
+struct BorrowedInboundHandlerAdapter {
+    inner: &'static (dyn InboundHandler),
+}
+
+impl InboundHandler for BorrowedInboundHandlerAdapter {
+    fn describe(&self) -> MiddlewareDescriptor {
+        self.inner.describe()
+    }
+
+    fn on_channel_active(&self, ctx: &dyn Context) {
+        self.inner.on_channel_active(ctx)
+    }
+
+    fn on_read(&self, ctx: &dyn Context, msg: PipelineMessage) {
+        self.inner.on_read(ctx, msg)
+    }
+
+    fn on_read_complete(&self, ctx: &dyn Context) {
+        self.inner.on_read_complete(ctx)
+    }
+
+    fn on_writability_changed(&self, ctx: &dyn Context, is_writable: bool) {
+        self.inner.on_writability_changed(ctx, is_writable)
+    }
+
+    fn on_user_event(&self, ctx: &dyn Context, event: CoreUserEvent) {
+        self.inner.on_user_event(ctx, event)
+    }
+
+    fn on_exception_caught(&self, ctx: &dyn Context, error: CoreError) {
+        self.inner.on_exception_caught(ctx, error)
+    }
+
+    fn on_channel_inactive(&self, ctx: &dyn Context) {
+        self.inner.on_channel_inactive(ctx)
+    }
+}
+
+/// 代理出站 Handler，将所有调用转发给底层 `'static` 引用。
+struct BorrowedOutboundHandlerAdapter {
+    inner: &'static (dyn OutboundHandler),
+}
+
+impl OutboundHandler for BorrowedOutboundHandlerAdapter {
+    fn describe(&self) -> MiddlewareDescriptor {
+        self.inner.describe()
+    }
+
+    fn on_write(
+        &self,
+        ctx: &dyn Context,
+        msg: PipelineMessage,
+    ) -> Result<super::channel::WriteSignal, CoreError> {
+        self.inner.on_write(ctx, msg)
+    }
+
+    fn on_flush(&self, ctx: &dyn Context) -> Result<(), CoreError> {
+        self.inner.on_flush(ctx)
+    }
+
+    fn on_close_graceful(
+        &self,
+        ctx: &dyn Context,
+        deadline: Option<core::time::Duration>,
+    ) -> Result<(), CoreError> {
+        self.inner.on_close_graceful(ctx, deadline)
+    }
+}
