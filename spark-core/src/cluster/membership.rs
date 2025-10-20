@@ -1,5 +1,5 @@
 use crate::{
-    BoxFuture,
+    async_trait,
     cluster::{
         flow_control::{SubscriptionFlowControl, SubscriptionStream},
         topology::{ClusterConsistencyLevel, ClusterEpoch, ClusterRevision, RoleDescriptor},
@@ -8,7 +8,7 @@ use crate::{
     sealed::Sealed,
     transport::Endpoint,
 };
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, vec::Vec};
 
 /// 集群领域统一使用的错误类型别名。
 ///
@@ -246,9 +246,9 @@ pub enum ClusterMembershipEvent {
 /// - **后置条件**：调用成功后，消费者可将返回值作为权威真相来源并在本地缓存。
 ///
 /// # 性能契约（Performance Contract）
-/// - `snapshot` 与 `self_profile` 返回 [`BoxFuture`]，`subscribe` 返回 [`SubscriptionStream`]（内部事件流仍为
+/// - `snapshot` 与 `self_profile` 通过 `async fn` 返回业务结果，`subscribe` 返回 [`SubscriptionStream`]（内部事件流仍为
 ///   [`crate::BoxStream`]），这些对象安全包装会触发一次堆分配与通过虚表的 `poll` 跳转。
-/// - `async_contract_overhead` 基准量化了额外成本：Future 模拟场景中泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
+/// - `async_contract_overhead` 基准量化了额外成本：Future 模拟场景中泛型实现 6.23ns/次、装箱后的路径 6.09ns/次（约 -0.9%）。
 ///   Stream 模拟场景中泛型 6.39ns/次、`BoxStream` 6.63ns/次（约 +3.8%），覆盖大多数控制面负载需求。【e8841c†L4-L13】
 /// - 若实现面向高频事件（>10^6 qps），建议提供附加泛型订阅接口、在内部复用 `Box` 缓冲池。
 ///   也可允许性能敏感的调用方直接依赖具名实现类型，以将分配与虚表开销降至最低。
@@ -271,12 +271,13 @@ pub enum ClusterMembershipEvent {
 ///     并在事件流中给出恢复建议（如切换到降级快照）。
 /// - `self_profile`：
 ///   - 若读取到陈旧元数据或缓存尚未刷新，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]，驱动调用方刷新快照或执行线性一致读。
+#[async_trait]
 pub trait ClusterMembership: Send + Sync + 'static + Sealed {
     /// 获取指定范围的全量快照。
-    fn snapshot(
+    async fn snapshot(
         &self,
         scope: ClusterMembershipScope,
-    ) -> BoxFuture<'static, Result<ClusterMembershipSnapshot, ClusterError>>;
+    ) -> Result<ClusterMembershipSnapshot, ClusterError>;
 
     /// 订阅指定范围的增量事件。
     fn subscribe(
@@ -287,5 +288,5 @@ pub trait ClusterMembership: Send + Sync + 'static + Sealed {
     ) -> SubscriptionStream<ClusterMembershipEvent>;
 
     /// 获取当前节点的画像。
-    fn self_profile(&self) -> BoxFuture<'static, Result<ClusterNodeProfile, ClusterError>>;
+    async fn self_profile(&self) -> Result<ClusterNodeProfile, ClusterError>;
 }

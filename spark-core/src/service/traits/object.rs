@@ -2,11 +2,10 @@ use alloc::{boxed::Box, sync::Arc};
 use core::fmt;
 
 use crate::{
-    SparkError,
+    SparkError, async_trait,
     buffer::PipelineMessage,
     context::ExecutionContext,
     contract::{CallContext, CloseReason},
-    future::BoxFuture,
     sealed::Sealed,
     status::ready::PollReady,
 };
@@ -22,8 +21,8 @@ use super::generic::Service;
 ///
 /// # 行为逻辑（How）
 /// 1. `poll_ready_dyn` 调用底层实现的就绪检查，返回 [`PollReady<SparkError>`]；
-/// 2. `call_dyn` 消费 `PipelineMessage` 并返回 `BoxFuture` 承载异步响应；
-/// 3. `graceful_close`/`closed` 实现优雅关闭契约，便于运行时协调资源释放。
+/// 2. `call_dyn` 以 `async fn` 形式返回业务结果，`#[async_trait]` 自动装箱内部 Future；
+/// 3. `graceful_close`/`closed` 维护优雅关闭契约，`closed` 通过异步完成信号通知运行时释放资源。
 ///
 /// # 契约说明（What）
 /// - **输入**：上下文与泛型层一致，均来源于 [`CallContext`] 的视图；
@@ -32,6 +31,7 @@ use super::generic::Service;
 ///
 /// # 风险提示（Trade-offs）
 /// - 相较泛型层，多出一次虚表调用与一次堆分配；在热路径若可静态确定类型，仍建议使用 [`Service`]。
+#[async_trait]
 pub trait DynService: Send + Sync + Sealed {
     /// 检查对象层服务是否就绪。
     fn poll_ready_dyn(
@@ -41,17 +41,17 @@ pub trait DynService: Send + Sync + Sealed {
     ) -> PollReady<SparkError>;
 
     /// 调用对象层服务。
-    fn call_dyn(
+    async fn call_dyn(
         &mut self,
         ctx: CallContext,
         req: PipelineMessage,
-    ) -> BoxFuture<'static, Result<PipelineMessage, SparkError>>;
+    ) -> Result<PipelineMessage, SparkError>;
 
     /// 通知服务执行优雅关闭逻辑。
     fn graceful_close(&mut self, reason: CloseReason);
 
     /// 等待服务完全关闭。
-    fn closed(&mut self) -> BoxFuture<'static, Result<(), SparkError>>;
+    async fn closed(&mut self) -> Result<(), SparkError>;
 }
 
 /// 用于自定义关闭逻辑的钩子类型别名。
@@ -65,7 +65,7 @@ pub type CloseCallback<S> = dyn Fn(&mut S, CloseReason) + Send + Sync;
 ///
 /// # 行为逻辑（How）
 /// - 构造时保存 `inner` 泛型服务与转换闭包；
-/// - `call_dyn` 解码消息、调用泛型服务、再编码响应；
+/// - `call_dyn` 解码消息、调用泛型服务、再编码响应；借助 `async_trait` 自动完成 Future 装箱；
 /// - `graceful_close` 触发可选关闭钩子，方便释放外部资源。
 ///
 /// # 契约说明（What）
@@ -119,6 +119,7 @@ where
     }
 }
 
+#[async_trait]
 impl<S, Request, Response, Decode, Encode> DynService
     for ServiceObject<S, Request, Response, Decode, Encode>
 where
@@ -134,31 +135,24 @@ where
         self.inner.poll_ready(ctx, cx)
     }
 
-    fn call_dyn(
+    async fn call_dyn(
         &mut self,
         ctx: CallContext,
         req: PipelineMessage,
-    ) -> BoxFuture<'static, Result<PipelineMessage, SparkError>> {
-        let decode = self.decode.clone();
-        let encode = self.encode.clone();
-        match (decode.as_ref())(req) {
-            Ok(request) => {
-                let fut = self.inner.call(ctx, request);
-                Box::pin(async move {
-                    let response = fut.await?;
-                    Ok((encode.as_ref())(response))
-                })
-            }
-            Err(err) => Box::pin(async move { Err(err) }),
-        }
+    ) -> Result<PipelineMessage, SparkError> {
+        let decode = Arc::clone(&self.decode);
+        let encode = Arc::clone(&self.encode);
+        let request = (decode.as_ref())(req)?;
+        let response = self.inner.call(ctx, request).await?;
+        Ok((encode.as_ref())(response))
     }
 
     fn graceful_close(&mut self, reason: CloseReason) {
         (self.on_close)(&mut self.inner, reason);
     }
 
-    fn closed(&mut self) -> BoxFuture<'static, Result<(), SparkError>> {
-        Box::pin(async { Ok(()) })
+    async fn closed(&mut self) -> Result<(), SparkError> {
+        Ok(())
     }
 }
 

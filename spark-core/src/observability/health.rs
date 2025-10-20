@@ -1,5 +1,5 @@
-use crate::{BoxFuture, sealed::Sealed};
-use alloc::{string::String, sync::Arc, vec::Vec};
+use crate::{async_trait, sealed::Sealed};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 
 /// 组件健康状态的快照。
 ///
@@ -59,16 +59,17 @@ pub enum HealthState {
 /// - **后置条件**：返回的 [`ComponentHealth`] 应包含最新状态快照。
 ///
 /// # 性能契约（Performance Contract）
-/// - `check_health` 返回 [`BoxFuture`] 以保持对象安全；每次探针执行会产生一次堆分配与虚函数调度。
-/// - `async_contract_overhead` Future 场景基于 20 万次轮询测得泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
+/// - `check_health` 通过 `async fn` 返回健康快照；宏 [`crate::async_trait`] 自动完成 Future 装箱，每次探针执行会产生一次堆分配与虚函数调度。
+/// - `async_contract_overhead` Future 场景基于 20 万次轮询测得泛型实现 6.23ns/次、装箱路径 6.09ns/次（约 -0.9%）。
 ///   对常规健康聚合线程的 CPU 影响可忽略。【e8841c†L4-L13】
 /// - 在 CPU 或内存受限环境，可通过实现自定义探针管理器（如对象池缓存 Future）或暴露静态类型接口，允许调用方按需绕过分配。
 ///
 /// # 风险提示（Trade-offs）
 /// - 建议在实现中复用共享连接或缓存，避免探针本身影响依赖性能。
+#[async_trait]
 pub trait HealthCheckProvider: Send + Sync + 'static + Sealed {
     /// 异步执行健康检查。
-    fn check_health(&self) -> BoxFuture<'static, ComponentHealth>;
+    async fn check_health(&self) -> ComponentHealth;
 }
 
 /// 健康检查集合的引用，便于在运行时统一管理。

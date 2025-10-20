@@ -1,4 +1,4 @@
-use crate::{BoxFuture, LocalBoxFuture, sealed::Sealed};
+use crate::{BoxFuture, LocalBoxFuture, async_trait, sealed::Sealed};
 use alloc::{borrow::Cow, boxed::Box, string::String};
 use core::fmt;
 
@@ -129,21 +129,22 @@ impl fmt::Display for TaskError {
 /// - **后置条件**：`join` 完成后，运行时保证任务已结束，且不会再次调用该句柄上的其它方法。
 ///
 /// # 性能契约（Performance Contract）
-/// - `join` 返回 [`BoxFuture`] 以保持 Trait 对象安全；每次调用会分配 `Box` 并通过虚表唤醒内部状态机。
-/// - `async_contract_overhead` 基准在 20 万次 Future 轮询中测得泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
+/// - `join` 通过 `async fn` 保持对象安全；宏 [`crate::async_trait`] 自动装箱返回的 Future，每次调用会分配 `Box` 并通过虚表唤醒内部状态机。
+/// - `async_contract_overhead` 基准在 20 万次 Future 轮询中测得泛型实现 6.23ns/次、装箱路径 6.09ns/次（约 -0.9%）。
 ///   结果显示默认动态分发对调度线程影响极小。【e8841c†L4-L13】
 /// - 在批量等待或极限延迟场景，可直接持有具体实现（如运行时自定义的 `JoinHandle`）或在内部维护 `Box` 缓冲池，以规避分配；
 ///   同时保留 `cancel`/`detach` 等同步方法的零分配特性。
 ///
 /// # 风险提示（Trade-offs）
 /// - 接口对象安全，允许以 `Box<dyn TaskHandle>` 搭配注入；实现者需权衡性能与动态分发开销。
+#[async_trait]
 pub trait TaskHandle: Send + Sync + Sealed {
     fn cancel(&self, strategy: TaskCancellationStrategy);
     fn is_finished(&self) -> bool;
     fn is_cancelled(&self) -> bool;
     fn id(&self) -> Option<&str>;
     fn detach(self: Box<Self>);
-    fn join(self: Box<Self>) -> BoxFuture<'static, TaskResult>;
+    async fn join(self: Box<Self>) -> TaskResult;
 }
 
 /// `ManagedSendTask` 统一封装跨线程可运行的异步任务。

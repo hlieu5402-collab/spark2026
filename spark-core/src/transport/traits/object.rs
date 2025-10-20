@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, sync::Arc};
 
-use crate::{BoxFuture, CoreError, cluster::ServiceDiscovery, pipeline::Channel, sealed::Sealed};
+use crate::{CoreError, async_trait, cluster::ServiceDiscovery, pipeline::Channel, sealed::Sealed};
 
 use crate::pipeline::traits::object::{DynControllerFactory, DynControllerFactoryAdapter};
 
@@ -20,7 +20,7 @@ use super::generic::{
 ///
 /// # 行为逻辑（How）
 /// - `local_addr_dyn` 返回监听地址；
-/// - `shutdown_dyn` 执行优雅关闭并返回 `BoxFuture`；
+/// - `shutdown_dyn` 执行优雅关闭并返回 `async fn` 结果；宏 [`crate::async_trait`] 会在对象层完成 Future 装箱；
 /// - 适配器 [`ServerTransportObject`] 将泛型实现桥接至对象层。
 ///
 /// # 契约说明（What）
@@ -30,12 +30,13 @@ use super::generic::{
 ///
 /// # 风险提示（Trade-offs）
 /// - 对象层引入一次堆分配与虚表跳转；在性能敏感场景应优先考虑泛型接口。
+#[async_trait]
 pub trait DynServerTransport: Send + Sync + Sealed {
     /// 返回监听绑定地址。
     fn local_addr_dyn(&self) -> TransportSocketAddr;
 
     /// 根据计划执行优雅关闭。
-    fn shutdown_dyn(&self, plan: ListenerShutdown) -> BoxFuture<'static, Result<(), CoreError>>;
+    async fn shutdown_dyn(&self, plan: ListenerShutdown) -> Result<(), CoreError>;
 }
 
 /// 将泛型监听器适配为对象层实现。
@@ -63,6 +64,7 @@ where
     }
 }
 
+#[async_trait]
 impl<T> DynServerTransport for ServerTransportObject<T>
 where
     T: GenericServerTransport,
@@ -71,9 +73,8 @@ where
         self.inner.local_addr()
     }
 
-    fn shutdown_dyn(&self, plan: ListenerShutdown) -> BoxFuture<'static, Result<(), CoreError>> {
-        let inner = Arc::clone(&self.inner);
-        Box::pin(async move { GenericServerTransport::shutdown(&*inner, plan).await })
+    async fn shutdown_dyn(&self, plan: ListenerShutdown) -> Result<(), CoreError> {
+        GenericServerTransport::shutdown(&*self.inner, plan).await
     }
 }
 
@@ -85,7 +86,7 @@ where
 ///
 /// # 行为逻辑（How）
 /// - `bind_dyn` 将对象层 Pipeline 工厂适配为泛型 [`DynControllerFactoryAdapter`]，构建监听器并再度类型擦除；
-/// - `connect_dyn` 调用泛型实现，返回 `Box<dyn Channel>`；
+/// - `connect_dyn` 调用泛型实现，返回 `Box<dyn Channel>`；两者均通过 `async fn` 暴露异步结果，由 [`crate::async_trait`] 负责装箱；
 /// - 通过 `TransportFactoryObject` 在两层之间完成互转。
 ///
 /// # 契约说明（What）
@@ -95,24 +96,25 @@ where
 ///
 /// # 风险提示（Trade-offs）
 /// - 对象层多一次 `Box` 分配与虚表跳转，在热路径若可确定类型仍建议走泛型接口。
-/// - `async_contract_overhead` 基准显示 `BoxFuture` 路径约比泛型 Future 多 0.9% CPU，整体仍满足 T05 延迟目标。
+/// - `async_contract_overhead` 基准显示通过 `async_trait` 装箱的路径较泛型 Future 多约 0.9% CPU，整体仍满足 T05 延迟目标。
+#[async_trait]
 pub trait DynTransportFactory: Send + Sync + Sealed {
     /// 返回支持的协议标识。
     fn scheme_dyn(&self) -> &'static str;
 
     /// 绑定监听器。
-    fn bind_dyn(
+    async fn bind_dyn(
         &self,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynControllerFactory>,
-    ) -> BoxFuture<'static, Result<Box<dyn DynServerTransport>, CoreError>>;
+    ) -> Result<Box<dyn DynServerTransport>, CoreError>;
 
     /// 建立客户端通道。
-    fn connect_dyn(
+    async fn connect_dyn(
         &self,
         intent: ConnectionIntent,
         discovery: Option<Arc<dyn ServiceDiscovery>>,
-    ) -> BoxFuture<'static, Result<Box<dyn Channel>, CoreError>>;
+    ) -> Result<Box<dyn Channel>, CoreError>;
 }
 
 /// 将泛型传输工厂适配为对象层实现。
@@ -140,6 +142,7 @@ where
     }
 }
 
+#[async_trait]
 impl<F> DynTransportFactory for TransportFactoryObject<F>
 where
     F: GenericTransportFactory,
@@ -148,29 +151,22 @@ where
         self.inner.scheme()
     }
 
-    fn bind_dyn(
+    async fn bind_dyn(
         &self,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynControllerFactory>,
-    ) -> BoxFuture<'static, Result<Box<dyn DynServerTransport>, CoreError>> {
-        let inner = Arc::clone(&self.inner);
-        let controller_factory = Arc::clone(&pipeline_factory);
-        Box::pin(async move {
-            let adapter = DynControllerFactoryAdapter::new(controller_factory);
-            let server = GenericTransportFactory::bind(&*inner, config, Arc::new(adapter)).await?;
-            Ok(Box::new(ServerTransportObject::new(server)) as Box<dyn DynServerTransport>)
-        })
+    ) -> Result<Box<dyn DynServerTransport>, CoreError> {
+        let adapter = DynControllerFactoryAdapter::new(pipeline_factory);
+        let server = GenericTransportFactory::bind(&*self.inner, config, Arc::new(adapter)).await?;
+        Ok(Box::new(ServerTransportObject::new(server)) as Box<dyn DynServerTransport>)
     }
 
-    fn connect_dyn(
+    async fn connect_dyn(
         &self,
         intent: ConnectionIntent,
         discovery: Option<Arc<dyn ServiceDiscovery>>,
-    ) -> BoxFuture<'static, Result<Box<dyn Channel>, CoreError>> {
-        let inner = Arc::clone(&self.inner);
-        Box::pin(async move {
-            let channel = GenericTransportFactory::connect(&*inner, intent, discovery).await?;
-            Ok(Box::new(channel) as Box<dyn Channel>)
-        })
+    ) -> Result<Box<dyn Channel>, CoreError> {
+        let channel = GenericTransportFactory::connect(&*self.inner, intent, discovery).await?;
+        Ok(Box::new(channel) as Box<dyn Channel>)
     }
 }
