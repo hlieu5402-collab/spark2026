@@ -31,6 +31,7 @@ pub mod contract;
 pub mod error;
 pub mod future;
 pub mod host;
+pub mod limits;
 pub mod observability;
 pub mod pipeline;
 pub mod router;
@@ -88,6 +89,10 @@ pub use host::{
     HostContext, HostLifecycle, HostMetadata, HostRuntimeProfile, NetworkAddressFamily,
     NetworkProtocol, ProvisioningOutcome, SecurityFeature, ShutdownReason, StartupPhase,
     ThroughputClass,
+};
+pub use limits::{
+    LimitAction, LimitConfigError, LimitDecision, LimitMetricsHook, LimitPlan, LimitSettings,
+    ResourceKind, config_error_to_spark, decision_queue_snapshot,
 };
 pub use observability::{
     ApplicationEvent, AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter,
