@@ -20,11 +20,16 @@
 
 mod executor;
 mod services;
+mod slo;
 mod task;
 mod timer;
 
 pub use executor::TaskExecutor;
 pub use services::CoreServices;
+pub use slo::{
+    SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
+    SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger, slo_policy_table_key,
+};
 pub use task::{
     BlockingTaskSubmission, LocalTaskSubmission, ManagedBlockingTask, ManagedLocalTask,
     ManagedSendTask, SendTaskSubmission, TaskCancellationStrategy, TaskError, TaskHandle,

@@ -1,8 +1,32 @@
 use super::metadata::CodecDescriptor;
 use crate::buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut};
+use crate::contract::{Budget, BudgetDecision};
+use crate::error::codes;
 use crate::{CoreError, sealed::Sealed};
-use alloc::boxed::Box;
-use core::fmt;
+use alloc::{boxed::Box, format};
+use core::{convert::TryFrom, fmt, num::NonZeroU16};
+
+/// **内部辅助：`FrameCharge`**
+///
+/// - **目标 (Why)**：在解码阶段同样需要安全地将帧长度映射到预算使用量，防止 `usize` → `u64` 转换溢出。
+/// - **做法 (How)**：`FrameCharge::new` 负责转换，失败时直接抛出 `protocol.budget_exceeded`，确保上层立即拒绝输入。
+/// - **契约 (What)**：成功返回的值只能使用一次；错误时保证未修改预算。
+struct FrameCharge(u64);
+
+impl FrameCharge {
+    fn new(len: usize) -> Result<Self, CoreError> {
+        u64::try_from(len).map(FrameCharge).map_err(|_| {
+            CoreError::new(
+                codes::PROTOCOL_BUDGET_EXCEEDED,
+                "frame length exceeds budget accounting capacity (u64::MAX)",
+            )
+        })
+    }
+
+    fn amount(&self) -> u64 {
+        self.0
+    }
+}
 
 /// `DecodeContext` 为增量解码提供辅助资源。
 ///
@@ -24,6 +48,9 @@ use core::fmt;
 pub struct DecodeContext<'a> {
     allocator: &'a dyn BufferAllocator,
     max_frame_size: Option<usize>,
+    budget: Option<&'a Budget>,
+    max_recursion_depth: Option<NonZeroU16>,
+    current_depth: u16,
 }
 
 impl<'a> DecodeContext<'a> {
@@ -32,6 +59,9 @@ impl<'a> DecodeContext<'a> {
         Self {
             allocator,
             max_frame_size: None,
+            budget: None,
+            max_recursion_depth: None,
+            current_depth: 0,
         }
     }
 
@@ -43,6 +73,44 @@ impl<'a> DecodeContext<'a> {
         Self {
             allocator,
             max_frame_size,
+            budget: None,
+            max_recursion_depth: None,
+            current_depth: 0,
+        }
+    }
+
+    /// 构造同时包含预算与嵌套深度上限的解码上下文。
+    ///
+    /// # 教案式说明
+    /// - **动机 (Why)**：
+    ///   - 入站攻击往往通过畸形帧长度或深度递归消耗 CPU/内存；
+    ///   - 将所有限制统一交给上下文，减轻具体解码器的防御负担。
+    /// - **流程 (How)**：
+    ///   1. 保存分配器引用；
+    ///   2. 记录可选预算 `budget`，供 [`Self::check_frame_constraints`] 扣减；
+    ///   3. 配置最大帧长与最大递归层数；
+    ///   4. `current_depth` 从零开始，配合 [`Self::enter_frame`] 自动递增/递减。
+    /// - **契约 (What)**：
+    ///   - `budget` 引用必须在上下文生命周期内有效；
+    ///   - `max_frame_size` 为字节单位；
+    ///   - `max_recursion_depth` 使用 `NonZeroU16` 表示硬上限；
+    ///   - **前置条件**：无特别约束；
+    ///   - **后置条件**：构造后上下文尚未消费任何预算，也未进入任何层级。
+    /// - **权衡 (Trade-offs)**：
+    ///   - 通过单一入口降低调用方出错概率；
+    ///   - 若未来需要多预算支持，可在此扩展额外字段。
+    pub fn with_limits(
+        allocator: &'a dyn BufferAllocator,
+        budget: Option<&'a Budget>,
+        max_frame_size: Option<usize>,
+        max_recursion_depth: Option<NonZeroU16>,
+    ) -> Self {
+        Self {
+            allocator,
+            max_frame_size,
+            budget,
+            max_recursion_depth,
+            current_depth: 0,
         }
     }
 
@@ -58,13 +126,159 @@ impl<'a> DecodeContext<'a> {
     pub fn max_frame_size(&self) -> Option<usize> {
         self.max_frame_size
     }
+
+    /// 返回绑定的预算引用，便于上层进行观测或手动扣减。
+    pub fn budget(&self) -> Option<&'a Budget> {
+        self.budget
+    }
+
+    /// 返回可选的最大递归深度限制。
+    pub fn max_recursion_depth(&self) -> Option<NonZeroU16> {
+        self.max_recursion_depth
+    }
+
+    /// 查询当前已进入的嵌套层级。
+    pub fn current_depth(&self) -> u16 {
+        self.current_depth
+    }
+
+    /// 检查输入帧长度是否满足帧长与预算约束，并在成功时扣减预算。
+    ///
+    /// # 教案式拆解
+    /// - **意图 (Why)**：防止解码阶段被超长帧、极端频率的输入耗尽资源。
+    /// - **操作步骤 (How)**：
+    ///   1. 比较 `max_frame_size`；
+    ///   2. 若存在预算，将长度转换为 `u64` 并尝试消费；
+    ///   3. 返回 `Ok(())` 表示预算已扣减；`Err` 则包含剩余额度快照。
+    /// - **契约 (What)**：
+    ///   - **输入**：`frame_len` 为即将解析的字节数；
+    ///   - **输出**：成功时预算减少，失败时预算保持原值；
+    ///   - **前置条件**：每个帧仅调用一次，避免重复扣减；
+    ///   - **后置条件**：错误返回附带 `protocol.budget_exceeded`，供上层快速拒绝连接。
+    /// - **风险提示 (Trade-offs)**：
+    ///   - 在自定义解码器需要多次读取同一帧时，建议结合 [`Self::refund_budget`] 做差量扣减。
+    pub fn check_frame_constraints(&self, frame_len: usize) -> Result<(), CoreError> {
+        if let Some(max) = self.max_frame_size
+            && frame_len > max
+        {
+            return Err(CoreError::new(
+                codes::PROTOCOL_BUDGET_EXCEEDED,
+                format!(
+                    "frame length {} exceeds configured decoder limit {} bytes",
+                    frame_len, max
+                ),
+            ));
+        }
+
+        if let Some(budget) = self.budget {
+            let charge = FrameCharge::new(frame_len)?;
+            match budget.try_consume(charge.amount()) {
+                BudgetDecision::Granted { .. } => {}
+                BudgetDecision::Exhausted { snapshot } => {
+                    return Err(CoreError::new(
+                        codes::PROTOCOL_BUDGET_EXCEEDED,
+                        format!(
+                            "budget {:?} exhausted: required {}, remaining {} of limit {}",
+                            snapshot.kind(),
+                            charge.amount(),
+                            snapshot.remaining(),
+                            snapshot.limit()
+                        ),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 进入一层新的解码递归，返回 RAII 守卫用于自动回退深度计数。
+    ///
+    /// # 教案式讲解
+    /// - **目的 (Why)**：阻断恶意构造的深层嵌套结构导致的堆栈/CPU 攻击。
+    /// - **步骤 (How)**：
+    ///   1. 若配置了最大深度且即将超过，返回 `protocol.budget_exceeded`；
+    ///   2. 使用 `checked_add` 防止计数溢出；
+    ///   3. 返回 [`DecodeFrameGuard`]，其析构负责 `current_depth -= 1`。
+    /// - **契约 (What)**：
+    ///   - 守卫必须在离开当前层级后自动析构；
+    ///   - 不提供手动 `drop` 之外的 API，避免错用；
+    ///   - **前置条件**：无；**后置条件**：成功进入后 `current_depth` 增加 1。
+    /// - **注意事项 (Trade-offs)**：
+    ///   - 若调用方使用 `mem::forget` 刻意泄漏守卫，会导致深度永远不回退，应避免此类操作。
+    pub fn enter_frame(&mut self) -> Result<DecodeFrameGuard<'_, 'a>, CoreError> {
+        if let Some(limit) = self.max_recursion_depth
+            && self.current_depth >= limit.get()
+        {
+            return Err(CoreError::new(
+                codes::PROTOCOL_BUDGET_EXCEEDED,
+                format!(
+                    "decoder recursion depth {} exceeds configured limit {}",
+                    self.current_depth + 1,
+                    limit
+                ),
+            ));
+        }
+
+        self.current_depth = self.current_depth.checked_add(1).ok_or_else(|| {
+            CoreError::new(
+                codes::PROTOCOL_BUDGET_EXCEEDED,
+                "decoder recursion depth counter overflow",
+            )
+        })?;
+
+        Ok(DecodeFrameGuard {
+            ctx: self,
+            active: true,
+        })
+    }
+
+    /// 在解码失败或需要回滚时归还此前扣减的预算。
+    ///
+    /// # 教案式提示
+    /// - **场景 (Why)**：部分协议需要先读取长度字段再验证校验和，若校验失败需退还预算以便继续处理其他流量。
+    /// - **实现 (How)**：若存在预算且 `amount` 能安全转为 `u64`，调用 [`Budget::refund`]；否则忽略。
+    /// - **契约 (What)**：方法无返回值，确保回滚路径不会因错误阻塞；调用频次不限，退款累加至预算上限。
+    /// - **风险 (Trade-offs)**：超大 `amount` 被静默忽略，需要上层结合日志观察异常模式。
+    pub fn refund_budget(&self, amount: usize) {
+        if let (Some(budget), Ok(amount)) = (self.budget, u64::try_from(amount)) {
+            budget.refund(amount);
+        }
+    }
 }
 
 impl fmt::Debug for DecodeContext<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DecodeContext")
             .field("max_frame_size", &self.max_frame_size)
+            .field(
+                "budget_kind",
+                &self.budget.map(|budget| budget.kind().clone()),
+            )
+            .field("max_recursion_depth", &self.max_recursion_depth)
+            .field("current_depth", &self.current_depth)
             .finish()
+    }
+}
+
+/// 解码阶段的递归守卫，保证离开作用域时深度计数自动回退。
+///
+/// # 教案级注释
+/// - **Why**：防止实现者忘记手动回退深度导致后续帧被错误拒绝。
+/// - **How**：以 RAII 形式持有 [`DecodeContext`]，`Drop` 时执行 `saturating_sub(1)`。
+/// - **What**：只能通过 [`DecodeContext::enter_frame`] 获取；守卫自身不暴露额外状态。
+/// - **Trade-offs**：若调用者刻意 `mem::forget`，将造成深度泄漏——这是故意允许的“逃生舱”，但必须谨慎使用。
+#[must_use = "guard drops to release decoder recursion depth"]
+pub struct DecodeFrameGuard<'ctx, 'a> {
+    ctx: &'ctx mut DecodeContext<'a>,
+    active: bool,
+}
+
+impl Drop for DecodeFrameGuard<'_, '_> {
+    fn drop(&mut self) {
+        if self.active {
+            self.ctx.current_depth = self.ctx.current_depth.saturating_sub(1);
+        }
     }
 }
 

@@ -1,5 +1,5 @@
 [workspace]
-members = ["spark-core", "tools/deprecation-lint"]
+members = ["spark-core", "spark-codec-line", "tools/deprecation-lint"]
 resolver = "3"
 
 [workspace.package]

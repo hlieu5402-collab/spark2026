@@ -20,6 +20,7 @@ pub mod component;
 pub mod context;
 pub mod lifecycle;
 pub mod provisioning;
+pub mod shutdown;
 
 pub use capability::{
     CapabilityDescriptor, CapabilityLevel, NetworkAddressFamily, NetworkProtocol, SecurityFeature,
@@ -30,4 +31,8 @@ pub use context::{HostContext, HostMetadata, HostRuntimeProfile};
 pub use lifecycle::{HostLifecycle, ShutdownReason, StartupPhase};
 pub use provisioning::{
     ConfigChange, ConfigConsumer, ConfigEnvelope, ConfigQuery, ProvisioningOutcome,
+};
+pub use shutdown::{
+    GracefulShutdownCoordinator, GracefulShutdownRecord, GracefulShutdownReport,
+    GracefulShutdownStatus, GracefulShutdownTarget,
 };

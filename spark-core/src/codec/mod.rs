@@ -25,8 +25,8 @@ pub mod metrics;
 mod registry;
 pub mod traits;
 
-pub use decoder::{DecodeContext, DecodeOutcome, Decoder};
-pub use encoder::{EncodeContext, EncodedPayload, Encoder};
+pub use decoder::{DecodeContext, DecodeFrameGuard, DecodeOutcome, Decoder};
+pub use encoder::{EncodeContext, EncodeFrameGuard, EncodedPayload, Encoder};
 pub use metadata::{CodecDescriptor, ContentEncoding, ContentType, SchemaDescriptor};
 pub use metrics::{CodecMetricsHook, CodecPhase};
 pub use registry::{CodecRegistry, DynCodecFactory, NegotiatedCodec, TypedCodecFactory};

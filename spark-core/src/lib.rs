@@ -32,6 +32,7 @@ pub mod deprecation;
 pub mod error;
 pub mod future;
 pub mod host;
+pub mod limits;
 pub mod observability;
 pub mod pipeline;
 pub mod router;
@@ -95,6 +96,10 @@ pub use host::{
     NetworkProtocol, ProvisioningOutcome, SecurityFeature, ShutdownReason, StartupPhase,
     ThroughputClass,
 };
+pub use limits::{
+    LimitAction, LimitConfigError, LimitDecision, LimitMetricsHook, LimitPlan, LimitSettings,
+    ResourceKind, config_error_to_spark, decision_queue_snapshot,
+};
 pub use observability::{
     ApplicationEvent, AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter,
     DefaultObservabilityFacade, EventPolicy, Gauge, HealthCheckProvider, HealthChecks, HealthState,
@@ -116,9 +121,10 @@ pub use router::{
 };
 pub use runtime::{
     AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission, ManagedBlockingTask,
-    ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
-    TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle, TaskLaunchOptions, TaskPriority,
-    TaskResult, TimeDriver,
+    ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission, SloPolicyAction,
+    SloPolicyConfigError, SloPolicyDirective, SloPolicyManager, SloPolicyReloadReport,
+    SloPolicyRule, SloPolicyTrigger, TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle,
+    TaskLaunchOptions, TaskPriority, TaskResult, TimeDriver, slo_policy_table_key,
 };
 pub use security::{
     Credential, CredentialDescriptor, CredentialMaterial, CredentialScope, CredentialState,
@@ -133,10 +139,12 @@ pub use status::ready::{
     BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice, SubscriptionBudget,
 };
 pub use transport::{
-    AvailabilityRequirement, ConnectionIntent, DynServerTransport, DynTransportFactory, Endpoint,
-    EndpointKind, ListenerConfig, ListenerShutdown, QualityOfService, SecurityMode,
-    ServerTransport, ServerTransportObject, SessionLifecycle, TransportFactory,
-    TransportFactoryObject, TransportParams, TransportSocketAddr, describe_shutdown_target,
+    AvailabilityRequirement, Capability, CapabilityBitmap, ConnectionIntent, DowngradeReport,
+    DynServerTransport, DynTransportFactory, Endpoint, EndpointKind, HandshakeError,
+    HandshakeErrorKind, HandshakeOffer, HandshakeOutcome, ListenerConfig, ListenerShutdown,
+    NegotiationAuditContext, QualityOfService, SecurityMode, ServerTransport,
+    ServerTransportObject, SessionLifecycle, TransportFactory, TransportFactoryObject,
+    TransportParams, TransportSocketAddr, Version, describe_shutdown_target, negotiate,
 };
 
 use alloc::boxed::Box;
