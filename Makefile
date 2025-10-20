@@ -3,6 +3,7 @@
 ci-lints:
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
+	cargo run --quiet --package spark-deprecation-lint
 
 ci-zc-asm:
 	cargo build --workspace

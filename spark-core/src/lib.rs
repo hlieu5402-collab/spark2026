@@ -28,6 +28,7 @@ pub mod common;
 pub mod configuration;
 pub mod context;
 pub mod contract;
+pub mod deprecation;
 pub mod error;
 pub mod future;
 pub mod host;
@@ -62,7 +63,12 @@ pub use codec::{
     DecodeOutcome, DynCodec, DynCodecFactory, EncodeContext, EncodedPayload, Encoder,
     NegotiatedCodec, SchemaDescriptor, TypedCodecAdapter, TypedCodecFactory,
 };
-pub use common::{Empty, IntoEmpty, Loopback};
+/// 重新导出 `common` 模块的核心契约与临时兼容函数。
+///
+/// - `legacy_loopback_outbound` 已进入弃用流程，但在两版过渡期内仍需暴露；
+///   因此使用 `#[allow(deprecated)]` 抑制内部警告，保留对外提示能力。
+#[allow(deprecated)]
+pub use common::{Empty, IntoEmpty, Loopback, legacy_loopback_outbound};
 pub use configuration::{
     BuildError, BuildErrorKind, BuildErrorStage, BuildOutcome, BuildReport, ChangeEvent,
     ChangeNotification, ChangeSet, ConfigKey, ConfigMetadata, ConfigScope, ConfigValue,
@@ -174,3 +180,4 @@ where
         (**self).source()
     }
 }
+pub use deprecation::{DeprecationNotice, LEGACY_LOOPBACK_OUTBOUND};

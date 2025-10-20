@@ -1,0 +1,16 @@
+[package]
+name = "spark-deprecation-lint"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Gemini 架构组 <architecture@gemini.example>"]
+description = "CI helper that validates spark-core deprecation annotations"
+publish = false
+
+[dependencies]
+
+[[bin]]
+name = "spark-deprecation-lint"
+path = "src/main.rs"
+bench = false
+test = false
