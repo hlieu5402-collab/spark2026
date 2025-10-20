@@ -117,9 +117,10 @@ pub use status::ready::{
     BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice, SubscriptionBudget,
 };
 pub use transport::{
-    AvailabilityRequirement, ConnectionIntent, Endpoint, EndpointKind, ListenerShutdown,
-    QualityOfService, SecurityMode, ServerTransport, SessionLifecycle, TransportFactory,
-    TransportParams, TransportSocketAddr,
+    AvailabilityRequirement, ConnectionIntent, DynServerTransport, DynTransportFactory, Endpoint,
+    EndpointKind, ListenerConfig, ListenerShutdown, QualityOfService, SecurityMode,
+    ServerTransport, ServerTransportObject, SessionLifecycle, TransportFactory,
+    TransportFactoryObject, TransportParams, TransportSocketAddr, describe_shutdown_target,
 };
 
 use alloc::boxed::Box;

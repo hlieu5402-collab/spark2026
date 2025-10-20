@@ -1,6 +1,5 @@
+use alloc::{format, string::String};
 use core::time::Duration;
-
-use crate::{BoxFuture, CoreError, sealed::Sealed};
 
 use super::TransportSocketAddr;
 
@@ -42,31 +41,16 @@ impl ListenerShutdown {
     }
 }
 
-/// 服务端传输契约，抽象监听套接字生命周期。
+/// 服务端传输契约的泛型与对象层接口迁移至 [`crate::transport::traits`]。
+/// - 泛型接口：[`crate::transport::traits::generic::ServerTransport`]
+/// - 对象接口：[`crate::transport::traits::object::DynServerTransport`]
 ///
-/// # 设计背景（Why）
-/// - **生产经验**：统一 TCP、QUIC、内存管道等监听器的抽象，向上层屏蔽实现差异。
-/// - **科研需求**：支持将监听器替换为模拟网络、延迟注入组件，便于实验验证。
-///
-/// # 契约说明（What）
-/// - `local_addr`：返回监听绑定的地址，便于注册中心与观测平台读取。
-/// - `shutdown`：按照 [`ListenerShutdown`] 描述执行优雅关闭。
-/// - **前置条件**：实现者需保证监听器已成功启动；若未绑定地址，应返回合适错误。
-/// - **后置条件**：当 Future 完成且返回 `Ok(())` 时，监听器已停止接受新连接，并按计划处理旧连接。
-///
-/// # 性能契约（Performance Contract）
-/// - `shutdown` 返回 [`BoxFuture`] 以维持 Trait 对象安全；调用会进行一次堆分配与通过虚表调度的 `poll`。
-/// - `async_contract_overhead` Future 场景在 20 万次轮询中测得泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
-///   因优雅关闭频率通常较低，额外 CPU 成本可忽略。【e8841c†L4-L13】
-/// - 若关闭过程位于超敏感控制环，可在实现类型上提供额外的同步/泛型 API，或复用 `Box` 缓冲让调用方在明确类型时绕过分配。
-///
-/// # 风险提示（Trade-offs）
-/// - 如果底层 API 不支持优雅关闭，实现方应在超时后返回 `CoreError::operation_timeout` 等语义化错误。
-/// - 建议在实现中暴露指标（如正在排空的连接数）以协助运维决策。
-pub trait ServerTransport: Send + Sync + 'static + Sealed {
-    /// 返回本地监听地址。
-    fn local_addr(&self) -> TransportSocketAddr;
-
-    /// 根据计划执行优雅关闭。
-    fn shutdown(&self, plan: ListenerShutdown) -> BoxFuture<'static, Result<(), CoreError>>;
+/// `TransportSocketAddr` 依旧在此模块暴露，便于调用方在关闭流程中记录地址信息。
+pub fn describe_shutdown_target(addr: &TransportSocketAddr, plan: &ListenerShutdown) -> String {
+    format!(
+        "{} draining={}, deadline={}s",
+        addr,
+        plan.drain_existing(),
+        plan.deadline().as_secs_f64()
+    )
 }

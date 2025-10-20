@@ -1,13 +1,4 @@
-use alloc::{boxed::Box, sync::Arc};
-
-use crate::{
-    BoxFuture, CoreError,
-    cluster::ServiceDiscovery,
-    pipeline::{Channel, ControllerFactory},
-    sealed::Sealed,
-};
-
-use super::{ConnectionIntent, Endpoint, ServerTransport, TransportParams};
+use super::{Endpoint, TransportParams};
 use core::time::Duration;
 
 /// 监听配置，描述传输工厂如何在目标端点上暴露服务。
@@ -21,7 +12,7 @@ use core::time::Duration;
 /// - `params`：额外的键值参数（如 `tcp_backlog`、`quic_stateless_retry`）。
 /// - `concurrency_limit`：建议的最大并发连接数，`None` 表示交由实现决定。
 /// - `accept_backoff`：接受新连接的退避策略（如限流或防御攻击）。
-/// - **前置条件**：`endpoint` 应该包含可解析的主机与端口；调用前应完成权限校验。
+/// - **前置条件**：`endpoint` 应包含可解析的主机与端口；调用前应完成权限校验。
 /// - **后置条件**：当 `bind` 返回成功时，监听器应按照配置开始接收连接。
 ///
 /// # 风险提示（Trade-offs）
@@ -85,70 +76,6 @@ impl ListenerConfig {
     }
 }
 
-/// 传输工厂统一封装绑定与连接流程。
-///
-/// # 设计背景（Why）
-/// - **生产经验**：与 Netty `ChannelFactory`、Tower `MakeService` 一致，在运行时选择不同协议实现（TCP、QUIC、内存）。
-/// - **科研探索**：结合服务发现（ServiceDiscovery）实现 Intent-Based 连接策略，允许替换为仿真或调度算法原型。
-///
-/// # 契约说明（What）
-/// - `scheme`：工厂支持的协议方案，如 `tcp`、`quic`、`ws`。
-/// - `bind`：根据 [`ListenerConfig`] 与管线工厂创建监听器。
-/// - `connect`：基于 [`ConnectionIntent`] 构建客户端通道，可选结合服务发现。
-/// - **前置条件**：调用方需确保 `endpoint.scheme()` 与工厂匹配，否则返回 `CoreError::unsupported_protocol` 等语义化错误。
-/// - **后置条件**：成功时返回动态分发的监听器或通道，生命周期由调用方管理。
-/// - **Custom 扩展处理**：若 `ConnectionIntent::security` 或 `intent.params()` 中包含 `Custom` 扩展，
-///   工厂必须显式判定是否支持；不支持时应返回
-///   [`crate::error::codes::ROUTER_VERSION_CONFLICT`] 或 [`crate::error::codes::APP_UNAUTHORIZED`]。
-///
-/// # 性能契约（Performance Contract）
-/// - `bind` 与 `connect` 返回 [`BoxFuture`] 以维持 Trait 对象安全；每次调用会触发一次堆分配与通过虚表调度的 `poll` 跳转。
-/// - `async_contract_overhead` 基准在 20 万次建连模拟中测得泛型 Future 平均 6.23ns/次、`BoxFuture` 平均 6.09ns/次。
-///   差异约 -0.9%，说明默认路径的额外 CPU 消耗可以忽略。【e8841c†L4-L13】
-/// - 若业务面向极端低延迟或零分配场景，可在实现类型上额外暴露泛型/具体返回值接口（例如 `fn bind_typed(...) -> impl Future`），
-///   或在内部复用 `Box` 缓冲区；调用方在掌握实现类型时也可直接依赖该具体类型，完全绕过动态分发。
-///
-/// # 风险提示（Trade-offs）
-/// - 建连可能涉及 DNS、服务发现、握手，多步异步流程需尊重 `timeout` 与 `retry_budget`。
-/// - 绑定失败需提供明确错误原因，便于运维排查（端口占用、权限不足等）。
-/// - 若底层协议不支持 `NetworkProtocol::Custom`，应在错误中包含建议的替代协议，避免调用方盲目重试。
-///
-/// # 错误契约（Error Contract）
-/// - `scheme`：该方法仅返回静态标识，不触发错误码；实现者应在文档与日志中说明，当调用方请求未知协议时，
-///   会在 `bind`/`connect` 阶段返回带有标准错误码的 [`CoreError`]。
-/// - `bind`：
-///   - 当监听端口被占用、底层运行时资源耗尽或连接积压超过实现阈值时，应转换为
-///     [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，提醒运维扩容或调整限流策略。
-///   - 若绑定过程依赖控制面（如证书分发、成员认证），遇到网络分区或领导者失效时，必须返回
-///     [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 或 [`crate::error::codes::CLUSTER_LEADER_LOST`]，
-///     并在审计日志中注明影响范围及恢复指引。
-///   - 当安全策略拒绝（如凭证缺失、ACL 拒绝）时，应返回 [`crate::error::codes::APP_UNAUTHORIZED`]，
-///     避免调用方误判为瞬时故障。
-/// - `connect`：
-///   - 当服务发现返回陈旧快照、注册中心尚未感知最新拓扑时，需返回
-///     [`crate::error::codes::DISCOVERY_STALE_READ`]，以便调用方刷新缓存或执行线性一致读。
-///   - 当 Intent 中的扩展字段与工厂能力不兼容时，应返回
-///     [`crate::error::codes::ROUTER_VERSION_CONFLICT`]，并在错误详情中给出兼容的能力标识。
-///   - 若建连过程中因网络分区、领导者失效而无实例可用，必须暴露
-///     [`crate::error::codes::CLUSTER_NETWORK_PARTITION`] 或 [`crate::error::codes::CLUSTER_LEADER_LOST`]，
-///     避免调用方误将其视作简单超时。
-///   - 当服务端或中间队列施加背压导致建连请求被拒绝时，需返回
-///     [`crate::error::codes::CLUSTER_QUEUE_OVERFLOW`]，支持调用方退避或切换备用线路。
-pub trait TransportFactory: Send + Sync + 'static + Sealed {
-    /// 返回支持的 scheme。
-    fn scheme(&self) -> &'static str;
-
-    /// 绑定服务端端点。
-    fn bind(
-        &self,
-        config: ListenerConfig,
-        pipeline_factory: Arc<dyn ControllerFactory>,
-    ) -> BoxFuture<'static, Result<Box<dyn ServerTransport>, CoreError>>;
-
-    /// 连接客户端端点。
-    fn connect(
-        &self,
-        intent: ConnectionIntent,
-        discovery: Option<Arc<dyn ServiceDiscovery>>,
-    ) -> BoxFuture<'static, Result<Box<dyn Channel>, CoreError>>;
-}
+// 传输工厂的泛型与对象层接口已迁移至 `crate::transport::traits`：
+// - 泛型接口：`crate::transport::traits::generic::TransportFactory`
+// - 对象接口：`crate::transport::traits::object::DynTransportFactory`

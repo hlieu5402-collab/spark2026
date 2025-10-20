@@ -23,12 +23,17 @@ pub mod factory;
 pub mod intent;
 pub mod params;
 pub mod server;
+pub mod traits;
 
 pub use address::TransportSocketAddr;
 pub use endpoint::{Endpoint, EndpointKind};
-pub use factory::TransportFactory;
+pub use factory::ListenerConfig;
 pub use intent::{
     AvailabilityRequirement, ConnectionIntent, QualityOfService, SecurityMode, SessionLifecycle,
 };
 pub use params::TransportParams;
-pub use server::{ListenerShutdown, ServerTransport};
+pub use server::{ListenerShutdown, describe_shutdown_target};
+pub use traits::generic::{ServerTransport, TransportFactory};
+pub use traits::object::{
+    DynServerTransport, DynTransportFactory, ServerTransportObject, TransportFactoryObject,
+};
