@@ -1,4 +1,6 @@
+use crate::contract::BudgetSnapshot;
 use alloc::{borrow::Cow, fmt};
+use core::convert::TryFrom;
 use core::task::Poll;
 use core::time::Duration;
 
@@ -172,6 +174,30 @@ impl SubscriptionBudget {
         } else {
             ReadyState::Ready
         }
+    }
+}
+
+impl From<&BudgetSnapshot> for SubscriptionBudget {
+    /// 将契约层的 `BudgetSnapshot` 映射为订阅预算结构。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：背压模块在处理预算耗尽时持有 [`BudgetSnapshot`]（`u64` 精度），
+    ///   而就绪检查需要以 [`SubscriptionBudget`] 对外呈现统一接口；因此实现 `From`
+    ///   以便在 `poll_ready` 流程中无缝转换。
+    /// - **契约 (What)**：
+    ///   - **输入**：引用类型的 `BudgetSnapshot`，保证零拷贝；
+    ///   - **输出**：新的 [`SubscriptionBudget`] 实例，`limit` 与 `remaining` 会以饱和方式
+    ///     截断到 `u32` 范围；
+    ///   - **前置条件**：调用方需确保快照与当前就绪检查上下文匹配；
+    ///   - **后置条件**：返回结构可直接嵌入 `ReadyState::BudgetExhausted`。
+    /// - **实现 (How)**：逐个字段取值，使用 [`u32::try_from`] 搭配 `unwrap_or(u32::MAX)`
+    ///   完成饱和截断，避免溢出 panic。
+    /// - **风险提示 (Trade-offs & Gotchas)**：当原始值超过 `u32::MAX` 时，转换结果会被
+    ///   截断为 `u32::MAX`，调用方若需精确值应直接传递 `BudgetSnapshot` 供日志或指标使用。
+    fn from(snapshot: &BudgetSnapshot) -> Self {
+        let limit = u32::try_from(snapshot.limit()).unwrap_or(u32::MAX);
+        let remaining = u32::try_from(snapshot.remaining()).unwrap_or(u32::MAX);
+        SubscriptionBudget { limit, remaining }
     }
 }
 

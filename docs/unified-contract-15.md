@@ -14,8 +14,8 @@
 - **CI 约束**：`make ci-no-std-alloc` 确认新原语在 `no_std + alloc` 下可编译。
 
 ## 3. 背压语义统一
-- **落地位置**：`spark-core/src/backpressure.rs` 引入 `BackpressureReason`、`PollReady`，`Service::poll_ready` 改用统一返回值。
-- **CI 约束**：`cargo clippy -- -D warnings` 确保所有调用方显式处理新枚举，避免忽略背压信号。
+- **落地位置**：`spark-core/src/backpressure.rs` 提供 `BackpressureReason`；`spark-core/src/status/ready.rs` 暴露 `ReadyState/ReadyCheck/PollReady`，统一 `Service::poll_ready` 返回值。
+- **CI 约束**：`cargo clippy -- -D warnings` 确保所有调用方显式处理统一状态，避免忽略背压信号。
 
 ## 4. 优雅关闭契约
 - **落地位置**：`contract::CloseReason`、`pipeline::channel::Channel::close_graceful/closed`、`Context::close_graceful/closed`、`DynService::graceful_close/closed`。
@@ -50,7 +50,7 @@
 - **CI 约束**：`cargo test`（在后续契约测试 crate 中）及 `make ci-lints` 检查未使用错误。
 
 ## 12. 协议 / 编解码预算
-- **落地位置**：`BudgetKind::Decode/Flow`、`Budget::try_consume()`、`PollReady::BudgetExhausted`；`CallContext` 默认提供 `Flow` 预算。
+- **落地位置**：`BudgetKind::Decode/Flow`、`Budget::try_consume()`、`ReadyState::BudgetExhausted`；`CallContext` 默认提供 `Flow` 预算。
 - **CI 约束**：`make ci-bench-smoke` 检查基准是否引用预算；`cargo clippy` 防止忽略返回值。
 
 ## 13. 资源上限与配额
