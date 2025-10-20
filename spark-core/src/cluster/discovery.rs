@@ -1,5 +1,5 @@
 use crate::{
-    BoxFuture,
+    async_trait,
     cluster::{
         flow_control::{SubscriptionFlowControl, SubscriptionStream},
         topology::{ClusterConsistencyLevel, ClusterRevision},
@@ -7,7 +7,7 @@ use crate::{
     sealed::Sealed,
     transport::Endpoint,
 };
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, vec::Vec};
 
 use super::membership::ClusterError;
 
@@ -143,9 +143,9 @@ pub enum DiscoveryEvent {
 /// - **后置条件**：消费者可将快照与事件结合用于本地缓存或负载均衡决策。
 ///
 /// # 性能契约（Performance Contract）
-/// - `resolve` 与 `list_services` 返回 [`BoxFuture`]，`watch` 返回 [`SubscriptionStream`]（内部事件流仍为
-///   [`crate::BoxStream`]），借由对象安全统一协议接入；每次调用或轮询会产生一次堆分配与虚表跳转。
-/// - `async_contract_overhead` 基准量化了成本：Future 场景中泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
+/// - `resolve` 与 `list_services` 通过 `async fn` 返回业务结果，`watch` 返回 [`SubscriptionStream`]（内部事件流仍为
+///   [`crate::BoxStream`]），借由对象安全统一协议接入；宏 [`crate::async_trait`] 在生成代码阶段装箱 Future。
+/// - `async_contract_overhead` 基准量化了成本：Future 场景中泛型实现 6.23ns/次、装箱后的路径 6.09ns/次（约 -0.9%）。
 ///   Stream 场景中泛型 6.39ns/次、`BoxStream` 6.63ns/次（约 +3.8%），整体可满足大多数注册中心访问频率。【e8841c†L4-L13】
 /// - 对于超高吞吐订阅，可在实现中提供泛型/具体返回值的旁路接口，或内部复用缓冲池。
 ///   这样可以帮助调用方在必要时绕过分配与虚表开销。
@@ -163,13 +163,14 @@ pub enum DiscoveryEvent {
 ///   - 遭遇网络分区、领导者失效、拓扑暂不可达时，应返回上述集群错误码（`network_partition` / `leader_lost`），并可附加降级快照帮助调用方保持一致性。
 /// - `list_services`：
 ///   - 若注册中心提供的目录为陈旧视图或受网络分区影响无法返回完整数据，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]，提示调用方延迟重试或降级使用本地缓存。
+#[async_trait]
 pub trait ServiceDiscovery: Send + Sync + 'static + Sealed {
     /// 解析目标服务并返回快照。
-    fn resolve(
+    async fn resolve(
         &self,
         service: &ServiceName,
         consistency: ClusterConsistencyLevel,
-    ) -> BoxFuture<'static, Result<DiscoverySnapshot, ClusterError>>;
+    ) -> Result<DiscoverySnapshot, ClusterError>;
 
     /// 订阅服务实例事件。
     fn watch(
@@ -181,5 +182,5 @@ pub trait ServiceDiscovery: Send + Sync + 'static + Sealed {
     ) -> SubscriptionStream<DiscoveryEvent>;
 
     /// 列举当前命名空间下的服务列表。
-    fn list_services(&self) -> BoxFuture<'static, Result<Vec<ServiceName>, ClusterError>>;
+    async fn list_services(&self) -> Result<Vec<ServiceName>, ClusterError>;
 }

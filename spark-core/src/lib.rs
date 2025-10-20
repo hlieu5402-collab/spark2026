@@ -15,6 +15,8 @@
 
 extern crate alloc;
 
+pub use async_trait::async_trait;
+
 mod sealed;
 
 pub mod backpressure;

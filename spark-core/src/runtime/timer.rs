@@ -1,4 +1,5 @@
-use crate::{BoxFuture, sealed::Sealed};
+use crate::{async_trait, sealed::Sealed};
+use alloc::boxed::Box;
 use core::time::Duration;
 
 /// `MonotonicTimePoint` 以相对时间刻度表达单调时钟读数。
@@ -58,8 +59,8 @@ impl MonotonicTimePoint {
 /// - **后置条件**：延时 Future 完成时，运行时应确保至少等待了指定时间间隔。
 ///
 /// # 性能契约（Performance Contract）
-/// - `sleep` 与 `sleep_until` 返回 [`BoxFuture`]，实现与调用方之间以对象安全通信；每次调用包含一次堆分配与虚表调度。
-/// - `async_contract_overhead` Future 场景基于 20 万次轮询测得泛型实现 6.23ns/次、`BoxFuture` 6.09ns/次（约 -0.9%）。
+/// - `sleep` 与 `sleep_until` 通过 `async fn` 暴露异步能力；宏 [`crate::async_trait`] 自动完成 Future 装箱，每次调用包含一次堆分配与虚表调度。
+/// - `async_contract_overhead` Future 场景基于 20 万次轮询测得泛型实现 6.23ns/次、装箱路径 6.09ns/次（约 -0.9%）。
 ///   结果表明调度面引入的额外 CPU 消耗可控。【e8841c†L4-L13】
 /// - 针对高频短延时（如 1ms 心跳），可复用内部 `Box` 缓冲或额外暴露泛型接口（例如 `fn sleep_typed(...) -> impl Future`）以避
 ///   免动态分发；调用方也可在掌握实现类型时直接使用具体 API。
@@ -67,14 +68,15 @@ impl MonotonicTimePoint {
 /// # 风险提示（Trade-offs）
 /// - `sleep_until` 默认实现使用 `saturating_duration_since`，在系统时钟回拨情况下会立即完成；
 ///   如需不同策略，可在实现中覆写该方法。
+#[async_trait]
 pub trait TimeDriver: Send + Sync + 'static + Sealed {
     fn now(&self) -> MonotonicTimePoint;
 
-    fn sleep(&self, duration: Duration) -> BoxFuture<'static, ()>;
+    async fn sleep(&self, duration: Duration);
 
-    fn sleep_until(&self, deadline: MonotonicTimePoint) -> BoxFuture<'static, ()> {
+    async fn sleep_until(&self, deadline: MonotonicTimePoint) {
         let now = self.now();
         let wait = deadline.saturating_duration_since(now);
-        self.sleep(wait)
+        self.sleep(wait).await
     }
 }
