@@ -213,7 +213,7 @@ pub trait MetricsProvider: Send + Sync + 'static + Sealed {
 /// 指标契约命名空间。
 ///
 /// # 设计动机（Why）
-/// - 将 Service/Codec/Transport 三大核心域的指标名称、单位与稳定标签集中声明，避免散落各处导致命名漂移；
+/// - 将 Service/Codec/Transport/Limits 等核心域的指标名称、单位与稳定标签集中声明，避免散落各处导致命名漂移；
 /// - 便于后续在编译期做静态审计或生成文档（通过引用这些常量即可构建表格与说明）。
 ///
 /// # 使用方式（How）
@@ -414,5 +414,54 @@ pub mod contract {
         pub const ROLE_CLIENT: &str = "client";
         /// 标签值：服务端角色。
         pub const ROLE_SERVER: &str = "server";
+    }
+
+    /// Limits 域指标契约定义。
+    ///
+    /// # 内容说明
+    /// - 反映资源限额的使用情况、触发频率与策略结果，支撑丢弃/降级比的观测。
+    pub mod limits {
+        use super::InstrumentDescriptor;
+
+        /// 资源当前使用量。
+        pub const RESOURCE_USAGE: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.limits.usage")
+                .with_description("目标资源的即时占用量")
+                .with_unit("units");
+
+        /// 资源限额配置。
+        pub const RESOURCE_LIMIT: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.limits.limit")
+                .with_description("目标资源的配置上限")
+                .with_unit("units");
+
+        /// 超限触发次数。
+        pub const HIT_TOTAL: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.limits.hit")
+                .with_description("资源达到限额时的触发次数")
+                .with_unit("events");
+
+        /// 超限导致的直接丢弃次数。
+        pub const DROP_TOTAL: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.limits.drop")
+                .with_description("因限额触发而拒绝请求的次数")
+                .with_unit("events");
+
+        /// 超限导致的降级次数。
+        pub const DEGRADE_TOTAL: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.limits.degrade")
+                .with_description("因限额触发而执行降级策略的次数")
+                .with_unit("events");
+
+        /// 排队策略下的队列深度。
+        pub const QUEUE_DEPTH: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.limits.queue.depth")
+                .with_description("排队策略执行时的实时队列深度")
+                .with_unit("entries");
+
+        /// 标签：资源类型。
+        pub const ATTR_RESOURCE: &str = "limit.resource";
+        /// 标签：策略类型。
+        pub const ATTR_ACTION: &str = "limit.action";
     }
 }

@@ -493,6 +493,12 @@ pub const DEFAULT_OBSERVABILITY_CONTRACT: ObservabilityContract = ObservabilityC
         "spark.transport.handshake.duration",
         "spark.transport.bytes.inbound",
         "spark.transport.bytes.outbound",
+        "spark.limits.usage",
+        "spark.limits.limit",
+        "spark.limits.hit",
+        "spark.limits.drop",
+        "spark.limits.degrade",
+        "spark.limits.queue.depth",
     ],
     &[
         "request.id",
