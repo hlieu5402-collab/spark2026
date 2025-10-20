@@ -21,6 +21,9 @@ jobs:
       - name: Consistency guardrails
         run: tools/ci/check_consistency.sh
 
+      - name: Unified protocol governance gate
+        run: tools/ci/check_unified_protocol_guard.sh
+
       - name: Install Rust 1.89 toolchain
         uses: dtolnay/rust-toolchain@master
         with:
