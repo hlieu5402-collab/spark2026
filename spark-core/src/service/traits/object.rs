@@ -29,6 +29,11 @@ use super::generic::Service;
 /// - **前置条件**：必须在 `call_dyn` 之前获得 `ReadyState::Ready`；
 /// - **后置条件**：实现需保证在关闭流程中完成资源回收或返回明确错误。
 ///
+/// # 线程安全与生命周期说明
+/// - `DynService: Send + Sync + 'static`：
+///   - **原因**：对象层服务通常存放在 `Arc<dyn DynService>` 中跨线程共享，且需在整个服务生命周期内有效；
+///   - **借用策略**：请求/响应消息体通过 [`PipelineMessage`] 承载，不强制 `'static`，避免阻碍短生命周期缓冲在调用结束后释放。
+///
 /// # 风险提示（Trade-offs）
 /// - 相较泛型层，多出一次虚表调用与一次堆分配；在热路径若可静态确定类型，仍建议使用 [`Service`]。
 #[async_trait]

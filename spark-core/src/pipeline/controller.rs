@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{
-    handler::{InboundHandler, OutboundHandler},
+    handler::{self, InboundHandler, OutboundHandler},
     middleware::{ChainBuilder, Middleware},
 };
 
@@ -153,6 +153,14 @@ pub trait HandlerRegistry: Send + Sync + Sealed {
 /// - `emit_*`：向链路广播事件。
 /// - `registry`：返回 Handler 注册信息，支持管理面查询。
 ///
+/// # 线程安全与生命周期约束
+/// - Trait 继承 `Send + Sync + 'static`：
+///   - **原因**：控制器常由运行时线程池并发访问，并在链路初始化后长期驻留；若不要求 `'static`，将无法安全放入 `Arc<dyn Controller>`。
+///   - **对比**：`Context` 仅要求 `Send + Sync`，生命周期绑定单次事件回调，可由控制器控制释放时机。
+/// - Handler 注册提供“拥有型 Box”与“借用型 `'static` 引用”双入口：
+///   - `register_*_handler` 适合一次性构造后交由控制面托管；
+///   - `register_*_handler_static` 复用全局单例或懒加载实例，避免重复分配并显式表达生命周期假设。
+///
 /// # 前置/后置条件（Contract）
 /// - **前置**：实现必须保证线程安全；事件广播期间不得持有阻塞锁，避免死锁。
 /// - **后置**：事件广播需保证顺序一致性（读事件顺序、写事件逆序），并在异常时触发容错流程。
@@ -164,8 +172,22 @@ pub trait Controller: Send + Sync + 'static + Sealed {
     /// 注册入站 Handler。
     fn register_inbound_handler(&self, label: &str, handler: Box<dyn InboundHandler>);
 
+    /// 以 `'static` 借用方式注册入站 Handler，复用长生命周期单例。
+    fn register_inbound_handler_static(&self, label: &str, handler: &'static (dyn InboundHandler)) {
+        self.register_inbound_handler(label, handler::box_inbound_from_static(handler));
+    }
+
     /// 注册出站 Handler。
     fn register_outbound_handler(&self, label: &str, handler: Box<dyn OutboundHandler>);
+
+    /// 以 `'static` 借用方式注册出站 Handler，语义与入站版本一致。
+    fn register_outbound_handler_static(
+        &self,
+        label: &str,
+        handler: &'static (dyn OutboundHandler),
+    ) {
+        self.register_outbound_handler(label, handler::box_outbound_from_static(handler));
+    }
 
     /// 通过 Middleware 批量装配 Handler。
     fn install_middleware(
@@ -204,7 +226,15 @@ impl ChainBuilder for dyn Controller {
         Controller::register_inbound_handler(self, label, handler);
     }
 
+    fn register_inbound_static(&mut self, label: &str, handler: &'static (dyn InboundHandler)) {
+        Controller::register_inbound_handler_static(self, label, handler);
+    }
+
     fn register_outbound(&mut self, label: &str, handler: Box<dyn OutboundHandler>) {
         Controller::register_outbound_handler(self, label, handler);
+    }
+
+    fn register_outbound_static(&mut self, label: &str, handler: &'static (dyn OutboundHandler)) {
+        Controller::register_outbound_handler_static(self, label, handler);
     }
 }

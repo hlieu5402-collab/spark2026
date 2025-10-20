@@ -128,6 +128,12 @@ where
 /// - 抽象出注册、协商、实例化三项职责，便于内存实现与分布式实现共享；
 /// - 输出 [`NegotiatedCodec`] 快照，使泛型层与对象层调用者都能重用相同结构。
 ///
+/// # 线程安全与生命周期约束
+/// - Trait 继承 `Send + Sync + 'static`，以支撑运行时在多线程/多实例间共享注册中心；
+/// - `register`/`register_static` 提供拥有型与借用型两种入口：
+///   - 拥有型用于动态加载插件时直接转移工厂所有权；
+///   - 借用型适合复用进程级单例，避免重复装箱并明确声明 `'static` 生命周期要求。
+///
 /// # 契约说明（What）
 /// - **前置条件**：`preferred` 与 `accepted_encodings` 应按客户端优先级排序；
 /// - **后置条件**：协商成功返回的快照可跨线程共享；
@@ -135,6 +141,11 @@ where
 pub trait CodecRegistry: Send + Sync + 'static + Sealed {
     /// 注册新的对象层编解码工厂。
     fn register(&self, factory: Box<dyn DynCodecFactory>) -> Result<(), CoreError>;
+
+    /// 注册 `'static` 生命周期的对象层编解码工厂。
+    fn register_static(&self, factory: &'static (dyn DynCodecFactory)) -> Result<(), CoreError> {
+        self.register(box_dyn_codec_factory_from_static(factory))
+    }
 
     /// 根据客户端偏好协商最终方案。
     fn negotiate(
@@ -145,4 +156,25 @@ pub trait CodecRegistry: Send + Sync + 'static + Sealed {
 
     /// 基于协商结果实例化编解码器。
     fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, CoreError>;
+}
+
+/// 将 `'static` DynCodecFactory 引用适配为拥有型 Box，便于在借用入口与原有 API 之间复用。
+fn box_dyn_codec_factory_from_static(
+    factory: &'static (dyn DynCodecFactory),
+) -> Box<dyn DynCodecFactory> {
+    Box::new(BorrowedDynCodecFactory { inner: factory })
+}
+
+struct BorrowedDynCodecFactory {
+    inner: &'static (dyn DynCodecFactory),
+}
+
+impl DynCodecFactory for BorrowedDynCodecFactory {
+    fn descriptor(&self) -> &CodecDescriptor {
+        self.inner.descriptor()
+    }
+
+    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, CoreError> {
+        self.inner.instantiate(negotiated)
+    }
 }

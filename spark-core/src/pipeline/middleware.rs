@@ -2,7 +2,7 @@ use alloc::{borrow::Cow, boxed::Box, format};
 
 use crate::{CoreError, runtime::CoreServices, sealed::Sealed};
 
-use super::handler::{InboundHandler, OutboundHandler};
+use super::handler::{self, InboundHandler, OutboundHandler};
 
 /// 描述 Middleware 或 Handler 的元数据，辅助链路编排与可观测性。
 ///
@@ -69,6 +69,7 @@ impl MiddlewareDescriptor {
 /// # 契约说明（What）
 /// - `register_inbound`：以名称注册入站 Handler，顺序即执行顺序。
 /// - `register_outbound`：以名称注册出站 Handler，顺序即逆向执行顺序。
+/// - `register_*_static`：为 `'static` 借用提供无复制入口，常用于全局单例；
 /// - 实现方可在内部维护有序列表或拓扑结构（如 DAG）以支持复杂编排。
 ///
 /// # 风险提示（Trade-offs）
@@ -77,8 +78,18 @@ pub trait ChainBuilder: Sealed {
     /// 注册入站 Handler。
     fn register_inbound(&mut self, label: &str, handler: Box<dyn InboundHandler>);
 
+    /// 以 `'static` 借用方式注册入站 Handler，默认桥接到拥有型入口。
+    fn register_inbound_static(&mut self, label: &str, handler: &'static (dyn InboundHandler)) {
+        self.register_inbound(label, handler::box_inbound_from_static(handler));
+    }
+
     /// 注册出站 Handler。
     fn register_outbound(&mut self, label: &str, handler: Box<dyn OutboundHandler>);
+
+    /// 以 `'static` 借用方式注册出站 Handler。
+    fn register_outbound_static(&mut self, label: &str, handler: &'static (dyn OutboundHandler)) {
+        self.register_outbound(label, handler::box_outbound_from_static(handler));
+    }
 }
 
 /// Middleware 合约：以声明式方式将 Handler 注入 Controller。

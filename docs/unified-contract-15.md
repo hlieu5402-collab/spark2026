@@ -42,7 +42,7 @@
 - **CI 约束**：`cargo clippy` 检查枚举是否匹配完整；`cargo doc` 输出 `#[non_exhaustive]` 文档警示。
 
 ## 10. 边界同步
-- **落地位置**：`Service`、`DynService`、`Context`、`Channel` 等 trait 明确 `Send + Sync + 'static` 要求；`CallContext` 采用 `Arc` 共享实现生命周期同步。
+- **落地位置**：`Service`、`DynService`、`Context`、`Channel` 等 trait 明确 `Send + Sync + 'static` 要求；`CallContext` 采用 `Arc` 共享实现生命周期同步；`docs/send-sync-static-matrix.md` 提供矩阵化对照，覆盖借用/拥有成对入口。
 - **CI 约束**：`make ci-zc-asm` 与 `cargo clippy` 检查线程安全界限。
 
 ## 11. 配置 Builder 契约
