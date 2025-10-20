@@ -25,6 +25,7 @@
 | Service | `spark.request.duration` | Histogram (`ms`) | 单次调用端到端耗时 | `service.name` `route.id` `operation` `protocol` `status.code` `outcome` |
 | Service | `spark.request.inflight` | Gauge (`requests`) | 并发中的调用数 | `service.name` `route.id` `operation` `protocol` |
 | Service | `spark.request.errors` | Counter (`requests`) | 失败调用次数 | `service.name` `route.id` `operation` `protocol` `error.kind` |
+| Service | `spark.request.ready_state` | Counter (`checks`) | `poll_ready` 结果统计，覆盖 ReadyState 的 Busy/BudgetExhausted/RetryAfter | `service.name` `route.id` `operation` `protocol` `ready.state` `ready.detail` |
 | Service | `spark.bytes.inbound` / `spark.bytes.outbound` | Counter (`bytes`) | 请求/响应字节量 | `service.name` `route.id` `operation` `protocol` |
 | Codec | `spark.codec.encode.duration` / `spark.codec.decode.duration` | Histogram (`ms`) | 编解码耗时 | `codec.name` `codec.mode` `content.type` |
 | Codec | `spark.codec.encode.bytes` / `spark.codec.decode.bytes` | Counter (`bytes`) | 编解码后的字节量 | `codec.name` `codec.mode` `content.type` |
@@ -46,6 +47,24 @@
 - `service::metrics::ServiceMetricsHook`
 - `codec::metrics::CodecMetricsHook`
 - `transport::metrics::TransportMetricsHook`
+
+### ReadyState → 指标/标签映射
+
+| ReadyState 分支 | `ready.state` 标签值 | `ready.detail` 标签值 | 说明 |
+| --- | --- | --- | --- |
+| `ReadyState::Ready` | `ready` | `_`（占位常量 `_`，避免误解为缺失标签） | 表示服务立即可用；该分支仅用于基准线计算，不参与 Busy/Exhausted/RetryAfter 三态对齐。 |
+| `ReadyState::Busy(BusyReason::Upstream)` | `busy` | `upstream` | 上游依赖不可用或限流，建议调用方退避或切换备份。 |
+| `ReadyState::Busy(BusyReason::Downstream)` | `busy` | `downstream` | 下游（如存储、第三方 API）成为瓶颈。 |
+| `ReadyState::Busy(BusyReason::QueueFull { .. })` | `busy` | `queue_full` | 内部排队深度达到或超过阈值。 |
+| `ReadyState::Busy(BusyReason::Custom(_))` | `busy` | `custom` | 自定义繁忙原因，值由实现者注入，但需保持有限枚举。 |
+| `ReadyState::BudgetExhausted(_)` | `budget_exhausted` | `_` | 流量预算耗尽，必须触发降级或直接拒绝请求。 |
+| `ReadyState::RetryAfter(RetryAdvice::after(_))` | `retry_after` | `after` | 建议在指定毫秒后重试，可配合 `retry.after_ms` 实验性标签输出具体等待时间。 |
+| `ReadyState::RetryAfter(RetryAdvice::at(_))` | `retry_after` | `at` | 建议在某绝对时间点重试，适用于计划内变更。 |
+| 其他 `RetryAdvice` 扩展 | `retry_after` | `custom` | 若后续扩展新的重试建议分支，需同步更新枚举值并记录在本表。 |
+
+> **落地约束**：`ready.detail` 必须使用上表枚举或 `_` 作为占位，严禁写入请求 ID、租户 ID 等高基数字段；如需额外上下文，请通过日志或临时实验性指标承载。
+
+`spark.request.ready_state` 指标应在每次 `poll_ready` 调用后立刻计数一次，以便观察 Busy/Exhausted/RetryAfter 的相对频次。常见实现是在 `poll_ready` 返回后直接调用 `MetricsProvider::record_counter`，并附带上表约定的标签集（如通过 `OwnedAttributeSet` 组合 `ready.state` / `ready.detail`）。
 
 示例：在对象层 Service 实现中记录调用生命周期指标：
 
@@ -91,8 +110,9 @@ Codec 与 Transport 的钩子使用方式一致，分别面向 `EncodeContext`/`
 
 1. 导入上文指标契约，确保代码中仅使用列出的名称与标签；
 2. 启动任意集成了 `ServiceMetricsHook` 的样例服务，可在 1 分钟内观察到 `spark.request.*` 与 `spark.transport.*` 指标数据；
-3. 使用压测工具验证标签基数是否控制在 ≤1000（可通过 `count(count_over_time({__name__="spark.request.total"}[5m]))` 进行估算）；
-4. `promtool check rules docs/observability/alerts.yaml` 必须返回 `SUCCESS`；
-5. Grafana 导入 `dashboards/*.json` 后应能直接联动 `service_name`、`listener_id` 等变量实现多实例对比。
+3. `spark.request.ready_state` 中 `ready.state`= `busy`/`budget_exhausted`/`retry_after` 的分支应在压测中全部出现，且 `ready.detail` 标签基数需 < 10（推荐通过 `count(count_over_time({__name__="spark.request.ready_state"}[5m]))` 与 `label_join` 验证）；
+4. 使用压测工具验证其他指标标签基数是否控制在 ≤1000（可通过 `count(count_over_time({__name__="spark.request.total"}[5m]))` 进行估算）；
+5. `promtool check rules docs/observability/alerts.yaml` 必须返回 `SUCCESS`；
+6. Grafana 导入 `dashboards/*.json` 后应能直接联动 `service_name`、`listener_id` 等变量实现多实例对比。
 
 > **后续计划**：v1.1 将补充 Streaming 指标、跨 Region 同步指标以及自动化 cardinality 保护策略。
