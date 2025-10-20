@@ -18,16 +18,23 @@ mod change;
 mod error;
 mod key;
 mod profile;
+mod snapshot;
 mod source;
 mod value;
 
 pub use builder::{
-    ConfigurationBuilder, ConfigurationHandle, LayeredConfiguration, ResolvedConfiguration,
+    BuildError, BuildErrorKind, BuildErrorStage, BuildOutcome, BuildReport, ConfigurationBuilder,
+    ConfigurationHandle, LayeredConfiguration, ResolvedConfiguration, ValidationFinding,
+    ValidationReport, ValidationState,
 };
 pub use change::{ChangeEvent, ChangeNotification, ChangeSet};
 pub use error::{ConfigurationError, SourceRegistrationError};
 pub use key::{ConfigKey, ConfigScope};
 pub use profile::{ProfileDescriptor, ProfileId, ProfileLayering};
+pub use snapshot::{
+    ConfigurationSnapshot, SnapshotEntry, SnapshotLayer, SnapshotMetadata, SnapshotProfile,
+    SnapshotValue,
+};
 pub use source::{
     ChangeCallback, ConfigurationLayer, ConfigurationSource, SourceMetadata, WatchToken,
 };

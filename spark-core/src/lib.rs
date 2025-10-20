@@ -58,10 +58,13 @@ pub use codec::{
 };
 pub use common::{Empty, IntoEmpty, Loopback};
 pub use configuration::{
-    ChangeEvent, ChangeNotification, ChangeSet, ConfigKey, ConfigMetadata, ConfigScope,
-    ConfigValue, ConfigurationBuilder, ConfigurationError, ConfigurationHandle, ConfigurationLayer,
-    ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId, ProfileLayering,
-    ResolvedConfiguration, SourceMetadata, WatchToken,
+    BuildError, BuildErrorKind, BuildErrorStage, BuildOutcome, BuildReport, ChangeEvent,
+    ChangeNotification, ChangeSet, ConfigKey, ConfigMetadata, ConfigScope, ConfigValue,
+    ConfigurationBuilder, ConfigurationError, ConfigurationHandle, ConfigurationLayer,
+    ConfigurationSnapshot, ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId,
+    ProfileLayering, ResolvedConfiguration, SnapshotEntry, SnapshotLayer, SnapshotMetadata,
+    SnapshotProfile, SnapshotValue, SourceMetadata, ValidationFinding, ValidationReport,
+    ValidationState, WatchToken,
 };
 pub use context::ExecutionContext;
 pub use contract::{

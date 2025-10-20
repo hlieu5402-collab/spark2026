@@ -40,7 +40,8 @@ fn bench_build_static_layer(c: &mut Criterion) {
                 .register_source(Box::new(StaticSource))
                 .expect("register source");
 
-            let (_handle, _resolved) = builder.build().expect("build configuration");
+            let outcome = builder.build().expect("build configuration");
+            criterion::black_box(outcome.report.snapshot().to_json());
         });
     });
 }
