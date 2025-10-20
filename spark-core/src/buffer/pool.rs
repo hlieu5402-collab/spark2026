@@ -27,6 +27,147 @@ use super::WritableBuffer;
 /// - **分配策略**：允许实现根据场景选择固定大小、指数级或 TCMalloc 风格的分配策略，契约仅关注语义。
 /// - **背压处理**：当池容量不足时可返回 `CoreError`，或在错误中携带降级建议（如切换到 on-heap）。
 /// - **观测性**：`statistics` 默认返回静态数据，鼓励实现者提供诸如“池使用率”“活跃租借数”等核心指标。
+///
+/// # 示例（Examples）
+/// ```rust
+/// use spark_core::buffer::{BufferPool, PoolStats, ReadableBuffer, WritableBuffer};
+/// use spark_core::error::codes;
+/// use spark_core::CoreError;
+/// use std::sync::{Arc, Mutex};
+///
+/// //=== 可读缓冲最小实现 ===//
+/// struct FrozenBuffer {
+///     data: Vec<u8>,
+///     cursor: usize,
+/// }
+///
+/// impl ReadableBuffer for FrozenBuffer {
+///     fn remaining(&self) -> usize {
+///         self.data.len().saturating_sub(self.cursor)
+///     }
+///
+///     fn chunk(&self) -> &[u8] {
+///         &self.data[self.cursor..]
+///     }
+///
+///     fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+///         if len > self.remaining() {
+///             return Err(CoreError::new(codes::PROTOCOL_DECODE, "split exceeds remaining bytes"));
+///         }
+///         let end = self.cursor + len;
+///         let slice = self.data[self.cursor..end].to_vec();
+///         self.cursor = end;
+///         Ok(Box::new(FrozenBuffer { data: slice, cursor: 0 }))
+///     }
+///
+///     fn advance(&mut self, len: usize) -> Result<(), CoreError> {
+///         if len > self.remaining() {
+///             return Err(CoreError::new(codes::PROTOCOL_DECODE, "advance exceeds remaining bytes"));
+///         }
+///         self.cursor += len;
+///         Ok(())
+///     }
+///
+///     fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
+///         if dst.len() > self.remaining() {
+///             return Err(CoreError::new(codes::PROTOCOL_DECODE, "insufficient data for copy"));
+///         }
+///         let end = self.cursor + dst.len();
+///         dst.copy_from_slice(&self.data[self.cursor..end]);
+///         self.cursor = end;
+///         Ok(())
+///     }
+///
+///     fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
+///         Ok(self.data)
+///     }
+/// }
+///
+/// //=== 可写缓冲最小实现 ===//
+/// struct SimpleBuffer {
+///     data: Vec<u8>,
+/// }
+///
+/// impl SimpleBuffer {
+///     fn with_capacity(capacity: usize) -> Self {
+///         Self { data: Vec::with_capacity(capacity) }
+///     }
+/// }
+///
+/// impl WritableBuffer for SimpleBuffer {
+///     fn capacity(&self) -> usize {
+///         self.data.capacity()
+///     }
+///
+///     fn remaining_mut(&self) -> usize {
+///         self.data.capacity().saturating_sub(self.data.len())
+///     }
+///
+///     fn written(&self) -> usize {
+///         self.data.len()
+///     }
+///
+///     fn reserve(&mut self, additional: usize) -> Result<(), CoreError> {
+///         self.data.reserve(additional);
+///         Ok(())
+///     }
+///
+///     fn put_slice(&mut self, src: &[u8]) -> Result<(), CoreError> {
+///         self.data.extend_from_slice(src);
+///         Ok(())
+///     }
+///
+///     fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> Result<(), CoreError> {
+///         if len > src.remaining() {
+///             return Err(CoreError::new(codes::PROTOCOL_DECODE, "source buffer exhausted"));
+///         }
+///         let mut tmp = vec![0u8; len];
+///         src.copy_into_slice(&mut tmp)?;
+///         self.data.extend_from_slice(&tmp);
+///         Ok(())
+///     }
+///
+///     fn clear(&mut self) {
+///         self.data.clear();
+///     }
+///
+///     fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+///         Ok(Box::new(FrozenBuffer { data: self.data, cursor: 0 }))
+///     }
+/// }
+///
+/// //=== 池实现：通过互斥锁维护快照 ===//
+/// #[derive(Default)]
+/// struct InMemoryPool {
+///     snapshot: Arc<Mutex<PoolStats>>,
+/// }
+///
+/// impl BufferPool for InMemoryPool {
+///     fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
+///         let mut stats = self.snapshot.lock().expect("mutex poisoned");
+///         stats.allocated_bytes = stats.allocated_bytes.saturating_add(min_capacity);
+///         stats.available_bytes = stats.available_bytes.saturating_add(min_capacity);
+///         stats.active_leases = stats.active_leases.saturating_add(1);
+///         Ok(Box::new(SimpleBuffer::with_capacity(min_capacity)))
+///     }
+///
+///     fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+///         Ok(0)
+///     }
+///
+///     fn statistics(&self) -> Result<PoolStats, CoreError> {
+///         Ok(self.snapshot.lock().expect("mutex poisoned").clone())
+///     }
+/// }
+///
+/// let pool = InMemoryPool::default();
+/// let mut writable = pool.acquire(4).expect("租借缓冲不应失败");
+/// writable.put_slice(&[0xAA, 0xBB]).expect("写入示例数据");
+/// let frozen = writable.freeze().expect("freeze 应产生只读缓冲");
+/// assert_eq!(frozen.remaining(), 2, "冻结后的剩余字节应与写入量一致");
+/// let stats = pool.statistics().expect("应能读取快照");
+/// assert!(stats.allocated_bytes >= stats.active_leases, "池快照应保持语义约束");
+/// ```
 pub trait BufferPool: Send + Sync + 'static + Sealed {
     /// 租借一个最少具备 `min_capacity` 可写空间的缓冲区。
     fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError>;
@@ -70,6 +211,28 @@ pub trait BufferPool: Send + Sync + 'static + Sealed {
 ///   调用方若需要严格不为 0，可自行断言。
 /// - `custom_dimensions` 仍使用字符串键，允许实验性指标快速落地；
 ///   若需进一步约束，可在上层定义白名单或枚举映射。
+///
+/// # 示例（Examples）
+/// ```rust
+/// use spark_core::buffer::{PoolStatDimension, PoolStats};
+/// use std::borrow::Cow;
+///
+/// let stats = PoolStats {
+///     allocated_bytes: 1024,
+///     resident_bytes: 768,
+///     active_leases: 2,
+///     available_bytes: 256,
+///     pending_lease_requests: 0,
+///     failed_acquisitions: 0,
+///     custom_dimensions: vec![PoolStatDimension {
+///         key: Cow::Borrowed("slab_spans"),
+///         value: 3,
+///     }],
+/// };
+///
+/// assert!(stats.allocated_bytes >= stats.resident_bytes);
+/// assert_eq!(stats.custom_dimensions[0].key, "slab_spans");
+/// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PoolStats {
     /// **意图 (Why)**：记录池自创建以来主动向系统（操作系统或上游 Arena）申请的总字节数，
