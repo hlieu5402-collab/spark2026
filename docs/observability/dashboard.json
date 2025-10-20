@@ -1,0 +1,116 @@
+{
+  "title": "Spark 指标契约 v1.0",
+  "uid": "spark-metrics-v1",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "30s",
+  "timezone": "browser",
+  "templating": {
+    "list": [
+      {
+        "name": "service_name",
+        "type": "query",
+        "datasource": "Prometheus",
+        "refresh": 2,
+        "query": "label_values(spark_request_total, service_name)",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": ""
+        }
+      },
+      {
+        "name": "listener_id",
+        "type": "query",
+        "datasource": "Prometheus",
+        "refresh": 2,
+        "query": "label_values(spark_transport_connections, listener_id)",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": ""
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "服务成功率",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "1 - sum(rate(spark_request_total{outcome=\"error\",service_name=~\"$service_name\"}[5m])) / sum(rate(spark_request_total{service_name=~\"$service_name\"}[5m]))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "服务 P99 延迟",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, operation) (rate(spark_request_duration_bucket{service_name=~\"$service_name\"}[5m])))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "活跃连接",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(spark_transport_connections{listener_id=~\"$listener_id\"})",
+          "legendFormat": "{{transport_protocol}}/{{peer_role}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "connections"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "传输层吞吐",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(spark_transport_bytes_outbound{listener_id=~\"$listener_id\"}[5m]))",
+          "legendFormat": "出站"
+        },
+        {
+          "expr": "sum(rate(spark_transport_bytes_inbound{listener_id=~\"$listener_id\"}[5m]))",
+          "legendFormat": "入站"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

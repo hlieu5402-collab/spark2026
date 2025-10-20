@@ -21,11 +21,13 @@
 mod decoder;
 mod encoder;
 mod metadata;
+pub mod metrics;
 mod registry;
 pub mod traits;
 
 pub use decoder::{DecodeContext, DecodeOutcome, Decoder};
 pub use encoder::{EncodeContext, EncodedPayload, Encoder};
 pub use metadata::{CodecDescriptor, ContentEncoding, ContentType, SchemaDescriptor};
+pub use metrics::{CodecMetricsHook, CodecPhase};
 pub use registry::{CodecRegistry, DynCodecFactory, NegotiatedCodec, TypedCodecFactory};
 pub use traits::{Codec, DynCodec, TypedCodecAdapter};

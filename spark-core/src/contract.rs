@@ -470,10 +470,24 @@ impl ObservabilityContract {
 /// 默认可观测性契约，覆盖框架内核心数据点。
 pub const DEFAULT_OBSERVABILITY_CONTRACT: ObservabilityContract = ObservabilityContract::new(
     &[
+        "spark.request.total",
         "spark.request.duration",
         "spark.request.inflight",
+        "spark.request.errors",
         "spark.bytes.inbound",
         "spark.bytes.outbound",
+        "spark.codec.encode.duration",
+        "spark.codec.decode.duration",
+        "spark.codec.encode.bytes",
+        "spark.codec.decode.bytes",
+        "spark.codec.encode.errors",
+        "spark.codec.decode.errors",
+        "spark.transport.connections",
+        "spark.transport.connection.attempts",
+        "spark.transport.connection.failures",
+        "spark.transport.handshake.duration",
+        "spark.transport.bytes.inbound",
+        "spark.transport.bytes.outbound",
     ],
     &[
         "request.id",

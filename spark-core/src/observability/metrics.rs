@@ -209,3 +209,210 @@ pub trait MetricsProvider: Send + Sync + 'static + Sealed {
         self.histogram(descriptor).record(value, attributes);
     }
 }
+
+/// 指标契约命名空间。
+///
+/// # 设计动机（Why）
+/// - 将 Service/Codec/Transport 三大核心域的指标名称、单位与稳定标签集中声明，避免散落各处导致命名漂移；
+/// - 便于后续在编译期做静态审计或生成文档（通过引用这些常量即可构建表格与说明）。
+///
+/// # 使用方式（How）
+/// - 业务代码或框架内部若需创建仪表，只需引用相应的常量，例如 `contract::service::REQUEST_DURATION`；
+/// - 标签键同样在此集中定义，可结合 [`crate::observability::attributes::KeyValue`] 构建稳定的属性集合；
+/// - 与本文档配套的 `docs/observability/metrics.md` 通过引用这些常量保持“代码即契约”。
+pub mod contract {
+    use super::InstrumentDescriptor;
+
+    /// Service 域指标契约定义。
+    ///
+    /// # 内容说明（What）
+    /// - 包含请求生命周期相关的计数器、直方图与瞬时 Gauge；
+    /// - 列举所有允许的标签键与部分标签枚举值，帮助调用方控制基数。
+    pub mod service {
+        use super::InstrumentDescriptor;
+
+        /// 请求总次数（成功 + 失败）。
+        pub const REQUEST_TOTAL: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.request.total")
+                .with_description("单个 Service 的累计请求次数，包含成功与失败")
+                .with_unit("requests");
+
+        /// 请求延迟分布。
+        pub const REQUEST_DURATION: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.request.duration")
+                .with_description("Service 端到端处理时长，单位毫秒")
+                .with_unit("ms");
+
+        /// 并发中的请求数量。
+        pub const REQUEST_INFLIGHT: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.request.inflight")
+                .with_description("当前尚未完成的请求数，用于衡量排队/并发压力")
+                .with_unit("requests");
+
+        /// 失败请求次数。
+        pub const REQUEST_ERRORS: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.request.errors")
+                .with_description("根据稳定错误分类统计的失败调用次数")
+                .with_unit("requests");
+
+        /// 入站有效载荷体积。
+        pub const BYTES_INBOUND: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.bytes.inbound")
+                .with_description("自客户端接收到的业务载荷大小")
+                .with_unit("bytes");
+
+        /// 出站有效载荷体积。
+        pub const BYTES_OUTBOUND: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.bytes.outbound")
+                .with_description("向客户端发送的业务载荷大小")
+                .with_unit("bytes");
+
+        /// 标签：业务服务名。
+        pub const ATTR_SERVICE_NAME: &str = "service.name";
+        /// 标签：路由/逻辑分组。
+        pub const ATTR_ROUTE_ID: &str = "route.id";
+        /// 标签：操作/方法名。
+        pub const ATTR_OPERATION: &str = "operation";
+        /// 标签：入站协议（如 grpc/http/quic）。
+        pub const ATTR_PROTOCOL: &str = "protocol";
+        /// 标签：HTTP/gRPC 等返回码。
+        pub const ATTR_STATUS_CODE: &str = "status.code";
+        /// 标签：调用结果（success/error）。
+        pub const ATTR_OUTCOME: &str = "outcome";
+        /// 标签：错误分类（限枚举，如 timeout/internal/validation）。
+        pub const ATTR_ERROR_KIND: &str = "error.kind";
+        /// 标签：对端身份（仅允许小集合，例如 upstream/downstream）。
+        pub const ATTR_PEER_IDENTITY: &str = "peer.identity";
+
+        /// 标签值：成功。
+        pub const OUTCOME_SUCCESS: &str = "success";
+        /// 标签值：失败。
+        pub const OUTCOME_ERROR: &str = "error";
+    }
+
+    /// Codec 域指标契约定义。
+    ///
+    /// # 内容说明
+    /// - 关注编解码耗时、字节规模与错误分类；
+    /// - `codec.mode` 标签区分 encode / decode，便于统一写入。
+    pub mod codec {
+        use super::InstrumentDescriptor;
+
+        /// 编码耗时。
+        pub const ENCODE_DURATION: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.codec.encode.duration")
+                .with_description("单次编码操作的耗时，通常在 Handler 写回响应时记录")
+                .with_unit("ms");
+
+        /// 解码耗时。
+        pub const DECODE_DURATION: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.codec.decode.duration")
+                .with_description("单次解码操作的耗时，用于监控协议解析复杂度")
+                .with_unit("ms");
+
+        /// 编码输出字节数。
+        pub const ENCODE_BYTES: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.codec.encode.bytes")
+                .with_description("编码后产生的字节数量")
+                .with_unit("bytes");
+
+        /// 解码输入字节数。
+        pub const DECODE_BYTES: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.codec.decode.bytes")
+                .with_description("解码器消费的字节数量")
+                .with_unit("bytes");
+
+        /// 编码错误次数。
+        pub const ENCODE_ERRORS: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.codec.encode.errors")
+                .with_description("编码阶段出现的错误计数")
+                .with_unit("errors");
+
+        /// 解码错误次数。
+        pub const DECODE_ERRORS: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.codec.decode.errors")
+                .with_description("解码阶段出现的错误计数")
+                .with_unit("errors");
+
+        /// 标签：编解码器名称。
+        pub const ATTR_CODEC_NAME: &str = "codec.name";
+        /// 标签：模式（encode/decode）。
+        pub const ATTR_MODE: &str = "codec.mode";
+        /// 标签：内容类型或媒体类型。
+        pub const ATTR_CONTENT_TYPE: &str = "content.type";
+        /// 标签：错误分类。
+        pub const ATTR_ERROR_KIND: &str = "error.kind";
+
+        /// 标签值：编码模式。
+        pub const MODE_ENCODE: &str = "encode";
+        /// 标签值：解码模式。
+        pub const MODE_DECODE: &str = "decode";
+    }
+
+    /// Transport 域指标契约定义。
+    ///
+    /// # 内容说明
+    /// - 对齐连接生命周期与链路吞吐；
+    /// - 结合 `listener.id` 与 `peer.role` 控制基数，便于单实例聚合。
+    pub mod transport {
+        use super::InstrumentDescriptor;
+
+        /// 当前活跃连接数。
+        pub const CONNECTIONS_ACTIVE: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.transport.connections")
+                .with_description("单实例当前维护的活跃连接数量")
+                .with_unit("connections");
+
+        /// 建连尝试次数。
+        pub const CONNECTION_ATTEMPTS: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.transport.connection.attempts")
+                .with_description("监听或拨号产生的连接尝试计数，包括成功和失败")
+                .with_unit("connections");
+
+        /// 连接失败次数。
+        pub const CONNECTION_FAILURES: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.transport.connection.failures")
+                .with_description("建连阶段的失败次数，便于快速捕获证书或网络问题")
+                .with_unit("connections");
+
+        /// 握手耗时。
+        pub const HANDSHAKE_DURATION: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.transport.handshake.duration")
+                .with_description("连接自发起到握手完成的耗时")
+                .with_unit("ms");
+
+        /// 入站链路字节量。
+        pub const BYTES_INBOUND: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.transport.bytes.inbound")
+                .with_description("底层传输层接收的字节总量")
+                .with_unit("bytes");
+
+        /// 出站链路字节量。
+        pub const BYTES_OUTBOUND: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.transport.bytes.outbound")
+                .with_description("底层传输层发送的字节总量")
+                .with_unit("bytes");
+
+        /// 标签：传输协议（tcp/quic/uds）。
+        pub const ATTR_PROTOCOL: &str = "transport.protocol";
+        /// 标签：监听器或连接的逻辑标识。
+        pub const ATTR_LISTENER_ID: &str = "listener.id";
+        /// 标签：对端角色（client/server）。
+        pub const ATTR_PEER_ROLE: &str = "peer.role";
+        /// 标签：连接结果（success/failure）。
+        pub const ATTR_RESULT: &str = "result";
+        /// 标签：错误分类。
+        pub const ATTR_ERROR_KIND: &str = "error.kind";
+        /// 标签：socket 家族（ipv4/ipv6/unix）。
+        pub const ATTR_SOCKET_FAMILY: &str = "socket.family";
+
+        /// 标签值：成功。
+        pub const RESULT_SUCCESS: &str = "success";
+        /// 标签值：失败。
+        pub const RESULT_FAILURE: &str = "failure";
+        /// 标签值：客户端角色。
+        pub const ROLE_CLIENT: &str = "client";
+        /// 标签值：服务端角色。
+        pub const ROLE_SERVER: &str = "server";
+    }
+}

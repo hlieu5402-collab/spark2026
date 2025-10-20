@@ -8,7 +8,9 @@
 //! - 两层接口在语义上保持等价，均遵守 `CallContext` 统一上下文、背压契约与优雅关闭约定；
 //! - 对象层仅依赖最小集合（`PipelineMessage` 等），以降低插件体积并减少编译依赖。
 
+pub mod metrics;
 pub mod traits;
 
+pub use metrics::{PayloadDirection, ServiceMetricsHook, ServiceOutcome};
 pub use traits::generic::{Layer, Service};
 pub use traits::object::{BoxService, DynService, ServiceObject};
