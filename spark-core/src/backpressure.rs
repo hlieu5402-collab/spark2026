@@ -1,5 +1,5 @@
 use crate::contract::BudgetDecision;
-use crate::status::ready::{BusyReason, ReadyState, SubscriptionBudget};
+use crate::status::ready::{BusyReason, ReadyState};
 use alloc::borrow::Cow;
 use core::fmt;
 
@@ -42,17 +42,18 @@ impl BackpressureReason {
     /// - **契约 (What)**：
     ///   - **输入**：`decision` 必须来自 [`Budget::try_consume`](crate::contract::Budget::try_consume)
     ///     或等效逻辑；
-    ///   - **输出**：当决策为 `Exhausted` 时返回 `Some(ReadyState::BudgetExhausted(_))`，
+    ///   - **输出**：当决策表明预算耗尽时返回 `Some(ReadyState::BudgetExhausted(_))`，
     ///     其它情况返回 `None` 以保持原语义；
     ///   - **前置条件**：调用方应确保预算决策与当前调用上下文一致，避免交叉污染；
     ///   - **后置条件**：本函数不会修改预算，仅完成状态映射。
     /// - **实现 (How)**：
-    ///   1. 匹配决策枚举；
-    ///   2. 在耗尽分支中调用 [`SubscriptionBudget::from`] 构造订阅预算快照；
-    ///   3. 使用 `ReadyState::BudgetExhausted` 封装并返回。
+    ///   1. 调用 [`ReadyState::from_budget_decision`] 获取统一语义；
+    ///   2. 若返回值为 `Ready`，说明预算仍可继续使用，返回 `None`；
+    ///   3. 其它分支（当前仅 `BudgetExhausted`）直接透传。
     /// - **风险提示 (Trade-offs & Gotchas)**：
-    ///   - `BudgetSnapshot` 的字段为 `u64`，我们在转换时使用饱和截断到 `u32`，
-    ///     若原始预算超过 `u32::MAX` 将丢失精度；如需完整信息，请直接持有 `BudgetSnapshot`。
+    ///   - `ReadyState::from_budget_decision` 内部使用 [`SubscriptionBudget::from`] 将快照转为订阅预算，
+    ///     在该过程中会对 `u64` 值进行饱和截断至 `u32`；若原始预算超过 `u32::MAX` 将丢失精度，
+    ///     如需完整数据请直接持有 `BudgetSnapshot`。
     /// # 兼容性策略
     /// - **意图 (Why)**：该函数目前主要服务于遗留调用链与契约测试，实际运行路径已逐步迁移至
     ///   `ReadyState`；为了避免 CI 在未引用时报告 `dead_code`，施加 `#[allow(dead_code)]` 并在说明中
@@ -63,11 +64,10 @@ impl BackpressureReason {
     ///   可安全移除。
     #[allow(dead_code)]
     pub fn budget_ready_state(decision: &BudgetDecision) -> Option<ReadyState> {
-        match decision {
-            BudgetDecision::Exhausted { snapshot } => Some(ReadyState::BudgetExhausted(
-                SubscriptionBudget::from(snapshot),
-            )),
-            BudgetDecision::Granted { .. } => None,
+        let state = ReadyState::from_budget_decision(decision);
+        match state {
+            ReadyState::Ready => None,
+            other => Some(other),
         }
     }
 }
