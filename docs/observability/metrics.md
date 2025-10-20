@@ -1,6 +1,6 @@
 # 指标契约 v1.0
 
-> 目标：为 Spark 数据平面的核心调用链（Service / Codec / Transport）给出统一的指标命名、单位、稳定标签以及代码层面的打点挂钩。本文档配套 `alerts.yaml` 与 `dashboard.json`，可直接导入 Prometheus / Grafana 进行验收。
+> 目标：为 Spark 数据平面的核心调用链（Service / Codec / Transport）给出统一的指标命名、单位、稳定标签以及代码层面的打点挂钩。本文档配套 `alerts.yaml`、`dashboards/*.json` 与 `../runbook/`，可直接导入 Prometheus / Grafana 进行验收与演练。
 
 ## 1. 命名与单位规范
 
@@ -84,7 +84,8 @@ Codec 与 Transport 的钩子使用方式一致，分别面向 `EncodeContext`/`
 ## 4. 样例仪表盘与告警规则
 
 - Prometheus 告警规则：见 [`alerts.yaml`](alerts.yaml)，通过 `promtool check rules docs/observability/alerts.yaml` 校验。
-- Grafana 仪表盘：见 [`dashboard.json`](dashboard.json)，预置了服务成功率、P99 延迟、活跃连接等核心面板，默认变量 `service_name`/`listener_id`。
+- Grafana 仪表盘：见 [`dashboards/`](dashboards/)，提供服务成功率、P99 延迟、编解码与传输层健康等面板，默认变量 `service_name`/`listener_id`。
+- Runbook：见 [`../runbook/`](../runbook/)，针对三类核心告警给出排查与恢复步骤。
 
 ## 5. 验收指引
 
@@ -92,6 +93,6 @@ Codec 与 Transport 的钩子使用方式一致，分别面向 `EncodeContext`/`
 2. 启动任意集成了 `ServiceMetricsHook` 的样例服务，可在 1 分钟内观察到 `spark.request.*` 与 `spark.transport.*` 指标数据；
 3. 使用压测工具验证标签基数是否控制在 ≤1000（可通过 `count(count_over_time({__name__="spark.request.total"}[5m]))` 进行估算）；
 4. `promtool check rules docs/observability/alerts.yaml` 必须返回 `SUCCESS`；
-5. Grafana 导入 `dashboard.json` 后应能直接联动 `service_name`、`listener_id` 变量实现多实例对比。
+5. Grafana 导入 `dashboards/*.json` 后应能直接联动 `service_name`、`listener_id` 等变量实现多实例对比。
 
 > **后续计划**：v1.1 将补充 Streaming 指标、跨 Region 同步指标以及自动化 cardinality 保护策略。
