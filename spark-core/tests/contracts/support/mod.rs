@@ -19,8 +19,10 @@
 //! - 为保证覆盖率统计的稳定性，辅助函数不隐藏关键逻辑（如预算消费），仅负责装配测试输入。
 
 mod macros;
+mod deterministic;
 
 pub(crate) use macros::*;
+pub(crate) use deterministic::*;
 
 use spark_core::contract::BudgetKind;
 use spark_core::runtime::MonotonicTimePoint;
