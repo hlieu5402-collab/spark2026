@@ -46,7 +46,6 @@ pub use audit::{
     AuditActor, AuditChangeEntry, AuditChangeSet, AuditContext, AuditDeletedEntry, AuditEntityRef,
     AuditError, AuditEventV1, AuditPipeline, AuditRecorder, AuditStateHasher, TsaEvidence,
 };
-pub use backpressure::BackpressureReason;
 pub use buffer::{
     BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,
     PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
