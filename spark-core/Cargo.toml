@@ -17,15 +17,20 @@ default = ["std"]
 # 所有 API 契约均依赖 `alloc` 类型（Box/Arc/Vec）；禁用 `alloc` 无法构建对象安全 Future/Stream。
 alloc = []
 std = ["alloc", "serde_json"]
+loom-model = ["dep:loom"]
 
 [dependencies]
 async-trait = { version = "0.1", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 sha2 = { version = "0.10", default-features = false }
 serde_json = { version = "1.0", optional = true }
+loom = { version = "0.7", default-features = false, optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
 
 [[bench]]
 name = "codec"
