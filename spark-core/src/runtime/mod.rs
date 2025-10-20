@@ -44,6 +44,9 @@ pub use timer::{MonotonicTimePoint, TimeDriver};
 ///
 /// # 风险提示（Trade-offs）
 /// - 该 trait 不额外声明新方法，便于以 `dyn AsyncRuntime` 作为统一注入入口；如需扩展请定义包裹结构体。
-pub trait AsyncRuntime: TaskExecutor + TimeDriver + Send + Sync + 'static {}
+pub trait AsyncRuntime:
+    TaskExecutor + TimeDriver + Send + Sync + 'static + crate::sealed::Sealed
+{
+}
 
 impl<T> AsyncRuntime for T where T: TaskExecutor + TimeDriver + Send + Sync + 'static {}

@@ -5,6 +5,8 @@ use core::{
     task::{Context, Poll},
 };
 
+use crate::sealed::Sealed;
+
 /// `BoxFuture` 是 `spark-core` 在 `no_std + alloc` 下使用的通用 Future 包装。
 ///
 /// # 设计背景（Why）
@@ -34,7 +36,7 @@ pub type LocalBoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 ///
 /// # 契约说明（What）
 /// - `poll_next` 与标准 Stream 语义一致，返回 `Poll<Option<Item>>`。
-pub trait Stream {
+pub trait Stream: Sealed {
     /// 流中产生的元素类型。
     type Item;
 

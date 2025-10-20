@@ -36,6 +36,7 @@ impl MetadataKey {
 /// - 仅包含最小必要集合，避免在核心契约中引入复杂的序列化依赖；
 ///   若需扩展可在上层定义自定义解析逻辑或使用二进制编码值。
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum MetadataValue {
     Boolean(bool),
     Integer(i64),

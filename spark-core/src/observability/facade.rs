@@ -20,7 +20,10 @@
 //! - 外观暂未直接包含 Trace；这是为了避免在初始阶段过度耦合，未来可以通过扩展方法或组合特性引入。
 //! - 为保证兼容性，本模块不修改现有 Trait，采用“增量外观”策略；既可原地使用旧字段，也可逐步迁移到 Facade。
 
-use crate::observability::{HealthChecks, Logger, MetricsProvider, OpsEventBus};
+use crate::{
+    observability::{HealthChecks, Logger, MetricsProvider, OpsEventBus},
+    sealed::Sealed,
+};
 use alloc::sync::Arc;
 
 /// 可观测性能力的统一访问接口。
@@ -43,7 +46,7 @@ use alloc::sync::Arc;
 /// # 风险提示（Trade-offs）
 /// - 统一入口可能隐藏某些实现特有的扩展方法；对于高度定制化需求，可通过具体类型暴露额外 API。
 /// - 若宿主未启用健康探针，可返回空集合，但应在实现文档中显式说明以免误用。
-pub trait ObservabilityFacade: Send + Sync + 'static {
+pub trait ObservabilityFacade: Send + Sync + 'static + Sealed {
     /// 获取结构化日志能力。
     fn logger(&self) -> Arc<dyn Logger>;
 

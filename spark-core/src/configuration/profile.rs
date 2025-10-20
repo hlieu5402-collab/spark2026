@@ -15,6 +15,7 @@ use alloc::vec::Vec;
 /// - 该策略由 [`ProfileDescriptor`] 保存，供 [`ConfigurationBuilder`](crate::configuration::ConfigurationBuilder) 的合并逻辑使用。
 /// - 调用方需根据业务需求选择合适策略，确保覆盖顺序符合预期。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ProfileLayering {
     BaseFirst,
     OverrideFirst,

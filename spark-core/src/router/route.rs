@@ -26,6 +26,7 @@ use alloc::vec::Vec;
 /// - **前置条件**：调用方需基于业务语义选择恰当的枚举项，避免语义混淆。
 /// - **后置条件**：路由器可据此向下游传递语义，影响 QoS/重试/节流策略。
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[non_exhaustive]
 pub enum RouteKind {
     Rpc,
     Message,
@@ -50,6 +51,7 @@ pub enum RouteKind {
 /// - 仅允许 ASCII 字符构成，避免不同平台的大小写/编码差异；
 ///   调用方应在构造前完成校验（出于零开销考虑本契约不强制校验）。
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[non_exhaustive]
 pub enum RouteSegment {
     Literal(Cow<'static, str>),
     Parameter(Cow<'static, str>),

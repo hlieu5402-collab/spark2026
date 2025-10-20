@@ -1,6 +1,8 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::sealed::Sealed;
+
 use super::credential::Credential;
 use super::identity::IdentityDescriptor;
 
@@ -10,6 +12,7 @@ use super::identity::IdentityDescriptor;
 /// - **行业对标**：涵盖 mTLS、基于令牌的安全通道、Noise Framework、自定义安全插件等场景。
 /// - **科研吸收**：预留远程证明（Remote Attestation）与量子安全算法的扩展点，满足前沿研究需求。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SecurityProtocol {
     /// mTLS 或 TLS1.3 双向认证。
     MutualTls,
@@ -252,6 +255,7 @@ impl NegotiationOutcome {
 
 /// 协商错误。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NegotiationError {
     /// 必选协议均不被对端接受。
     ProtocolRejected,
@@ -269,7 +273,7 @@ pub enum NegotiationError {
 pub type NegotiationResult = Result<NegotiationOutcome, NegotiationError>;
 
 /// 安全协商器契约。
-pub trait SecurityNegotiator {
+pub trait SecurityNegotiator: Sealed {
     /// 执行安全协商。
     ///
     /// # 契约

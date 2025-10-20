@@ -92,6 +92,7 @@ pub type AttributeSet<'a> = &'a [KeyValue<'a>];
 /// # 风险提示（Trade-offs）
 /// - 未区分有符号与无符号整型，统一折叠为 `i64`；当上游传入超出范围的 `u64` 时将执行饱和转换，可能损失信息。
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum MetricAttributeValue<'a> {
     Text(Cow<'a, str>),
     Bool(bool),

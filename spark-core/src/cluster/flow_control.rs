@@ -17,7 +17,7 @@
 //! # 风险与扩展（Trade-offs）
 //! - 有界缓冲策略需要实现层配合，否则 `Bounded` 模式可能退化为无界缓存；若无法满足需求，建议通过队列探针在运行期及时捕获异常信号。
 //! - 队列探针通常以 `Arc` 包裹的轻量状态结构实现，若观测频率极高，应在实现中加入快照缓存以避免锁竞争。
-use crate::BoxStream;
+use crate::{BoxStream, sealed::Sealed};
 use alloc::sync::Arc;
 use core::{fmt, num::NonZeroUsize};
 
@@ -35,6 +35,7 @@ use core::{fmt, num::NonZeroUsize};
 /// # 风险提示（Trade-offs）
 /// - 不同实现可能对溢出检测粒度不同（按事件、按批次），调用方应结合 [`SubscriptionQueueProbe`] 做运行期观测。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum OverflowPolicy {
     DropOldest,
     DropNewest,
@@ -57,6 +58,7 @@ pub enum OverflowPolicy {
 /// - `Unbounded` 模式下若消费者持续滞后，可能触发内存压力；建议配合队列探针监控深度。
 /// - `Bounded` 模式适合约束内存占用，但当溢出策略为 `DropNewest` 时，调用方需具备重放或快照恢复能力以补齐缺失事件。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FlowControlMode {
     /// 无界缓冲，由实现自行决定溢出策略（可能退化为阻塞/等待）。
     Unbounded,
@@ -209,6 +211,6 @@ pub struct SubscriptionQueueSnapshot {
 /// - `snapshot`：应返回最新已知状态，调用成本应足够低以支持高频查询。
 /// - **前置条件**：实现需保证该方法线程安全；若查询代价高昂，可在实现内部做缓存。
 /// - **后置条件**：若订阅已终止，允许继续返回最后一次快照，也可选择在内部标记并返回零值。
-pub trait SubscriptionQueueProbe: Send + Sync + 'static {
+pub trait SubscriptionQueueProbe: Send + Sync + 'static + Sealed {
     fn snapshot(&self) -> SubscriptionQueueSnapshot;
 }

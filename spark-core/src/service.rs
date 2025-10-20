@@ -7,6 +7,7 @@ use crate::{
     context::ExecutionContext,
     contract::{CallContext, CloseReason},
     future::BoxFuture,
+    sealed::Sealed,
     status::ready::PollReady,
 };
 
@@ -28,7 +29,7 @@ use crate::{
 /// # 风险提示（Trade-offs）
 /// - 若内部使用 `async fn` 实现，需要 `BoxFuture` 或 GAT 支持；宿主可结合 `async_trait` 等宏完成。
 /// - `CallContext` 内部包含 [`Arc`]，克隆成本为常数，但仍应避免在热路径中不必要的复制。
-pub trait Service<Request>: Send + Sync + 'static {
+pub trait Service<Request>: Send + Sync + 'static + Sealed {
     /// 响应类型。
     type Response;
     /// 错误类型，必须兼容 `spark-core` 错误模型。
@@ -76,7 +77,7 @@ pub trait Service<Request>: Send + Sync + 'static {
 ///
 /// # 风险提示（Trade-offs）
 /// - Layer 组合顺序会影响语义；建议实现者在文档中标注依赖关系。
-pub trait Layer<S, Request>
+pub trait Layer<S, Request>: Sealed
 where
     S: Service<Request>,
 {
@@ -100,7 +101,7 @@ where
 ///
 /// # 风险提示（Trade-offs）
 /// - 对象安全接口带来一次虚表分发与堆分配；若场景可静态确定类型，应优先使用泛型 [`Service`] 以获得零成本调用。
-pub trait DynService: Send + Sync {
+pub trait DynService: Send + Sync + Sealed {
     /// 检查服务是否就绪。
     ///
     /// # 参数说明

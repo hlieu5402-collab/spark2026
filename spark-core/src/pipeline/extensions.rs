@@ -1,6 +1,8 @@
 use alloc::boxed::Box;
 use core::any::{Any, TypeId};
 
+use crate::sealed::Sealed;
+
 /// Handler 与 Middleware 共享的扩展存储接口。
 ///
 /// # 设计背景（Why）
@@ -15,7 +17,7 @@ use core::any::{Any, TypeId};
 /// # 风险提示（Trade-offs）
 /// - 若实现采用引用计数容器，需注意避免循环引用；可通过弱引用或在 `remove` 时打破环。
 /// - `get` 返回引用，其生命周期受限于 `&self`，调用方应在当前回调内消费避免悬垂。
-pub trait ExtensionsMap: Send + Sync {
+pub trait ExtensionsMap: Send + Sync + Sealed {
     /// 插入指定类型 ID 对应的扩展数据。
     fn insert(&self, key: TypeId, value: Box<dyn Any + Send + Sync>);
 

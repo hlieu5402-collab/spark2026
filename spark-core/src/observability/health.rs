@@ -1,4 +1,4 @@
-use crate::BoxFuture;
+use crate::{BoxFuture, sealed::Sealed};
 use alloc::{string::String, sync::Arc, vec::Vec};
 
 /// 组件健康状态的快照。
@@ -41,6 +41,7 @@ impl ComponentHealth {
 /// # 契约说明（What）
 /// - `Up`：完全正常；`Degraded`：部分功能异常但仍可用；`Down`：服务不可用需告警。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HealthState {
     Up,
     Degraded,
@@ -65,7 +66,7 @@ pub enum HealthState {
 ///
 /// # 风险提示（Trade-offs）
 /// - 建议在实现中复用共享连接或缓存，避免探针本身影响依赖性能。
-pub trait HealthCheckProvider: Send + Sync + 'static {
+pub trait HealthCheckProvider: Send + Sync + 'static + Sealed {
     /// 异步执行健康检查。
     fn check_health(&self) -> BoxFuture<'static, ComponentHealth>;
 }

@@ -1,4 +1,4 @@
-use crate::CoreError;
+use crate::{CoreError, sealed::Sealed};
 use alloc::boxed::Box;
 
 use super::ReadableBuffer;
@@ -30,7 +30,7 @@ use super::ReadableBuffer;
 /// - **错误语义**：保持 `Result` 返回值，使实现可以在内存池耗尽、写入受限（背压）时显式失败。
 /// - **性能提示**：`write_from` 建议通过内存拷贝加速指令或零拷贝（引用计数）实现，以降低跨缓冲搬运成本。
 /// - **冻结风险**：冻结后若底层仍被共享，必须确保引用计数正确递增，防止悬垂引用。
-pub trait WritableBuffer: Send + Sync + 'static {
+pub trait WritableBuffer: Send + Sync + 'static + Sealed {
     /// 总容量上限（包含已写入字节）。
     fn capacity(&self) -> usize;
 

@@ -167,6 +167,7 @@ impl PolicyRule {
 
 /// 策略效果枚举。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PolicyEffect {
     /// 允许访问。
     Allow,
@@ -178,6 +179,7 @@ pub enum PolicyEffect {
 
 /// 主体匹配器，支持精确匹配、前缀匹配与标签匹配。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SubjectMatcher {
     /// 匹配任意主体。
     Any,

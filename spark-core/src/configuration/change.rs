@@ -17,6 +17,7 @@ use super::{ConfigKey, ConfigValue};
 /// - 事件序列由 [`ChangeNotification`] 按顺序携带。
 /// - `Updated` 与 `Created` 均返回最新值；删除事件不包含旧值，避免泄漏敏感数据。
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum ChangeEvent {
     Created { key: ConfigKey, value: ConfigValue },
     Updated { key: ConfigKey, value: ConfigValue },

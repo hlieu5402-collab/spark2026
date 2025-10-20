@@ -8,6 +8,7 @@ use super::TransportParams;
 /// - 与 Envoy、Istio、Linkerd 等控制面的实践一致，区分逻辑发现地址与物理监听地址。
 /// - 便于连接意图根据 `EndpointKind` 选择不同的解析流程（服务发现或直连）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EndpointKind {
     /// 逻辑地址（如 `srv://orders`）。
     Logical,

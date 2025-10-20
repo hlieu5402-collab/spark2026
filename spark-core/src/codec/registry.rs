@@ -1,9 +1,9 @@
 use super::decoder::{DecodeContext, DecodeOutcome, Decoder as DecoderTrait};
 use super::encoder::{EncodeContext, EncodedPayload, Encoder};
 use super::metadata::{CodecDescriptor, ContentEncoding, ContentType};
-use crate::CoreError;
 use crate::buffer::ErasedSparkBuf;
 use crate::error::codes;
+use crate::{CoreError, sealed::Sealed};
 use alloc::{boxed::Box, format, vec::Vec};
 use core::{any::Any, marker::PhantomData};
 
@@ -24,7 +24,7 @@ use core::{any::Any, marker::PhantomData};
 ///
 /// # 风险提示（Trade-offs）
 /// - Trait 本身未规定状态同步机制；若实现内部存储会话数据，应自行保证线程安全。
-pub trait Codec: Send + Sync + 'static {
+pub trait Codec: Send + Sync + 'static + Sealed {
     /// 解码后的业务类型。
     type Incoming: Send + Sync + 'static;
     /// 编码时的业务类型。
@@ -102,7 +102,7 @@ where
 ///
 /// # 风险提示（Trade-offs）
 /// - 类型擦除带来运行时成本；在性能敏感路径应优先使用静态泛型 `Codec`。
-pub trait DynCodec: Send + Sync + 'static {
+pub trait DynCodec: Send + Sync + 'static + Sealed {
     /// 获取描述符。
     fn descriptor(&self) -> &CodecDescriptor;
 
@@ -263,7 +263,7 @@ impl NegotiatedCodec {
 ///
 /// # 风险提示（Trade-offs）
 /// - 工厂可能缓存状态以复用对象，此时需考虑生命周期与共享所有权问题。
-pub trait DynCodecFactory: Send + Sync + 'static {
+pub trait DynCodecFactory: Send + Sync + 'static + Sealed {
     /// 获取工厂支持的描述符。
     fn descriptor(&self) -> &CodecDescriptor;
 
@@ -344,7 +344,7 @@ where
 /// # 风险提示（Trade-offs）
 /// - 注册中心可能成为共享状态热点，实现时需注意并发控制与读写锁策略；
 /// - 协商失败时必须返回带有稳定错误码的 `CoreError`，以便客户端快速定位问题。
-pub trait CodecRegistry: Send + Sync + 'static {
+pub trait CodecRegistry: Send + Sync + 'static + Sealed {
     /// 注册新的编解码工厂。
     fn register(&self, factory: Box<dyn DynCodecFactory>) -> Result<(), CoreError>;
 

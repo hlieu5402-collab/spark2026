@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::{error::CoreError, runtime::CoreServices};
+use crate::{error::CoreError, runtime::CoreServices, sealed::Sealed};
 
 use super::controller::Controller;
 
@@ -19,7 +19,7 @@ use super::controller::Controller;
 /// # 风险提示（Trade-offs）
 /// - 若 Handler 依赖外部资源，建议在工厂外部缓存，并通过 `CoreServices` 注入，以降低建链延迟。
 /// - 工厂实现应确保幂等，支持在失败后重试或回滚。
-pub trait ControllerFactory: Send + Sync + 'static {
+pub trait ControllerFactory: Send + Sync + 'static + Sealed {
     /// 构建 Controller 实例。
     fn build(&self, core_services: &CoreServices) -> Result<Box<dyn Controller>, CoreError>;
 }

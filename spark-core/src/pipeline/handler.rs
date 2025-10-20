@@ -1,4 +1,4 @@
-use crate::CoreError;
+use crate::{CoreError, sealed::Sealed};
 
 use super::{context::Context, middleware::MiddlewareDescriptor};
 
@@ -23,7 +23,7 @@ use crate::observability::CoreUserEvent;
 /// # 风险提示（Trade-offs）
 /// - 请避免在 Handler 内部持久化 `Context` 引用；若确有需要，需确保不会导致引用循环。
 /// - `on_read` 可能在高频调用下成为性能瓶颈，可结合 `MiddlewareDescriptor::stage` 信息调度到合适线程池。
-pub trait InboundHandler: Send + Sync + 'static {
+pub trait InboundHandler: Send + Sync + 'static + Sealed {
     /// 返回 Handler 元数据，默认提供匿名描述，便于链路观测。
     fn describe(&self) -> MiddlewareDescriptor {
         MiddlewareDescriptor::anonymous("inbound-handler")
@@ -65,7 +65,7 @@ pub trait InboundHandler: Send + Sync + 'static {
 /// # 风险提示（Trade-offs）
 /// - 若实现内部持有缓冲池，应考虑在异常路径释放资源，以免造成泄漏。
 /// - 对性能敏感场景，应避免在写路径执行复杂序列化，可结合编解码器模块预处理。
-pub trait OutboundHandler: Send + Sync + 'static {
+pub trait OutboundHandler: Send + Sync + 'static + Sealed {
     /// 返回 Handler 元数据，默认提供匿名描述。
     fn describe(&self) -> MiddlewareDescriptor {
         MiddlewareDescriptor::anonymous("outbound-handler")
@@ -97,6 +97,6 @@ pub trait OutboundHandler: Send + Sync + 'static {
 /// # 契约说明（What）
 /// - 任何实现 `InboundHandler + OutboundHandler` 的类型自动实现 `DuplexHandler`。
 /// - 适合用于需要共享状态的编解码器、加密器或应用层协议适配器。
-pub trait DuplexHandler: InboundHandler + OutboundHandler {}
+pub trait DuplexHandler: InboundHandler + OutboundHandler + Sealed {}
 
 impl<T> DuplexHandler for T where T: InboundHandler + OutboundHandler {}

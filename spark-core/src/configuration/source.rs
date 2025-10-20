@@ -1,5 +1,7 @@
 use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 
+use crate::sealed::Sealed;
+
 use super::{ChangeNotification, ConfigKey, ConfigValue, ConfigurationError, ProfileId};
 
 /// 配置源的元数据。
@@ -56,7 +58,7 @@ pub struct ConfigurationLayer {
 /// ### 契约说明（What）
 /// - `cancel` 必须幂等，可以在任何线程调用。
 /// - 调用方需要确保在不再需要监听时立即取消，以释放资源。
-pub trait WatchToken: Send + Sync {
+pub trait WatchToken: Send + Sync + Sealed {
     fn cancel(&self);
 }
 
@@ -78,7 +80,7 @@ pub trait WatchToken: Send + Sync {
 /// ### 设计权衡（Trade-offs）
 /// - 使用 `Vec` 而非 `Iterator`，简化 FFI 场景下的跨语言传递。
 /// - `watch` 默认返回 `None`，避免对不支持热更新的数据源施加负担。
-pub trait ConfigurationSource: Send + Sync {
+pub trait ConfigurationSource: Send + Sync + Sealed {
     /// 返回指定 Profile 的配置层集合。
     fn load(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError>;
 
@@ -101,6 +103,6 @@ pub trait ConfigurationSource: Send + Sync {
 /// ### 契约说明（What）
 /// - `on_change` 应保证快速返回，避免阻塞源内部线程。
 /// - 若处理失败，应返回 `ConfigurationError`，由数据源决定是否重试或关闭流。
-pub trait ChangeCallback {
+pub trait ChangeCallback: Sealed {
     fn on_change(&self, notification: ChangeNotification) -> Result<(), ConfigurationError>;
 }

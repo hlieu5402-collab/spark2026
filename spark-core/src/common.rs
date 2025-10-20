@@ -1,5 +1,7 @@
 use core::any::Any;
 
+use crate::sealed::Sealed;
+
 /// 表示空返回值，常用于无需携带数据的响应。
 ///
 /// # 设计背景（Why）
@@ -14,7 +16,7 @@ pub struct Empty;
 ///
 /// # 契约说明（What）
 /// - 提供统一的 `into_empty` 方法，便于在泛型上下文中将 `()` 等类型转为 `Empty`。
-pub trait IntoEmpty {
+pub trait IntoEmpty: Sealed {
     /// 消费自身并返回 `Empty`。
     fn into_empty(self) -> Empty;
 }
@@ -36,7 +38,7 @@ impl IntoEmpty for () {
 ///
 /// # 风险提示（Trade-offs）
 /// - 循环注入可能导致无限递归，调用方需自行控制次数或添加去抖逻辑。
-pub trait Loopback: Send + Sync {
+pub trait Loopback: Send + Sync + Sealed {
     /// 向入站路径注入事件。
     fn fire_loopback_inbound(&self, event: impl Any + Send + Sync);
 

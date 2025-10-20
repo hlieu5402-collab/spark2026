@@ -4,6 +4,7 @@ use crate::{
         flow_control::{SubscriptionFlowControl, SubscriptionStream},
         topology::{ClusterConsistencyLevel, ClusterRevision},
     },
+    sealed::Sealed,
     transport::Endpoint,
 };
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
@@ -95,6 +96,7 @@ pub struct DiscoverySnapshot {
 /// # 风险提示（Trade-offs）
 /// - 当事件消费者过慢时，建议实现者触发背压指标并在必要时推送快照以降低重放成本。
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum DiscoveryEvent {
     SnapshotApplied(DiscoverySnapshot),
     InstanceAdded {
@@ -161,7 +163,7 @@ pub enum DiscoveryEvent {
 ///   - 遭遇网络分区、领导者失效、拓扑暂不可达时，应返回上述集群错误码（`network_partition` / `leader_lost`），并可附加降级快照帮助调用方保持一致性。
 /// - `list_services`：
 ///   - 若注册中心提供的目录为陈旧视图或受网络分区影响无法返回完整数据，应返回 [`crate::error::codes::DISCOVERY_STALE_READ`]，提示调用方延迟重试或降级使用本地缓存。
-pub trait ServiceDiscovery: Send + Sync + 'static {
+pub trait ServiceDiscovery: Send + Sync + 'static + Sealed {
     /// 解析目标服务并返回快照。
     fn resolve(
         &self,

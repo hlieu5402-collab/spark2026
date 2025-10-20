@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 
 use super::credential::{Credential, CredentialScope};
 use super::identity::IdentityDescriptor;
+use crate::sealed::Sealed;
 
 /// 密钥用途枚举，统一 KMS/SDS/密钥代理的请求语义。
 ///
@@ -13,6 +14,7 @@ use super::identity::IdentityDescriptor;
 /// - **行业输入**：综合 AWS KMS `KeyUsage`, HashiCorp Vault Transit API, Istio SDS 需求，将用途划分为握手、消息签名、静态数据加密等。
 /// - **科研启发**：支持为后续的属性基加密、机密计算等扩展预留 `Custom` 变体。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KeyPurpose {
     /// 传输层握手密钥，如 TLS 证书、PSK。
     TransportHandshake,
@@ -231,6 +233,7 @@ impl KeyResponse {
 
 /// 密钥拉取错误。
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum KeyRetrievalError {
     /// 未授权访问。
     Unauthorized,
@@ -263,7 +266,7 @@ impl crate::Error for KeyRetrievalError {
 }
 
 /// 密钥来源契约，抽象 Envoy SDS、SPIFFE Workload API、Vault Agent 等组件的行为。
-pub trait KeySource {
+pub trait KeySource: Sealed {
     /// 获取指定主体的密钥或凭证。
     ///
     /// # 契约

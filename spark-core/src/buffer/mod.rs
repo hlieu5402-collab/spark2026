@@ -18,7 +18,7 @@ pub mod pool;
 pub mod readable;
 pub mod writable;
 
-use crate::CoreError;
+use crate::{CoreError, sealed::Sealed};
 use alloc::boxed::Box;
 
 pub use message::{Bytes, PipelineMessage, UserMessage};
@@ -67,7 +67,7 @@ pub type ErasedSparkBufMut = dyn WritableBuffer;
 ///
 /// # 风险提示（Trade-offs）
 /// - 契约仅定义最小能力，若需统计或回收接口，可在实现层引入组合 trait；未内置释放方法，建议依赖 `Drop`/引用计数语义。
-pub trait BufferAllocator: Send + Sync + 'static {
+pub trait BufferAllocator: Send + Sync + 'static + Sealed {
     /// 租借满足最小容量的缓冲。
     fn acquire(&self, min_capacity: usize) -> Result<Box<ErasedSparkBufMut>, CoreError>;
 }

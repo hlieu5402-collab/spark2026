@@ -9,6 +9,7 @@ use super::{Endpoint, TransportParams};
 /// - **生产经验**：综合 gRPC 优先级、MQTT QoS、QUIC Stream Priority，沉淀成最常见的三类质量等级。
 /// - **科研探索**：通过有限枚举便于在仿真中映射为延迟/丢包约束，避免无限扩展带来的组合爆炸。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum QualityOfService {
     /// 交互式，请求-响应或低延迟通信。
     Interactive,
@@ -20,6 +21,7 @@ pub enum QualityOfService {
 
 /// 可用性约束，定义连接在建立时的容错策略。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AvailabilityRequirement {
     /// 尽力而为，失败时由上游策略决定是否重试。
     BestEffort,
@@ -31,6 +33,7 @@ pub enum AvailabilityRequirement {
 
 /// 会话生命周期分类。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SessionLifecycle {
     /// 短会话（一次性请求/响应）。
     Ephemeral,
@@ -42,6 +45,7 @@ pub enum SessionLifecycle {
 
 /// 传输安全模式。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SecurityMode {
     /// 继承环境或注册中心设定。
     Inherit,

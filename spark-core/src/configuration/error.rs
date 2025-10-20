@@ -21,6 +21,7 @@ use core::fmt;
 /// ### 设计权衡（Trade-offs）
 /// - 未内置错误码，避免强加企业内部规范；建议在上层约定错误字典。
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ConfigurationError {
     Source { context: Cow<'static, str> },
     Decode { context: Cow<'static, str> },
@@ -85,6 +86,7 @@ impl Error for ConfigurationError {
 
 /// 辅助枚举，用于构造统一的错误上下文。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ConfigurationErrorKind {
     Source,
     Decode,
@@ -114,6 +116,7 @@ impl fmt::Display for ConfigurationErrorKind {
 /// - `Duplicate`：同一标识的源被重复注册。
 /// - `Capacity`：超出事先声明的容量限制。
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SourceRegistrationError {
     Duplicate,
     Capacity,

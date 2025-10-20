@@ -13,8 +13,8 @@ use core::fmt;
 /// - `Downstream`：下游或对端施加背压（如窗口耗尽）。
 /// - `Budget`：预算耗尽，需配合 [`BudgetDecision`] 进行下一步策略。
 /// - `Custom`：扩展场景，需提供稳定字符串，建议遵循 `namespace.reason` 命名。
-#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BackpressureReason {
     /// 上游处理链路繁忙。
     Upstream,
@@ -62,8 +62,8 @@ impl fmt::Display for BackpressureReason {
 /// - `Busy`：暂时不可用，附带背压原因。
 /// - `BudgetExhausted`：预算耗尽但不视为错误，便于调用方采用排队或降级策略。
 /// - `Error`：不可恢复错误，应转化为 [`SparkError`](crate::SparkError) 或上层错误。
-#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PollReady<E> {
     /// 下游准备就绪。
     Ready,

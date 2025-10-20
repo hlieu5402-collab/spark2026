@@ -1,6 +1,6 @@
 use alloc::{borrow::Cow, boxed::Box, format};
 
-use crate::{CoreError, runtime::CoreServices};
+use crate::{CoreError, runtime::CoreServices, sealed::Sealed};
 
 use super::handler::{InboundHandler, OutboundHandler};
 
@@ -73,7 +73,7 @@ impl MiddlewareDescriptor {
 ///
 /// # 风险提示（Trade-offs）
 /// - 若允许并行或条件执行，需在实现中扩展额外语义；此 Trait 专注于顺序链路的最小契约。
-pub trait ChainBuilder {
+pub trait ChainBuilder: Sealed {
     /// 注册入站 Handler。
     fn register_inbound(&mut self, label: &str, handler: Box<dyn InboundHandler>);
 
@@ -95,7 +95,7 @@ pub trait ChainBuilder {
 /// # 风险提示（Trade-offs）
 /// - Middleware 不应在 `configure` 中执行阻塞操作；如需异步初始化，可将任务委托给 `CoreServices` 中的执行器。
 /// - 若在 `configure` 中捕获状态，需确保其线程安全并避免循环依赖。
-pub trait Middleware: Send + Sync + 'static {
+pub trait Middleware: Send + Sync + 'static + Sealed {
     /// 返回组件元数据。
     fn descriptor(&self) -> MiddlewareDescriptor;
 

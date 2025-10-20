@@ -1,4 +1,4 @@
-use crate::CoreError;
+use crate::{CoreError, sealed::Sealed};
 use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 
 use super::WritableBuffer;
@@ -27,7 +27,7 @@ use super::WritableBuffer;
 /// - **分配策略**：允许实现根据场景选择固定大小、指数级或 TCMalloc 风格的分配策略，契约仅关注语义。
 /// - **背压处理**：当池容量不足时可返回 `CoreError`，或在错误中携带降级建议（如切换到 on-heap）。
 /// - **观测性**：`statistics` 默认返回静态数据，鼓励实现者提供诸如“池使用率”“活跃租借数”等核心指标。
-pub trait BufferPool: Send + Sync + 'static {
+pub trait BufferPool: Send + Sync + 'static + Sealed {
     /// 租借一个最少具备 `min_capacity` 可写空间的缓冲区。
     fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError>;
 

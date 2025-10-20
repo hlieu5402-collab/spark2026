@@ -1,6 +1,7 @@
 use crate::{
     BoxStream,
     cluster::{ClusterMembershipEvent, DiscoveryEvent, flow_control::OverflowPolicy},
+    sealed::Sealed,
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
@@ -49,7 +50,7 @@ use core::{
 /// # 风险提示（Trade-offs）
 /// - Trait 对象增加一次动态分发，`async_contract_overhead` 基准表明该开销在 10^5 等级广播下仍低于 1% CPU，占比远小于序列化与网络传输。
 /// - 若事件需要自定义 Drop 行为，请确保实现 `Send + Sync` 时不会引入死锁或竞态。
-pub trait ApplicationEvent: fmt::Debug + Send + Sync + 'static {
+pub trait ApplicationEvent: fmt::Debug + Send + Sync + 'static + Sealed {
     /// 返回事件类别标识，默认使用编译期类型名。
     fn event_kind(&self) -> &'static str {
         core::any::type_name::<Self>()
@@ -111,6 +112,7 @@ where
 ///     .is_some());
 /// ```
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum CoreUserEvent {
     TlsEstablished(TlsInfo),
     IdleTimeout(IdleTimeout),
@@ -197,6 +199,7 @@ pub struct TlsInfo {
 
 /// 空闲超时方向。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum IdleDirection {
     Read,
     Write,
@@ -211,6 +214,7 @@ pub struct IdleTimeout {
 
 /// 限速方向。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RateDirection {
     Inbound,
     Outbound,
@@ -232,6 +236,7 @@ pub struct RateLimited {
 /// - **前置条件**：生产者应限制事件频率，必要时做去抖或节流。
 /// - **后置条件**：事件总线实现需保证有界缓冲，并在溢出时提供监控信号。
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum OpsEvent {
     ShutdownTriggered {
         deadline: Duration,
@@ -273,6 +278,7 @@ pub enum OpsEvent {
 /// - 若实现将变体映射到整型索引，请确保为 `Custom` 生成的散列稳定，否则策略缓存会失效。
 /// - 需要在多进程或多语言组件间共享策略时，建议额外持久化字符串表示以避免枚举 discriminant 演进导致不兼容。
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum OpsEventKind {
     ShutdownTriggered,
     FlowControlApplied,
@@ -304,6 +310,7 @@ pub enum OpsEventKind {
 /// - `Sample` 与 `Debounce` 同时启用时需定义清晰的组合顺序（推荐先采样后去抖），否则可能出现难以解释的漏报。
 /// - `BoundedBuffer` 中 `OverflowPolicy` 的选择直接影响事件可追溯性；请在文档中同步说明溢出行为。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EventPolicy {
     Passthrough,
     RateLimit {
@@ -340,7 +347,7 @@ pub enum EventPolicy {
 ///
 /// # 风险提示（Trade-offs）
 /// - 建议实现对订阅者生命周期做监控，避免内存泄漏。
-pub trait OpsEventBus: Send + Sync + 'static {
+pub trait OpsEventBus: Send + Sync + 'static + Sealed {
     /// 广播事件。
     fn broadcast(&self, event: OpsEvent);
 

@@ -6,6 +6,7 @@ use crate::{
     contract::{CallContext, CloseReason, Deadline},
     observability::{Logger, MetricsProvider, TraceContext},
     runtime::{TaskExecutor, TimeDriver},
+    sealed::Sealed,
 };
 
 /// Handler 访问运行时能力与事件流的统一入口。
@@ -30,7 +31,7 @@ use crate::{
 /// # 风险提示（Trade-offs）
 /// - 若实现使用 `Rc`/`RefCell` 等单线程结构，将无法满足 `Send + Sync` 要求，应在构造阶段检测。
 /// - `forward_read` 在 Handler 链中是立即调用的同步行为，重计算或阻塞逻辑应移交给 `executor()`。
-pub trait Context: Send + Sync {
+pub trait Context: Send + Sync + Sealed {
     /// 当前通道引用。
     fn channel(&self) -> &dyn Channel;
 

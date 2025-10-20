@@ -29,6 +29,7 @@ use core::time::Duration;
 /// - 当实现者无额外上下文时，应优先使用 `BusyReason::QueueFull` 与 `RetryAdvice::after` 等构造函数，
 ///   以保持语义统一。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ReadyState {
     /// 服务完全就绪，可立即接收下一次请求。
     Ready,
@@ -55,6 +56,7 @@ pub enum ReadyState {
 /// - 若仅是暂时性拥塞，请返回 `Ready(ReadyState::Busy(_))` 或 `Ready(ReadyState::RetryAfter(_))`，
 ///   调用方可据此决定退避策略。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ReadyCheck<E> {
     /// 就绪检查成功，并给出可供调用方消费的状态。
     Ready(ReadyState),
@@ -93,6 +95,7 @@ pub type PollReady<E> = Poll<ReadyCheck<E>>;
 /// - `QueueFull` 构造函数会同时返回当前深度与容量，便于观测系统生成指标；
 /// - 对于临时性原因，可使用 `Custom` 并传入短小字符串，避免额外分配。
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BusyReason {
     /// 队列已满，无法暂存新的任务或请求。
     QueueFull(QueueDepth),
