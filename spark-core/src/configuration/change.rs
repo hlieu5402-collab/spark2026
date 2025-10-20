@@ -16,7 +16,7 @@ use super::{ConfigKey, ConfigValue};
 /// ### 契约定义（What）
 /// - 事件序列由 [`ChangeNotification`] 按顺序携带。
 /// - `Updated` 与 `Created` 均返回最新值；删除事件不包含旧值，避免泄漏敏感数据。
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ChangeEvent {
     Created { key: ConfigKey, value: ConfigValue },
@@ -32,11 +32,23 @@ pub enum ChangeEvent {
 ///
 /// ### 契约说明（What）
 /// - **前置条件**：事件列表需按照发生顺序排列；Builder 在发送前需保证这一点。
-/// - **后置条件**：`sequence` 单调递增，可用于断点续传。
-#[derive(Clone, Debug, PartialEq)]
+/// - **后置条件**：`sequence` 单调递增，可用于断点续传；`occurred_at` 记录 Unix 毫秒时间戳便于审计。
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChangeNotification {
     pub sequence: u64,
+    pub occurred_at: u64,
     pub events: Vec<ChangeEvent>,
+}
+
+impl ChangeNotification {
+    /// 创建新的增量通知。
+    pub fn new(sequence: u64, occurred_at: u64, events: Vec<ChangeEvent>) -> Self {
+        Self {
+            sequence,
+            occurred_at,
+            events,
+        }
+    }
 }
 
 /// 同步变更用的最小集合。
@@ -44,7 +56,7 @@ pub struct ChangeNotification {
 /// ### 设计目的（Why）
 /// - 为“拉模式”场景（pull-based reconciliation）提供一次性差异列表。
 /// - 相比 `ChangeNotification` 省略序号，更适合离线比较或快照校验。
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChangeSet {
     pub created: Vec<(ConfigKey, ConfigValue)>,
     pub updated: Vec<(ConfigKey, ConfigValue)>,

@@ -16,10 +16,13 @@ bench = false
 default = ["std"]
 # 所有 API 契约均依赖 `alloc` 类型（Box/Arc/Vec）；禁用 `alloc` 无法构建对象安全 Future/Stream。
 alloc = []
-std = ["alloc"]
+std = ["alloc", "serde_json"]
 
 [dependencies]
 async-trait = { version = "0.1", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+sha2 = { version = "0.10", default-features = false }
+serde_json = { version = "1.0", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -42,3 +45,10 @@ harness = false
 [[bench]]
 name = "async_contract_overhead"
 harness = false
+
+[[bin]]
+name = "audit_replay"
+path = "src/bin/audit_replay.rs"
+required-features = ["std"]
+bench = false
+test = false

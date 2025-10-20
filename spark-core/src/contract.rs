@@ -499,12 +499,15 @@ pub const DEFAULT_OBSERVABILITY_CONTRACT: ObservabilityContract = ObservabilityC
     &["traceparent", "tracestate", "spark-budget"],
     &[
         "event_id",
+        "sequence",
         "occurred_at",
-        "actor",
+        "actor_id",
         "action",
-        "resource",
-        "hash_prev",
-        "hash_curr",
+        "entity_kind",
+        "entity_id",
+        "state_prev_hash",
+        "state_curr_hash",
+        "tsa_evidence",
     ],
 );
 

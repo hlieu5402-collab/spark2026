@@ -4,6 +4,11 @@ use alloc::{
 };
 use core::fmt;
 
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer, de::Error as SerdeDeError,
+    ser::SerializeStruct,
+};
+
 /// 描述配置项作用域的枚举。
 ///
 /// ## 设计目的（Why）
@@ -45,6 +50,18 @@ impl ConfigScope {
             Self::Node => "node",
             Self::Runtime => "runtime",
             Self::Session => "session",
+        }
+    }
+
+    /// 根据字符串解析作用域。
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "global" => Some(Self::Global),
+            "cluster" => Some(Self::Cluster),
+            "node" => Some(Self::Node),
+            "runtime" => Some(Self::Runtime),
+            "session" => Some(Self::Session),
+            _ => None,
         }
     }
 }
@@ -140,6 +157,57 @@ impl ConfigKey {
 impl fmt::Display for ConfigKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}::{}@{}", self.domain, self.name, self.scope)
+    }
+}
+
+impl Serialize for ConfigScope {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ConfigScope {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = <&str>::deserialize(deserializer)?;
+        ConfigScope::parse(value).ok_or_else(|| SerdeDeError::custom("invalid config scope"))
+    }
+}
+
+impl Serialize for ConfigKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("ConfigKey", 4)?;
+        state.serialize_field("domain", self.domain())?;
+        state.serialize_field("name", self.name())?;
+        state.serialize_field("scope", &self.scope)?;
+        state.serialize_field("summary", self.summary())?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for ConfigKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ConfigKeyDe {
+            domain: String,
+            name: String,
+            scope: ConfigScope,
+            summary: String,
+        }
+
+        let raw = ConfigKeyDe::deserialize(deserializer)?;
+        Ok(Self::new(raw.domain, raw.name, raw.scope, raw.summary))
     }
 }
 
