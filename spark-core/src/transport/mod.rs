@@ -21,6 +21,7 @@ pub mod address;
 pub mod endpoint;
 pub mod factory;
 pub mod intent;
+pub mod metrics;
 pub mod params;
 pub mod server;
 pub mod traits;
@@ -31,6 +32,7 @@ pub use factory::ListenerConfig;
 pub use intent::{
     AvailabilityRequirement, ConnectionIntent, QualityOfService, SecurityMode, SessionLifecycle,
 };
+pub use metrics::{LinkDirection, TransportMetricsHook};
 pub use params::TransportParams;
 pub use server::{ListenerShutdown, describe_shutdown_target};
 pub use traits::generic::{ServerTransport, TransportFactory};
