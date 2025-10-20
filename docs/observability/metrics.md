@@ -34,6 +34,10 @@
 | Transport | `spark.transport.connection.failures` | Counter (`connections`) | 建连失败次数 | `transport.protocol` `listener.id` `peer.role` `error.kind` |
 | Transport | `spark.transport.handshake.duration` | Histogram (`ms`) | 握手耗时 | `transport.protocol` `listener.id` `peer.role` `result` |
 | Transport | `spark.transport.bytes.inbound` / `spark.transport.bytes.outbound` | Counter (`bytes`) | 物理链路上的收发字节 | `transport.protocol` `listener.id` `peer.role` |
+| Limits | `spark.limits.usage` / `spark.limits.limit` | Gauge (`units`) | 资源当前占用与配置上限 | `limit.resource` `limit.action` |
+| Limits | `spark.limits.hit` | Counter (`events`) | 资源达到限额的触发次数 | `limit.resource` `limit.action` |
+| Limits | `spark.limits.drop` / `spark.limits.degrade` | Counter (`events`) | 超限后的拒绝 / 降级次数 | `limit.resource` `limit.action` |
+| Limits | `spark.limits.queue.depth` | Gauge (`entries`) | 排队策略下的即时队列长度 | `limit.resource` `limit.action` |
 
 ## 3. 代码挂钩与最佳实践
 

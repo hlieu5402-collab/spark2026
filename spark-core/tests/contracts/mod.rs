@@ -32,3 +32,4 @@ mod close_reason;
 mod timeout_cancel_replay;
 mod timeout_cancel_priority;
 mod shutdown;
+mod handshake;

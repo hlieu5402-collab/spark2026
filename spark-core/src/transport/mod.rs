@@ -20,6 +20,7 @@
 pub mod address;
 pub mod endpoint;
 pub mod factory;
+pub mod handshake;
 pub mod intent;
 pub mod metrics;
 pub mod params;
@@ -29,6 +30,10 @@ pub mod traits;
 pub use address::TransportSocketAddr;
 pub use endpoint::{Endpoint, EndpointKind};
 pub use factory::ListenerConfig;
+pub use handshake::{
+    Capability, CapabilityBitmap, DowngradeReport, HandshakeError, HandshakeErrorKind,
+    HandshakeOffer, HandshakeOutcome, NegotiationAuditContext, Version, negotiate,
+};
 pub use intent::{
     AvailabilityRequirement, ConnectionIntent, QualityOfService, SecurityMode, SessionLifecycle,
 };
