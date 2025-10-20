@@ -112,6 +112,8 @@ pub type PollReady<E> = Poll<ReadyCheck<E>>;
 ///   统一的枚举让调用方无需解析字符串即可理解语义。
 ///
 /// # 契约说明（What）
+/// - `Upstream`：上游链路（如路由、业务线程池）过载；
+/// - `Downstream`：下游依赖或对端主动施加背压；
 /// - `QueueFull`：内部待处理队列达到或超过容量；
 /// - `Custom`：自定义原因，通过 `Cow<'static, str>` 承载描述。
 ///
@@ -121,6 +123,10 @@ pub type PollReady<E> = Poll<ReadyCheck<E>>;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BusyReason {
+    /// 上游链路繁忙，例如路由层、业务线程池或 RPC 客户端暂时过载。
+    Upstream,
+    /// 下游链路繁忙，例如目标服务返回 `429` 或传输通道窗口耗尽。
+    Downstream,
     /// 队列已满，无法暂存新的任务或请求。
     QueueFull(QueueDepth),
     /// 其他自定义原因，使用 Cow 承载描述以避免不必要的分配。
@@ -128,6 +134,37 @@ pub enum BusyReason {
 }
 
 impl BusyReason {
+    /// 构造一个上游过载的繁忙原因。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：在路由、聚合等调用链条中，最常见的繁忙信号来自上游排队或线程池耗尽；
+    ///   该函数提供显式构造器，降低调用方误用 `Custom("upstream")` 等魔法字符串的概率。
+    /// - **契约 (What)**：
+    ///   - **输入**：无额外参数，表示语义固定；
+    ///   - **输出**：[`BusyReason::Upstream`] 常量；
+    ///   - **前置条件**：调用点需确认繁忙确实来自上游组件；
+    ///   - **后置条件**：返回值可直接嵌入 [`ReadyState::Busy`]，供指标或退避策略使用。
+    /// - **风险提示 (Trade-offs & Gotchas)**：若未来需要携带更丰富的上游上下文，应优先扩展
+    ///   [`BusyReason`] 枚举而非在调用点拼接字符串，以保持统一抽象。
+    pub const fn upstream() -> Self {
+        Self::Upstream
+    }
+
+    /// 构造一个下游施加背压的繁忙原因。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：封装常见的“目标服务过载/窗口耗尽”等场景，方便上层根据来源切换备份或降级策略；
+    /// - **契约 (What)**：
+    ///   - **输入**：无；
+    ///   - **输出**：[`BusyReason::Downstream`] 常量；
+    ///   - **前置条件**：调用方需确认繁忙由下游引起；
+    ///   - **后置条件**：可直接用于构建 [`ReadyState::Busy`] 或透传至观测系统。
+    /// - **风险提示 (Trade-offs & Gotchas)**：与 `upstream` 类似，若未来需要区分不同下游角色，可在枚举上新增
+    ///   结构化字段，而非退回字符串描述。
+    pub const fn downstream() -> Self {
+        Self::Downstream
+    }
+
     /// 构造一个队列溢出的繁忙原因。
     ///
     /// # 输入参数（What）

@@ -1,5 +1,5 @@
 use crate::contract::BudgetDecision;
-use crate::status::ready::{ReadyState, SubscriptionBudget};
+use crate::status::ready::{BusyReason, ReadyState, SubscriptionBudget};
 use alloc::borrow::Cow;
 use core::fmt;
 
@@ -78,6 +78,30 @@ impl fmt::Display for BackpressureReason {
             BackpressureReason::Upstream => write!(f, "upstream busy"),
             BackpressureReason::Downstream => write!(f, "downstream busy"),
             BackpressureReason::Custom(reason) => write!(f, "{}", reason),
+        }
+    }
+}
+
+impl From<BackpressureReason> for BusyReason {
+    /// 将历史背压原因枚举映射为统一的 [`BusyReason`]。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：随着 `ReadyState` 成为唯一权威的就绪语义出口，我们需要无缝接入仍返回
+    ///   [`BackpressureReason`] 的旧调用链，避免重复定义“繁忙原因”枚举造成语义漂移。
+    /// - **契约 (What)**：
+    ///   - **输入**：一个 [`BackpressureReason`] 值；
+    ///   - **输出**：对应的 [`BusyReason`] 变体，其中 `Custom` 会直接复用内部的 `Cow<'static, str>`；
+    ///   - **前置条件**：调用方须保证传入值代表临时繁忙而非永久错误；
+    ///   - **后置条件**：返回值可立即嵌入 [`ReadyState::Busy`] 并向外暴露。
+    /// - **实现 (How)**：匹配旧枚举的三个分支，并映射到 `BusyReason::{Upstream, Downstream, Custom}`。由于两侧
+    ///   都使用 `Cow<'static, str>`，转换过程不涉及拷贝。
+    /// - **风险提示 (Trade-offs & Gotchas)**：此转换不携带额外上下文，若调用方需要区分更细粒度的历史原因，
+    ///   应在迁移到 [`BusyReason`] 前扩展该枚举本身，而非在转换后拼接字符串。
+    fn from(reason: BackpressureReason) -> Self {
+        match reason {
+            BackpressureReason::Upstream => BusyReason::Upstream,
+            BackpressureReason::Downstream => BusyReason::Downstream,
+            BackpressureReason::Custom(reason) => BusyReason::Custom(reason),
         }
     }
 }
