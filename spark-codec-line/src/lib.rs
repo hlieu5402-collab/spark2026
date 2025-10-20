@@ -26,4 +26,7 @@ extern crate alloc;
 
 mod line;
 
+#[cfg(feature = "compat_v0")]
+pub mod compat;
+
 pub use crate::line::LineDelimitedCodec;

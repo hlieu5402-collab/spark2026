@@ -14,6 +14,8 @@ bench = false
 
 [features]
 default = ["std"]
+# 兼容功能开关：默认关闭，后续按业务域逐步启用旧版信号的适配层。
+compat_v0 = []
 # 所有 API 契约均依赖 `alloc` 类型（Box/Arc/Vec）；禁用 `alloc` 无法构建对象安全 Future/Stream。
 alloc = []
 std = ["alloc", "serde_json"]

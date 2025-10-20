@@ -13,6 +13,7 @@ bench = false
 default = ["std"]
 alloc = ["spark-core/alloc"]
 std = ["alloc", "spark-core/std"]
+compat_v0 = ["spark-core/compat_v0"]
 
 [dependencies]
 spark-core = { path = "../spark-core", default-features = false }
