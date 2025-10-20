@@ -20,7 +20,7 @@
 //! ## 风险与注意事项（Trade-offs）
 //! - 在 `no_std` 环境下依赖 `alloc`，需要调用方在启用 `alloc` 特性时同步链接；
 //! - 扩展状态时须评估对序列化、兼容层的影响，避免新分支破坏旧版本调用方的匹配逻辑。
-use crate::contract::BudgetSnapshot;
+use crate::contract::{BudgetDecision, BudgetSnapshot};
 use alloc::{borrow::Cow, fmt};
 use core::convert::TryFrom;
 use core::task::Poll;
@@ -308,6 +308,54 @@ impl ReadyState {
         SubscriptionBudget::evaluate(limit, remaining)
     }
 
+    /// 根据契约层的预算决策生成统一的就绪状态。
+    ///
+    /// # 教案级说明：`from_budget_decision`
+    ///
+    /// ## 意图与背景（Why）
+    /// - 历史上在兼容层中常见“Busy 与 Budget 混搭”这种写法，导致调用方无法通过判等区分“临时繁忙”与“预算耗尽”。
+    /// - 该方法作为唯一入口，将 [`BudgetDecision`] 明确映射到 [`ReadyState::BudgetExhausted`] 或 `Ready`，统一预算语义。
+    ///
+    /// ## 架构定位（Where）
+    /// - 处于 `status::ready` 核心模块，供 `compat_v0` 及后续迁移逻辑调用；
+    /// - 与 [`SubscriptionBudget`]、`BackpressureReason::budget_ready_state`
+    ///   等工具函数配合，构成“契约判定 → 就绪信号”的标准路径。
+    ///
+    /// ## 契约定义（What）
+    /// - **输入**：`decision` 必须来源于 [`Budget::try_consume`](crate::contract::Budget::try_consume)
+    ///   或等价逻辑，保证快照与调用上下文一致；
+    /// - **输出**：当预算剩余为 0 时返回 `ReadyState::BudgetExhausted`，否则返回 `Ready`；
+    /// - **前置条件**：调用方需确保决策对应当前请求，避免不同预算之间的交叉污染；
+    /// - **后置条件**：本函数不改变预算数值，仅负责语义映射。
+    ///
+    /// ## 解析逻辑（How）
+    /// 1. 读取决策携带的 [`BudgetSnapshot`] 并转换为 [`SubscriptionBudget`]，以统一数值精度；
+    /// 2. 若决策为 `Exhausted`，直接返回 `BudgetExhausted`；
+    /// 3. 若决策为 `Granted`，检查剩余额度：
+    ///    - `remaining == 0`：说明此次消费耗尽额度，应立即返回 `BudgetExhausted`；
+    ///    - 否则表示预算仍可继续使用，返回 `Ready`。
+    ///
+    /// ## 设计考量（Trade-offs & Gotchas）
+    /// - 采用快照而非重新查询预算，避免二次读取引入竞态；
+    /// - 由于快照使用 `u64` 表示剩余值，转换为 `SubscriptionBudget` 时会饱和截断到 `u32`，
+    ///   当预算超过 `u32::MAX` 时调用方若需精确值，应保留原始快照用于日志；
+    /// - 若未来扩展 `BudgetDecision` 新分支，应在此同步更新映射逻辑，保持“预算耗尽 → BudgetExhausted”的唯一语义。
+    pub fn from_budget_decision(decision: &BudgetDecision) -> Self {
+        match decision {
+            BudgetDecision::Exhausted { snapshot } => {
+                ReadyState::BudgetExhausted(SubscriptionBudget::from(snapshot))
+            }
+            BudgetDecision::Granted { snapshot } => {
+                let budget = SubscriptionBudget::from(snapshot);
+                if budget.remaining == 0 {
+                    ReadyState::BudgetExhausted(budget)
+                } else {
+                    ReadyState::Ready
+                }
+            }
+        }
+    }
+
     /// 将恢复事件映射为 `Ready` 状态，便于测试中模拟“恢复 -> 可用”的过程。
     pub const fn recovered() -> Self {
         ReadyState::Ready
@@ -329,6 +377,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contract::{BudgetDecision, BudgetKind, BudgetSnapshot};
 
     /// 验证：当预算剩余为 0 时，返回 `BudgetExhausted`。
     #[test]
@@ -361,5 +410,47 @@ mod tests {
     fn recovery_maps_to_ready() {
         let status = ReadyState::recovered();
         assert_eq!(status, ReadyState::Ready);
+    }
+
+    /// 验证：预算决策为 Exhausted 时返回 `BudgetExhausted`。
+    #[test]
+    fn budget_decision_exhausted_maps_to_budget_state() {
+        let snapshot = BudgetSnapshot::new(BudgetKind::Flow, 0, 5);
+        let decision = BudgetDecision::Exhausted { snapshot };
+        let status = ReadyState::from_budget_decision(&decision);
+
+        assert!(matches!(
+            status,
+            ReadyState::BudgetExhausted(SubscriptionBudget {
+                limit: 5,
+                remaining: 0
+            })
+        ));
+    }
+
+    /// 验证：预算仍有剩余时返回 `Ready`。
+    #[test]
+    fn budget_decision_granted_with_remaining_maps_to_ready() {
+        let snapshot = BudgetSnapshot::new(BudgetKind::Flow, 3, 5);
+        let decision = BudgetDecision::Granted { snapshot };
+        let status = ReadyState::from_budget_decision(&decision);
+
+        assert_eq!(status, ReadyState::Ready);
+    }
+
+    /// 验证：最后一次成功消费后额度为 0，也应返回 `BudgetExhausted`。
+    #[test]
+    fn budget_decision_granted_zero_remaining_maps_to_budget_state() {
+        let snapshot = BudgetSnapshot::new(BudgetKind::Flow, 0, 5);
+        let decision = BudgetDecision::Granted { snapshot };
+        let status = ReadyState::from_budget_decision(&decision);
+
+        assert!(matches!(
+            status,
+            ReadyState::BudgetExhausted(SubscriptionBudget {
+                limit: 5,
+                remaining: 0
+            })
+        ));
     }
 }
