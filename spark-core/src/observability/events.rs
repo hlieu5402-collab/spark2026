@@ -67,6 +67,14 @@ impl<T> ApplicationEvent for T
 where
     T: Any + Clone + Send + Sync + fmt::Debug + 'static,
 {
+    fn event_kind(&self) -> &'static str {
+        //
+        // 教案级说明：利用 `type_name_of_val` 在运行时获取真实事件类型，避免 Trait 对象的
+        // 默认实现返回 `dyn ApplicationEvent` 而丢失诊断语义。这样可确保事件总线与指标系
+        // 统在高并发下仍准确记录事件类别。
+        core::any::type_name_of_val(self)
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -143,7 +151,9 @@ impl CoreUserEvent {
     /// 查询扩展事件的 `event_kind` 标签。
     pub fn application_event_kind(&self) -> Option<&'static str> {
         match self {
-            CoreUserEvent::ApplicationSpecific(event) => Some(event.event_kind()),
+            CoreUserEvent::ApplicationSpecific(event) => {
+                Some(ApplicationEvent::event_kind(&**event))
+            }
             _ => None,
         }
     }
@@ -154,7 +164,9 @@ impl CoreUserEvent {
         E: ApplicationEvent,
     {
         match self {
-            CoreUserEvent::ApplicationSpecific(event) => event.as_any().downcast_ref::<E>(),
+            CoreUserEvent::ApplicationSpecific(event) => {
+                ApplicationEvent::as_any(&**event).downcast_ref::<E>()
+            }
             _ => None,
         }
     }

@@ -63,6 +63,14 @@ impl<T> UserMessage for T
 where
     T: Any + Send + Sync + 'static,
 {
+    fn message_kind(&self) -> &'static str {
+        //
+        // 教案级说明：直接依赖 `type_name::<T>()` 会在对象安全调用时退化为 `dyn UserMessage`。
+        // 通过 `type_name_of_val(self)` 利用运行时的真实类型信息，能够在 Trait 对象上下文中
+        // 仍然返回具体业务类型，保证日志、指标与测试断言的准确性。
+        core::any::type_name_of_val(self)
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -161,7 +169,7 @@ impl PipelineMessage {
     /// - 该标识基于 [`UserMessage::message_kind`]，适合在日志或指标中记录，用于排查类型转换失败原因。
     pub fn user_kind(&self) -> Option<&'static str> {
         match self {
-            PipelineMessage::User(msg) => Some(msg.message_kind()),
+            PipelineMessage::User(msg) => Some(UserMessage::message_kind(&**msg)),
             _ => None,
         }
     }
@@ -176,7 +184,7 @@ impl PipelineMessage {
         T: UserMessage,
     {
         match self {
-            PipelineMessage::User(msg) => msg.as_any().downcast_ref::<T>(),
+            PipelineMessage::User(msg) => UserMessage::as_any(&**msg).downcast_ref::<T>(),
             _ => None,
         }
     }
@@ -191,7 +199,7 @@ impl PipelineMessage {
         T: UserMessage,
     {
         match self {
-            PipelineMessage::User(msg) => msg.as_any_mut().downcast_mut::<T>(),
+            PipelineMessage::User(msg) => UserMessage::as_any_mut(&mut **msg).downcast_mut::<T>(),
             _ => None,
         }
     }
@@ -207,9 +215,8 @@ impl PipelineMessage {
     {
         match self {
             PipelineMessage::User(msg) => {
-                if msg.as_any().is::<T>() {
-                    let boxed = msg
-                        .into_any()
+                if UserMessage::as_any(&*msg).is::<T>() {
+                    let boxed = <dyn UserMessage as UserMessage>::into_any(msg)
                         .downcast::<T>()
                         .expect("type check guarantees downcast success");
                     Ok(*boxed)

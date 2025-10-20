@@ -3,12 +3,17 @@ use crate::{
     context::ExecutionContext,
     security::{IdentityDescriptor, SecurityPolicy},
 };
-use alloc::{borrow::Cow, format, string::ToString, sync::Arc, vec, vec::Vec};
-use core::{
-    fmt,
-    sync::atomic::{AtomicBool, AtomicU64, Ordering},
-    time::Duration,
-};
+use alloc::sync::Arc;
+use alloc::{borrow::Cow, format, string::ToString, vec, vec::Vec};
+//
+// 教案级说明：为了让 Loom 在模型检查阶段能够捕获原子操作的所有调度交错，
+// 当启用 `--cfg loom` 时切换到它提供的原子类型；`Arc` 保持标准实现以维持
+// `Eq`/`Hash` 推导能力，避免破坏 API 契约。
+#[cfg(not(loom))]
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use core::{fmt, time::Duration};
+#[cfg(loom)]
+use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::runtime::MonotonicTimePoint;
 
