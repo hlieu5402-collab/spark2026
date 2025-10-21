@@ -18,6 +18,7 @@ use super::{
     channel::{Channel, WriteSignal},
     context::Context as PipelineContext,
     handler::{self, InboundHandler, OutboundHandler},
+    instrument::{InstrumentedLogger, start_inbound_span},
     middleware::{ChainBuilder, Middleware},
 };
 
@@ -517,7 +518,6 @@ pub struct HotSwapController {
     channel: Arc<dyn Channel>,
     services: CoreServices,
     call_context: CallContext,
-    trace_context: TraceContext,
     handlers: ArcSwap<Vec<Arc<HandlerEntry>>>,
     registry: HotSwapRegistry,
     epoch: AtomicU64,
@@ -538,13 +538,11 @@ impl HotSwapController {
         channel: Arc<dyn Channel>,
         services: CoreServices,
         call_context: CallContext,
-        trace_context: TraceContext,
     ) -> Self {
         Self {
             channel,
             services,
             call_context,
-            trace_context,
             handlers: ArcSwap::from_pointee(Vec::new()),
             registry: HotSwapRegistry::new(),
             epoch: AtomicU64::new(0),
@@ -626,13 +624,14 @@ impl HotSwapController {
         &self,
         snapshot: Arc<Vec<Arc<HandlerEntry>>>,
         next_index: usize,
+        trace_context: TraceContext,
     ) -> HotSwapContext {
         HotSwapContext::new(
             self,
             Arc::clone(&self.channel),
             &self.services,
             &self.call_context,
-            &self.trace_context,
+            trace_context,
             snapshot,
             next_index,
         )
@@ -643,12 +642,19 @@ impl HotSwapController {
         snapshot: Arc<Vec<Arc<HandlerEntry>>>,
         start_index: usize,
         msg: PipelineMessage,
+        parent_trace: TraceContext,
     ) {
         if let Some(index) = Self::find_next_inbound(&snapshot, start_index)
             && let Some(handler) = snapshot[index].inbound()
         {
-            let ctx = self.build_context(snapshot.clone(), index + 1);
+            let span = start_inbound_span(
+                snapshot[index].label(),
+                snapshot[index].descriptor(),
+                &parent_trace,
+            );
+            let ctx = self.build_context(snapshot.clone(), index + 1, span.trace_context().clone());
             handler.on_read(&ctx, msg);
+            drop(span);
         }
     }
 
@@ -668,9 +674,10 @@ impl HotSwapController {
         F: FnMut(&dyn InboundHandler, HotSwapContext),
     {
         let snapshot = self.handlers.load_full();
+        let root_trace = self.call_context.trace_context().clone();
         for (index, entry) in snapshot.iter().enumerate() {
             if let Some(handler) = entry.inbound() {
-                let ctx = self.build_context(Arc::clone(&snapshot), index + 1);
+                let ctx = self.build_context(Arc::clone(&snapshot), index + 1, root_trace.clone());
                 callback(handler, ctx);
             }
         }
@@ -747,7 +754,8 @@ impl Controller for HotSwapController {
 
     fn emit_read(&self, msg: PipelineMessage) {
         let snapshot = self.handlers.load_full();
-        self.dispatch_inbound_from(snapshot, 0, msg);
+        let root_trace = self.call_context.trace_context().clone();
+        self.dispatch_inbound_from(snapshot, 0, msg, root_trace);
     }
 
     fn emit_read_completed(&self) {
@@ -767,7 +775,11 @@ impl Controller for HotSwapController {
         if let Some(index) = Self::find_next_inbound(&snapshot, 0)
             && let Some(handler) = snapshot[index].inbound()
         {
-            let ctx = self.build_context(Arc::clone(&snapshot), index + 1);
+            let ctx = self.build_context(
+                Arc::clone(&snapshot),
+                index + 1,
+                self.call_context.trace_context().clone(),
+            );
             handler.on_exception_caught(&ctx, error);
         }
     }
@@ -820,6 +832,7 @@ struct HotSwapContext {
     services: CoreServices,
     call_context: CallContext,
     trace_context: TraceContext,
+    logger: InstrumentedLogger,
     snapshot: Arc<Vec<Arc<HandlerEntry>>>,
     next_index: AtomicUsize,
 }
@@ -830,16 +843,18 @@ impl HotSwapContext {
         channel: Arc<dyn Channel>,
         services: &CoreServices,
         call_context: &CallContext,
-        trace_context: &TraceContext,
+        trace_context: TraceContext,
         snapshot: Arc<Vec<Arc<HandlerEntry>>>,
         next_index: usize,
     ) -> Self {
+        let logger = InstrumentedLogger::new(Arc::clone(&services.logger), trace_context.clone());
         Self {
             controller: controller as *const _,
             channel,
             services: services.clone(),
             call_context: call_context.clone(),
-            trace_context: trace_context.clone(),
+            trace_context,
+            logger,
             snapshot,
             next_index: AtomicUsize::new(next_index),
         }
@@ -879,7 +894,7 @@ impl PipelineContext for HotSwapContext {
     }
 
     fn logger(&self) -> &dyn crate::observability::Logger {
-        self.services.logger.as_ref()
+        &self.logger
     }
 
     fn membership(&self) -> Option<&dyn crate::cluster::ClusterMembership> {
@@ -896,8 +911,9 @@ impl PipelineContext for HotSwapContext {
 
     fn forward_read(&self, msg: PipelineMessage) {
         let index = self.next_index.fetch_add(1, Ordering::SeqCst);
+        let trace = self.trace_context.clone();
         unsafe {
-            (*self.controller).dispatch_inbound_from(self.snapshot.clone(), index, msg);
+            (*self.controller).dispatch_inbound_from(self.snapshot.clone(), index, msg, trace);
         }
     }
 

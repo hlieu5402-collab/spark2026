@@ -25,6 +25,7 @@ pub mod default_handlers;
 pub mod extensions;
 pub mod factory;
 pub mod handler;
+pub mod instrument;
 pub mod middleware;
 pub mod traits;
 

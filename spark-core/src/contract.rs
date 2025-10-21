@@ -1,6 +1,7 @@
 use crate::{
     SparkError,
     context::ExecutionContext,
+    observability::TraceContext,
     security::{IdentityDescriptor, SecurityPolicy},
 };
 use alloc::sync::Arc;
@@ -529,6 +530,7 @@ struct CallContextInner {
     budgets: Vec<Budget>,
     security: SecurityContextSnapshot,
     observability: ObservabilityContract,
+    trace_context: TraceContext,
 }
 
 /// 调用上下文，在核心 API 之间传递取消/截止/预算三元组与安全、可观测性信息。
@@ -609,6 +611,11 @@ impl CallContext {
     pub fn observability(&self) -> &ObservabilityContract {
         &self.inner.observability
     }
+
+    /// 获取当前追踪上下文。
+    pub fn trace_context(&self) -> &TraceContext {
+        &self.inner.trace_context
+    }
 }
 
 impl fmt::Display for CallContext {
@@ -628,13 +635,26 @@ impl fmt::Display for CallContext {
 }
 
 /// `CallContext` 构建器，确保在创建时完成参数验证。
-#[derive(Default)]
 pub struct CallContextBuilder {
     cancellation: Cancellation,
     deadline: Deadline,
     budgets: Vec<Budget>,
     security: SecurityContextSnapshot,
     observability: ObservabilityContract,
+    trace_context: TraceContext,
+}
+
+impl Default for CallContextBuilder {
+    fn default() -> Self {
+        Self {
+            cancellation: Cancellation::new(),
+            deadline: Deadline::none(),
+            budgets: Vec::new(),
+            security: SecurityContextSnapshot::default(),
+            observability: ObservabilityContract::default(),
+            trace_context: TraceContext::generate(),
+        }
+    }
 }
 
 impl CallContextBuilder {
@@ -668,6 +688,12 @@ impl CallContextBuilder {
         self
     }
 
+    /// 设置追踪上下文。
+    pub fn with_trace_context(mut self, trace_context: TraceContext) -> Self {
+        self.trace_context = trace_context;
+        self
+    }
+
     /// 构建上下文，若未提供预算将默认提供“无限 Flow 预算”。
     pub fn build(self) -> CallContext {
         let budgets = if self.budgets.is_empty() {
@@ -682,6 +708,7 @@ impl CallContextBuilder {
                 budgets,
                 security: self.security,
                 observability: self.observability,
+                trace_context: self.trace_context,
             }),
         }
     }

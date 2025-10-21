@@ -1,5 +1,8 @@
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::{
+    any::Any,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use spark_core::contract::{Budget, BudgetKind, CallContext, CallContextBuilder, Cancellation, CloseReason};
 use spark_core::error::{CoreError, ErrorCategory};
@@ -17,8 +20,8 @@ use spark_core::{
     observability::{TraceContext, TraceFlags},
     pipeline::{channel::ChannelState, Channel, WriteSignal},
     runtime::{
-        BlockingTaskSubmission, LocalTaskSubmission, MonotonicTimePoint, SendTaskSubmission,
-        TaskCancellationStrategy, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
+        JoinHandle, MonotonicTimePoint, TaskCancellationStrategy, TaskError, TaskExecutor,
+        TaskHandle, TaskResult, TimeDriver,
     },
 };
 
@@ -451,25 +454,69 @@ impl Histogram for NoopHistogram {
     fn record(&self, _: f64, _: AttributeSet<'_>) {}
 }
 
+/// `NoopTaskExecutor` 作为占位执行器，为契约测试提供最小依赖。
+///
+/// # 设计背景（Why）
+/// - 错误分类自动响应逻辑与任务调度解耦，测试中无需拉起完整运行时。
+/// - 维持对 `TaskExecutor` 契约的实现，确保接口变更能第一时间在测试中暴露。
+///
+/// # 逻辑解析（How）
+/// - 所有任务提交入口统一转化为 `spawn_dyn`，并返回立即失败的句柄。
+/// - 忽略上下文与任务内容，避免引入线程或调度复杂度。
+///
+/// # 契约说明（What）
+/// - **前置条件**：调用方不得依赖任务执行结果。
+/// - **后置条件**：所有提交都会返回 [`TaskError::ExecutorTerminated`]。
+///
+/// # 风险提示（Trade-offs）
+/// - 无法检测真实运行时的上下文传播；如需覆盖该路径，请在集成测试中替换实现。
 struct NoopTaskExecutor;
 
 impl TaskExecutor for NoopTaskExecutor {
-    fn spawn(&self, _: SendTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopTaskHandle)
-    }
-
-    fn spawn_blocking(&self, _: BlockingTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopTaskHandle)
-    }
-
-    fn spawn_local(&self, _: LocalTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopTaskHandle)
+    fn spawn_dyn(
+        &self,
+        _ctx: &CallContext,
+        _fut: spark_core::BoxFuture<'static, TaskResult<Box<dyn Any + Send>>>,
+    ) -> JoinHandle<Box<dyn Any + Send>> {
+        // 教案级说明（Why）
+        // - 合同层单元测试仅关注状态转换，异步执行器只需提供占位实现即可。
+        // - 提前返回错误，避免误导调用方认为任务已执行。
+        //
+        // 教案级说明（How）
+        // - 丢弃 `CallContext` 与 Future，构造 `NoopTaskHandle`。
+        // - 借助 [`JoinHandle::from_task_handle`] 保持接口一致性。
+        //
+        // 教案级说明（What）
+        // - 输出：立即失败的 [`JoinHandle`]。
+        //
+        // 教案级说明（Trade-offs）
+        // - 不覆盖真正的任务调度路径，但换取了测试的可维护性与确定性。
+        JoinHandle::from_task_handle(Box::new(NoopTaskHandle))
     }
 }
 
+/// `NoopTaskHandle` 对应立即失败的任务句柄。
+///
+/// # 设计背景（Why）
+/// - 搭配 `NoopTaskExecutor` 一起使用，确保所有运行时调用都能顺利编译而无需调度线程。
+///
+/// # 逻辑解析（How）
+/// - 固定输出类型为 `Box<dyn Any + Send>`，满足对象安全要求。
+/// - `join` 直接返回 [`TaskError::ExecutorTerminated`]，其余查询均为恒值。
+///
+/// # 契约说明（What）
+/// - **前置条件**：任务从未开始执行。
+/// - **后置条件**：消费句柄不会对外部状态造成影响。
+///
+/// # 风险提示（Trade-offs）
+/// - 不适合需要校验任务完成路径的测试，应在相应场景替换为更真实的实现。
+#[derive(Default)]
 struct NoopTaskHandle;
 
+#[async_trait::async_trait]
 impl TaskHandle for NoopTaskHandle {
+    type Output = Box<dyn Any + Send>;
+
     fn cancel(&self, _: TaskCancellationStrategy) {}
 
     fn is_finished(&self) -> bool {
@@ -486,8 +533,8 @@ impl TaskHandle for NoopTaskHandle {
 
     fn detach(self: Box<Self>) {}
 
-    async fn join(self: Box<Self>) -> TaskResult {
-        Ok(())
+    async fn join(self: Box<Self>) -> TaskResult<Self::Output> {
+        Err(TaskError::ExecutorTerminated)
     }
 }
 
