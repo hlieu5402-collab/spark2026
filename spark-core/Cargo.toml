@@ -32,6 +32,8 @@ spin = { version = "0.9", default-features = false, features = ["rwlock", "mutex
 
 [dev-dependencies]
 criterion = "0.5"
+proptest = "1.5"
+thiserror = "1.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
