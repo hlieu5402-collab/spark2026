@@ -22,6 +22,7 @@ mod executor;
 mod services;
 mod slo;
 mod task;
+mod timeouts;
 mod timer;
 
 pub use executor::TaskExecutor;
@@ -35,6 +36,7 @@ pub use task::{
     ManagedSendTask, SendTaskSubmission, TaskCancellationStrategy, TaskError, TaskHandle,
     TaskLaunchOptions, TaskPriority, TaskResult,
 };
+pub use timeouts::{TimeoutConfigError, TimeoutRuntimeConfig, TimeoutSettings};
 pub use timer::{MonotonicTimePoint, TimeDriver};
 
 /// `AsyncRuntime` 聚合任务调度与时间驱动能力。

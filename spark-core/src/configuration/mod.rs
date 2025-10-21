@@ -24,8 +24,9 @@ mod value;
 
 pub use builder::{
     BuildError, BuildErrorKind, BuildErrorStage, BuildOutcome, BuildReport, ConfigurationBuilder,
-    ConfigurationHandle, LayeredConfiguration, ResolvedConfiguration, ValidationFinding,
-    ValidationReport, ValidationState,
+    ConfigurationHandle, ConfigurationUpdate, ConfigurationUpdateKind, ConfigurationWatch,
+    LayeredConfiguration, ResolvedConfiguration, ValidationFinding, ValidationReport,
+    ValidationState,
 };
 pub use change::{ChangeEvent, ChangeNotification, ChangeSet};
 pub use error::{ConfigurationError, ConfigurationErrorKind, SourceRegistrationError};
@@ -36,6 +37,6 @@ pub use snapshot::{
     SnapshotValue,
 };
 pub use source::{
-    ChangeCallback, ConfigurationLayer, ConfigurationSource, SourceMetadata, WatchToken,
+    ConfigDelta, ConfigurationLayer, ConfigurationSource, NoopConfigStream, SourceMetadata,
 };
 pub use value::{ConfigMetadata, ConfigValue};

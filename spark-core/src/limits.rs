@@ -1,8 +1,13 @@
 use alloc::{
     format,
     string::{String, ToString},
+    sync::Arc,
 };
-use core::fmt;
+use arc_swap::ArcSwap;
+use core::{
+    fmt,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use crate::configuration::{ConfigKey, ConfigScope, ConfigValue, ResolvedConfiguration};
 use crate::error::SparkError;
@@ -413,6 +418,65 @@ impl LimitSettings {
 impl Default for LimitSettings {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// 运行时持有的限额配置快照，支持原子级热更新。
+///
+/// ### 设计目的（Why）
+/// - 将配置解析结果放入 [`ArcSwap`]，在高并发场景下实现读写无锁化，避免因 `RwLock` 造成的抖动。
+/// - 暴露 `config_epoch()` 指标，便于可观测性体系追踪配置更新次数，与指标/日志联动排查。
+///
+/// ### 契约说明（What）
+/// - `new` 接受初始 [`LimitSettings`]，作为热更新前的基线；内部纪元计数从 `0` 开始。
+/// - `snapshot` 返回 `Arc<LimitSettings>`，调用方可在无锁前提下长期持有并读取。
+/// - `update_from_configuration` 解析新的 [`ResolvedConfiguration`] 并原子替换，若输入非法则返回 [`LimitConfigError`]。
+/// - **前置条件**：调用方需确保传入配置已完成语义校验（例如 Profile、Layer 等合规性检查）。
+/// - **后置条件**：成功更新后 `config_epoch()` 单调递增，且新快照立即对并发读者可见。
+pub struct LimitRuntimeConfig {
+    epoch: AtomicU64,
+    settings: ArcSwap<LimitSettings>,
+}
+
+impl LimitRuntimeConfig {
+    /// 构造运行时配置容器。
+    pub fn new(initial: LimitSettings) -> Self {
+        Self {
+            epoch: AtomicU64::new(0),
+            settings: ArcSwap::new(Arc::new(initial)),
+        }
+    }
+
+    /// 返回当前配置快照。
+    pub fn snapshot(&self) -> Arc<LimitSettings> {
+        self.settings.load_full()
+    }
+
+    /// 查询配置纪元，便于导出监控或调试。
+    pub fn config_epoch(&self) -> u64 {
+        self.epoch.load(Ordering::SeqCst)
+    }
+
+    /// 将新的配置直接写入，适用于调用方已经解析好的场景。
+    pub fn replace(&self, next: LimitSettings) {
+        self.settings.store(Arc::new(next));
+        self.epoch.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// 从 [`ResolvedConfiguration`] 解析并更新限额。
+    pub fn update_from_configuration(
+        &self,
+        config: &ResolvedConfiguration,
+    ) -> Result<(), LimitConfigError> {
+        let parsed = LimitSettings::from_configuration(config)?;
+        self.replace(parsed);
+        Ok(())
+    }
+}
+
+impl Default for LimitRuntimeConfig {
+    fn default() -> Self {
+        Self::new(LimitSettings::default())
     }
 }
 
