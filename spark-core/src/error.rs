@@ -106,6 +106,51 @@ impl CoreError {
     pub fn cause(&self) -> Option<&ErrorCause> {
         self.cause.as_ref()
     }
+
+    /// 返回适合排障会议或值班新人的“人话”描述。
+    ///
+    /// # 设计意图（Why）
+    /// - 运行日志常直接呈现技术细节（如 socket errno），对未熟悉拓扑与协议的排障人员不友好。
+    /// - 通过稳定错误码映射出统一的、人类可读的摘要，可在页面、告警中复用并降低沟通成本。
+    ///
+    /// # 契约定义（What）
+    /// - **输入前提**：调用方确保 `self.code()` 是稳定错误码；若为自定义码，需在文档中登记，否则回退到 `message()`。
+    /// - **返回值**：`Cow<'static, str>`，若存在官方摘要则返回借用的静态文案；否则克隆核心消息，保证 `'static` 生命周期。
+    /// - **后置条件**：不会修改内部状态，可在日志格式化、告警聚合等路径安全复用。
+    ///
+    /// # 执行逻辑（How）
+    /// 1. 通过内部查表函数 `lookup_human_and_hint` 根据错误码检索预置的“十大常见故障”表。
+    /// 2. 命中表项则直接借用其中的摘要；未命中时克隆现有 `message()`，保证依旧有可读输出。
+    ///
+    /// # 设计取舍与风险（Trade-offs）
+    /// - 选择在运行期通过匹配表实现，避免在构造时提前分配与绑定，从而允许后续热更新表项。
+    /// - 若调用方传入未备案的错误码，返回值会是原始消息：需在 SLO 报表中持续收敛自定义错误码。
+    pub fn human(&self) -> Cow<'static, str> {
+        lookup_human_and_hint(self.code)
+            .map(|(human, _)| Cow::Borrowed(human))
+            .unwrap_or_else(|| self.message.clone())
+    }
+
+    /// 返回修复建议，帮助值班人员在 30 分钟内完成处置。
+    ///
+    /// # 设计意图（Why）
+    /// - 错误码背后常含步骤化的修复流程，若仅写在维基不利于新人查找；直接附在错误对象可在 CLI 或 Dashboard 即时展示。
+    ///
+    /// # 契约定义（What）
+    /// - **返回值**：当错误码在官方表中登记时返回 `Some(Cow::Borrowed(hint))`；否则返回 `None`，鼓励调用方落地补充。
+    /// - **前置条件**：无额外前置条件；本方法不会触发额外分配或 I/O。
+    /// - **后置条件**：不影响 `CoreError` 内部 `message` 与 `cause`。
+    ///
+    /// # 执行逻辑（How）
+    /// 1. 调用内部查表函数 `lookup_human_and_hint` 获得静态提示。
+    /// 2. 将 `Option<&'static str>` 包装为 `Option<Cow<'static, str>>` 以兼容未来的动态提示实现。
+    ///
+    /// # 风险提示（Trade-offs）
+    /// - 当前仅覆盖“十大常见错误”；若后续扩展需同步更新文档与测试。
+    /// - 若错误码未覆盖，返回 `None`，调用方需在 UI 上做好兜底文案。
+    pub fn hint(&self) -> Option<Cow<'static, str>> {
+        lookup_human_and_hint(self.code).and_then(|(_, hint)| hint.map(Cow::Borrowed))
+    }
 }
 
 impl fmt::Display for CoreError {
@@ -220,6 +265,38 @@ impl SparkError {
     /// 访问核心错误。
     pub fn core(&self) -> &CoreError {
         &self.core
+    }
+
+    /// 返回适合业务值班理解的“人话”摘要，等价于内部核心错误的 [`CoreError::human`]。
+    ///
+    /// # 设计意图（Why）
+    /// - 领域错误常在 GraphQL/HTTP 层直接暴露给上游；提供委托方法减少调用方拆箱 `core()` 的样板代码。
+    ///
+    /// # 契约（What）
+    /// - **前置条件**：`self.core` 已使用稳定错误码构造。
+    /// - **返回值**：`Cow<'static, str>`；成功命中官方映射时借用静态文案，否则克隆领域消息。
+    /// - **后置条件**：不修改 `SparkError` 内部状态，可在 `Display` 之外的上下文重复调用。
+    ///
+    /// # 执行逻辑（How）
+    /// - 直接委托给 [`CoreError::human`]，保持语义一致，避免重复维护。
+    pub fn human(&self) -> Cow<'static, str> {
+        self.core.human()
+    }
+
+    /// 返回修复建议，便于在终端或 UI 中指导排障动作。
+    ///
+    /// # 设计意图（Why）
+    /// - 与 [`human`](Self::human) 配套，将“操作手册”直接挂在领域错误对象上，支持跨层透传。
+    ///
+    /// # 契约（What）
+    /// - **返回值**：当核心错误码被官方文档收录时返回静态提示；否则返回 `None`，以便上游显示通用兜底信息。
+    /// - **前置条件**：无额外前置条件。
+    /// - **后置条件**：不影响错误链路或附加上下文。
+    ///
+    /// # 执行逻辑（How）
+    /// - 委托 [`CoreError::hint`] 并原样返回结果。
+    pub fn hint(&self) -> Option<Cow<'static, str>> {
+        self.core.hint()
     }
 }
 
@@ -489,6 +566,38 @@ impl DomainError {
     pub fn impl_cause(&self) -> Option<&ImplError> {
         self.impl_cause.as_ref().map(|boxed| boxed.as_ref())
     }
+
+    /// 返回面向值班同学的摘要描述，复用核心错误的“人话”解释。
+    ///
+    /// # 设计意图（Why）
+    /// - 域层错误通常是业务 API 的最终返回值；直接提供摘要能避免上游服务重复拆包。
+    ///
+    /// # 契约（What）
+    /// - **返回值**：`Cow<'static, str>`；命中常见故障表时为借用，否则克隆核心消息。
+    /// - **前置条件**：域层错误已按照规范使用稳定错误码构造。
+    /// - **后置条件**：不改变内部 `core` 或 `impl_cause`。
+    ///
+    /// # 执行逻辑（How）
+    /// - 直接调用内部核心错误的 [`CoreError::human`]。
+    pub fn human(&self) -> Cow<'static, str> {
+        self.core.human()
+    }
+
+    /// 返回对应的修复建议（若存在），用于 CLI、工单系统等场景。
+    ///
+    /// # 设计意图（Why）
+    /// - 在域层封装 `hint()`，可让业务同学快速找到排障手册，而无需了解框架内部结构。
+    ///
+    /// # 契约（What）
+    /// - **返回值**：命中常见故障表时返回 `Some`，否则 `None`。
+    /// - **前置条件**：无新增前置条件。
+    /// - **后置条件**：保持域层错误链路不变。
+    ///
+    /// # 执行逻辑（How）
+    /// - 复用 [`CoreError::hint`] 的实现，确保跨层输出一致。
+    pub fn hint(&self) -> Option<Cow<'static, str>> {
+        self.core.hint()
+    }
 }
 
 impl fmt::Display for DomainError {
@@ -529,6 +638,70 @@ pub trait IntoDomainError: Sealed {
 impl IntoDomainError for ImplError {
     fn into_domain_error(self, kind: DomainErrorKind, code: &'static str) -> DomainError {
         DomainError::from_impl(kind, code, self)
+    }
+}
+
+/// 根据稳定错误码查找“人话”摘要与修复建议。
+///
+/// # 设计背景（Why）
+/// - 把常见错误与修复手册固化在代码中，可避免维基与实现脱节；通过单函数集中维护映射，便于测试与文档同步校验。
+///
+/// # 契约说明（What）
+/// - **输入参数**：`code` 为遵循 `<领域>.<语义>` 规范的稳定错误码。
+/// - **返回值**：若命中预置表，返回 `(human, hint)`；其中 `hint` 可为空表示暂未提供自动化指引。
+/// - **前置条件**：调用方必须传入 `'static` 生命周期的码值，通常来自 [`codes`] 模块。
+/// - **后置条件**：函数本身无副作用，纯读操作，可在 `no_std + alloc` 环境下安全复用。
+///
+/// # 执行逻辑（How）
+/// - 通过 `match` 在编译期生成跳表，保证分支预测友好；表项严格覆盖“十大常见故障”。
+///
+/// # 风险提示（Trade-offs）
+/// - 若新增错误码，需要同步更新此表、文档以及集成测试，否则 `hint()` 将返回 `None`。
+fn lookup_human_and_hint(code: &str) -> Option<(&'static str, Option<&'static str>)> {
+    use crate::error::codes;
+
+    match code {
+        codes::TRANSPORT_IO => Some((
+            "传输层 I/O 故障：底层连接已断开或发生读写失败",
+            Some("复查网络连通性或节点健康；必要时触发连接重建并观测是否持续报错"),
+        )),
+        codes::TRANSPORT_TIMEOUT => Some((
+            "传输层超时：请求在约定时限内未获得响应",
+            Some("确认服务端是否过载或限流；若系统正常请调高超时阈值并排查链路拥塞"),
+        )),
+        codes::PROTOCOL_DECODE => Some((
+            "协议解码失败：收到的数据包格式不符合预期",
+            Some("检查最近的协议版本变更或编解码配置；确保双方启用了兼容的 schema"),
+        )),
+        codes::PROTOCOL_NEGOTIATION => Some((
+            "协议协商失败：双方未能达成可用的能力组合",
+            Some("比对客户端与服务端支持的协议/加密选项；必要时回滚至兼容版本"),
+        )),
+        codes::PROTOCOL_BUDGET_EXCEEDED => Some((
+            "协议预算超限：消息超过帧或速率限制",
+            Some("核对调用是否突增或消息体过大；可临时提升预算并安排长期容量规划"),
+        )),
+        codes::CLUSTER_NODE_UNAVAILABLE => Some((
+            "集群节点不可用：目标节点当前离线或失联",
+            Some("通过运维面确认节点健康，必要时触发自动扩缩容或迁移流量"),
+        )),
+        codes::CLUSTER_LEADER_LOST => Some((
+            "集群领导者丢失：当前处于选举或主节点故障",
+            Some("等待选举完成并关注新 Leader 选出时间；若持续超时请检查共识组件日志"),
+        )),
+        codes::CLUSTER_QUEUE_OVERFLOW => Some((
+            "集群事件队列溢出：内部缓冲区耗尽",
+            Some("排查突发流量来源并削峰；临时提高队列容量或开启背压策略"),
+        )),
+        codes::DISCOVERY_STALE_READ => Some((
+            "服务发现数据陈旧：拿到的拓扑已过期",
+            Some("触发配置刷新或清理本地缓存；核对控制面 watch 是否正常工作"),
+        )),
+        codes::APP_UNAUTHORIZED => Some((
+            "应用鉴权失败：凭证失效或权限不足",
+            Some("重新发放凭证或调整访问策略；记录审计日志并通知调用方更新凭证"),
+        )),
+        _ => None,
     }
 }
 
