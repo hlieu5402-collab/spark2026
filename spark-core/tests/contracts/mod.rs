@@ -37,3 +37,4 @@ mod context_propagation;
 mod context_propagation_spawn;
 mod retry_after;
 mod service_macro;
+mod error_category_autoresponse;
