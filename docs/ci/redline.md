@@ -18,22 +18,26 @@
 
 ## 2. 运行细节与裁剪原则
 
-1. `make ci-lints`
+1. `tools/ci/check_msrv_guard.sh`
+   - 读取 `rust-toolchain.toml`、所有 `Cargo.toml` 与 CI Workflow，确保 MSRV 被锁定在 `1.89/1.89.0`，任何偏差立即 fail。
+   - 作为最早执行的脚本，若贡献者漏改版本号，可在正式编译前给出明确修复建议。
+2. `make ci-lints`
    - 顺序执行 `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo run --quiet --package spark-deprecation-lint`。
    - 任何警告升级为错误，确保提交物保持零警告状态。
-2. 文档检查
+3. 文档检查
    - `cargo doc --workspace --no-deps` 用于快速验证公开 API 文档是否可生成。
    - `make ci-doc-warning` 再次执行完整文档构建，配合 `RUSTDOCFLAGS=-Dwarnings` 捕捉依赖引入的警告。
-3. 构建矩阵
+4. 构建矩阵
    - `make ci-zc-asm`：常规构建，覆盖默认特性组合。
    - `make ci-no-std-alloc`：校验 `alloc` 配置，避免误用 `std`。
    - `make ci-bench-smoke`：`cargo bench -- --quick`，验证基准代码最小可运行。
-4. 语义版本校验
-   - 当前版本同时作为基线与对比，确保 API 面在变更周期内自洽；更新基线时需同步刷新 `snapshots` 目录或指向新标签。
-5. Miri / Loom 抽样
+5. 语义版本校验
+   - CI 会通过 `git worktree` 提取 `origin/main` 的源码作为基线，与 PR 变更版本对比，任何破坏性变更都会在 `cargo semver-checks` 中 fail。
+   - 更新基线时需同步刷新 `snapshots` 目录或指向新标签；如需跳过单项检查，请在文档中记录豁免理由。
+6. Miri / Loom 抽样
    - Miri 依赖 nightly，固定 `nightly-2024-12-31`，并以 `cargo miri setup` 预编译运行时。
    - Loom 使用 `LOOM_MAX_PREEMPTIONS=2` 控制状态空间，避免 CI 超时。
-6. 许可证与漏洞审计
+7. 许可证与漏洞审计
    - `deny.toml` 拒绝所有未知许可证，并将 `ring` 的复合许可显式白名单化。
    - 任何来自 crates.io 之外的源都需在 `[sources.allow-git]` 中登记，否则默认拒绝。
 

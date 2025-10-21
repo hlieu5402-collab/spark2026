@@ -34,6 +34,9 @@ jobs:
       - name: Unified protocol governance gate
         run: tools/ci/check_unified_protocol_guard.sh
 
+      - name: MSRV guardrails
+        run: tools/ci/check_msrv_guard.sh
+
       - name: Install Rust 1.89 toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -61,6 +64,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust 1.89 toolchain
         uses: dtolnay/rust-toolchain@master
@@ -111,8 +116,28 @@ jobs:
         with:
           tool: cargo-semver-checks@0.44.0
 
+      - name: Prepare SemVer baseline (origin/main)
+        id: semver_baseline
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          baseline_dir=$(mktemp -d)
+          git worktree add "$baseline_dir" origin/main
+          echo "dir=$baseline_dir" >> "$GITHUB_OUTPUT"
+
       - name: Run cargo-semver-checks
-        run: cargo semver-checks --manifest-path spark-core/Cargo.toml --baseline-root spark-core
+        env:
+          SEMVER_BASELINE_DIR: ${{ steps.semver_baseline.outputs.dir }}
+        run: cargo semver-checks --manifest-path spark-core/Cargo.toml --baseline-root "$SEMVER_BASELINE_DIR/spark-core"
+
+      - name: Cleanup SemVer baseline worktree
+        if: always()
+        env:
+          SEMVER_BASELINE_DIR: ${{ steps.semver_baseline.outputs.dir }}
+        run: |
+          if [[ -n "${SEMVER_BASELINE_DIR:-}" ]]; then
+            git worktree remove "$SEMVER_BASELINE_DIR" --force
+          fi
 
   cargo-deny:
     name: License & advisory audit
