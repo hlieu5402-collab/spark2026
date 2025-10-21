@@ -9,8 +9,10 @@
 //! - 对象层仅依赖最小集合（`PipelineMessage` 等），以降低插件体积并减少编译依赖。
 
 pub mod metrics;
+pub mod simple;
 pub mod traits;
 
 pub use metrics::{PayloadDirection, ServiceMetricsHook, ServiceOutcome};
+pub use simple::SimpleServiceFn;
 pub use traits::generic::{Layer, Service};
 pub use traits::object::{BoxService, DynService, ServiceObject};

@@ -15,4 +15,5 @@ ci-doc-warning:
 	cargo doc --workspace
 
 ci-bench-smoke:
-	cargo bench --workspace -- --quick
+	# `spark-macros` 为 proc-macro crate，未引入 Criterion，因此需排除以避免 `--quick` 参数触发 libtest 错误。
+	cargo bench --workspace --exclude spark-macros -- --quick

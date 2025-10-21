@@ -16,6 +16,20 @@
 extern crate alloc;
 
 pub use async_trait::async_trait;
+pub use spark_macros::service;
+
+/// 框架级过程宏命名空间。
+///
+/// # 设计目标（Why）
+/// - 统一向外暴露 `#[spark::service]` 等过程宏，避免业务代码直接依赖内部 crate 名称；
+/// - 将宏视为框架 API 的一部分，便于在文档和教程中使用 `use spark_core as spark;` 的统一写法。
+///
+/// # 使用方式（How）
+/// - 在调用方执行 `use spark_core as spark;` 后，可直接书写 `#[spark::service]`；
+/// - 若未来增加更多过程宏，只需在此模块追加 re-export 即可。
+pub mod spark {
+    pub use spark_macros::service;
+}
 
 mod sealed;
 

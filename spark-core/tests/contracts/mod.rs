@@ -35,3 +35,4 @@ mod shutdown;
 mod handshake;
 mod context_propagation;
 mod retry_after;
+mod service_macro;
