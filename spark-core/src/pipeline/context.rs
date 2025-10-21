@@ -1,4 +1,7 @@
-use super::{channel::Channel, controller::Controller};
+use super::{
+    channel::Channel,
+    controller::{Controller, ControllerHandleId},
+};
 use crate::{
     buffer::{BufferPool, PipelineMessage},
     cluster::{ClusterMembership, ServiceDiscovery},
@@ -41,7 +44,7 @@ pub trait Context: Send + Sync + Sealed {
     fn channel(&self) -> &dyn Channel;
 
     /// 当前控制器引用。
-    fn controller(&self) -> &dyn Controller;
+    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId>;
 
     /// 执行器引用。
     fn executor(&self) -> &dyn TaskExecutor;

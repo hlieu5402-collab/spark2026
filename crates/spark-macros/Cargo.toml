@@ -9,6 +9,8 @@ description = "Spark 框架的过程宏集合，提供 service 派生等开发�
 
 [lib]
 proc-macro = true
+bench = false
+test = false
 
 [dependencies]
 proc-macro2 = "1.0"
