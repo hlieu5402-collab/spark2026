@@ -1,6 +1,13 @@
 use alloc::{borrow::Cow, boxed::Box, vec::Vec};
+use core::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
-use crate::sealed::Sealed;
+use crate::{
+    future::{BoxStream, Stream},
+    sealed::Sealed,
+};
 
 use super::{ChangeNotification, ConfigKey, ConfigValue, ConfigurationError, ProfileId};
 
@@ -50,16 +57,55 @@ pub struct ConfigurationLayer {
     pub entries: Vec<(ConfigKey, ConfigValue)>,
 }
 
-/// 用于订阅配置变化的令牌。
+/// 配置增量事件。
 ///
 /// ### 设计目的（Why）
-/// - 借鉴 gRPC streaming API 的取消语义，提供最小化的取消（cancel）句柄。
+/// - 将配置源产生的变更统一抽象为“增量”与“全量刷新”两种语义，便于构建上层热更新管道。
+/// - 兼容文件轮询、远程推送等多种来源，实现者只需在适当时机发送对应事件。
+///
+/// ### 架构定位（How）
+/// - `Change`：承载一次 [`ChangeNotification`]，通常来源于增量推送或差异计算。
+/// - `Refresh`：表示底层源需要替换全部 [`ConfigurationLayer`]，常见于文件重新加载。
 ///
 /// ### 契约说明（What）
-/// - `cancel` 必须幂等，可以在任何线程调用。
-/// - 调用方需要确保在不再需要监听时立即取消，以释放资源。
-pub trait WatchToken: Send + Sync + Sealed {
-    fn cancel(&self);
+/// - 事件必须按发生顺序发送；调用方需保证同一来源的有序性。
+/// - `Refresh` 事件中的 `layers` 应包含完整层列表，调用方接收到后需丢弃旧层。
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConfigDelta {
+    Change(ChangeNotification),
+    Refresh(Vec<ConfigurationLayer>),
+}
+
+/// 空实现的配置流，用于不支持热更新的数据源。
+///
+/// ### 设计目的（Why）
+/// - 提供零成本的默认流，实现 `watch` 返回值要求的 `Stream` 契约。
+/// - 避免调用方必须为每个静态源手写“空流”样板代码，降低实现负担。
+///
+/// ### 行为说明（How）
+/// - `poll_next` 永远返回 `Poll::Ready(None)`，表示流立即结束。
+/// - 类型实现 `Send + Sync`，可安全跨线程共享，兼容所有源实现。
+pub struct NoopConfigStream;
+
+impl NoopConfigStream {
+    /// 构造空流实例。
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for NoopConfigStream {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Stream for NoopConfigStream {
+    type Item = ConfigDelta;
+
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Poll::Ready(None)
+    }
 }
 
 /// 配置源契约。
@@ -75,11 +121,11 @@ pub trait WatchToken: Send + Sync + Sealed {
 /// ### 契约说明（What）
 /// - **前置条件**：`profile` 必须是源支持的档案，否则返回 `ConfigurationError::Validation`。
 /// - **后置条件**：`load` 成功时必须至少返回一个 Layer；若无数据，可返回空向量但须保持元数据一致。
-/// - `watch` 返回的 [`WatchToken`] 应确保线程安全。
+/// - 返回的流必须遵循线程安全语义：实现者需保证在并发环境下也能安全地 `poll_next` 或触发唤醒。
 ///
 /// ### 设计权衡（Trade-offs）
 /// - 使用 `Vec` 而非 `Iterator`，简化 FFI 场景下的跨语言传递。
-/// - `watch` 默认返回 `None`，避免对不支持热更新的数据源施加负担。
+/// - `watch` 默认返回空流，避免对不支持热更新的数据源施加负担。
 ///
 /// # 线程安全与生命周期说明
 /// - Trait 仅要求 `Send + Sync`，刻意**不**附加 `'static`：配置源通常与底层连接句柄或缓存绑定，其生命周期可能短于进程；
@@ -92,9 +138,8 @@ pub trait ConfigurationSource: Send + Sync + Sealed {
     fn watch(
         &self,
         _profile: &ProfileId,
-        _callback: Box<dyn ChangeCallback + Send + Sync>,
-    ) -> Result<Option<Box<dyn WatchToken>>, ConfigurationError> {
-        Ok(None)
+    ) -> Result<BoxStream<'_, ConfigDelta>, ConfigurationError> {
+        Ok(Box::pin(NoopConfigStream::new()) as BoxStream<'_, ConfigDelta>)
     }
 }
 
@@ -114,24 +159,7 @@ impl ConfigurationSource for BorrowedConfigurationSource {
         self.inner.load(profile)
     }
 
-    fn watch(
-        &self,
-        profile: &ProfileId,
-        callback: Box<dyn ChangeCallback + Send + Sync>,
-    ) -> Result<Option<Box<dyn WatchToken>>, ConfigurationError> {
-        self.inner.watch(profile, callback)
+    fn watch(&self, profile: &ProfileId) -> Result<BoxStream<'_, ConfigDelta>, ConfigurationError> {
+        self.inner.watch(profile)
     }
-}
-
-/// 配置变更回调接口。
-///
-/// ### 设计目的（Why）
-/// - 模仿 gRPC streaming 与 Reactor 模型，将变更推送给观察者。
-/// - `no_std` 场景下无法依赖 async/await，因此使用回调契约描述。
-///
-/// ### 契约说明（What）
-/// - `on_change` 应保证快速返回，避免阻塞源内部线程。
-/// - 若处理失败，应返回 `ConfigurationError`，由数据源决定是否重试或关闭流。
-pub trait ChangeCallback: Sealed {
-    fn on_change(&self, notification: ChangeNotification) -> Result<(), ConfigurationError>;
 }

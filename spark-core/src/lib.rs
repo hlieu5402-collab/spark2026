@@ -85,12 +85,13 @@ pub use codec::{
 pub use common::{Empty, IntoEmpty, Loopback, legacy_loopback_outbound};
 pub use configuration::{
     BuildError, BuildErrorKind, BuildErrorStage, BuildOutcome, BuildReport, ChangeEvent,
-    ChangeNotification, ChangeSet, ConfigKey, ConfigMetadata, ConfigScope, ConfigValue,
-    ConfigurationBuilder, ConfigurationError, ConfigurationHandle, ConfigurationLayer,
-    ConfigurationSnapshot, ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId,
+    ChangeNotification, ChangeSet, ConfigDelta, ConfigKey, ConfigMetadata, ConfigScope,
+    ConfigValue, ConfigurationBuilder, ConfigurationError, ConfigurationHandle, ConfigurationLayer,
+    ConfigurationSnapshot, ConfigurationSource, ConfigurationUpdate, ConfigurationUpdateKind,
+    ConfigurationWatch, LayeredConfiguration, NoopConfigStream, ProfileDescriptor, ProfileId,
     ProfileLayering, ResolvedConfiguration, SnapshotEntry, SnapshotLayer, SnapshotMetadata,
     SnapshotProfile, SnapshotValue, SourceMetadata, ValidationFinding, ValidationReport,
-    ValidationState, WatchToken,
+    ValidationState,
 };
 pub use context::ExecutionContext;
 pub use contract::{
@@ -134,6 +135,12 @@ pub use router::{
     RouteValidation, Router, RouterObject, RoutingContext, RoutingIntent, RoutingSnapshot,
 };
 pub use runtime::{
+    AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission, ManagedBlockingTask,
+    ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission, SloPolicyAction,
+    SloPolicyConfigError, SloPolicyDirective, SloPolicyManager, SloPolicyReloadReport,
+    SloPolicyRule, SloPolicyTrigger, TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle,
+    TaskLaunchOptions, TaskPriority, TaskResult, TimeDriver, TimeoutConfigError,
+    TimeoutRuntimeConfig, TimeoutSettings, slo_policy_table_key,
     AsyncRuntime, BlockingTaskSubmission, CoreServices, JoinHandle, LocalTaskSubmission,
     ManagedBlockingTask, ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
     SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
