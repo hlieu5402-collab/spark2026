@@ -19,7 +19,7 @@ use crate::{
     error::{CoreError, ErrorCategory},
     observability::CoreUserEvent,
     pipeline::{context::Context, handler::InboundHandler},
-    status::{ReadyState, SubscriptionBudget},
+    status::{BusyReason, ReadyState, SubscriptionBudget},
 };
 
 /// 将 `ErrorCategory` 映射为自动化响应的默认入站 Handler。
@@ -45,9 +45,13 @@ impl InboundHandler for ExceptionAutoResponder {
     fn on_user_event(&self, _ctx: &dyn Context, _event: CoreUserEvent) {}
 
     fn on_exception_caught(&self, ctx: &dyn Context, error: CoreError) {
+        let code = error.code();
         let category = error.category();
         match category {
             ErrorCategory::Retryable(advice) => {
+                if let Some(reason) = busy_reason_from_code(code) {
+                    emit_ready_state(ctx, ReadyState::Busy(reason));
+                }
                 emit_ready_state(ctx, ReadyState::RetryAfter(advice));
             }
             ErrorCategory::ResourceExhausted(kind) => {
@@ -106,4 +110,27 @@ fn emit_ready_state(ctx: &dyn Context, state: ReadyState) {
 
 fn fallback_snapshot(kind: BudgetKind) -> crate::contract::BudgetSnapshot {
     crate::contract::BudgetSnapshot::new(kind, 0, 0)
+}
+
+/// 根据错误码推导默认的繁忙原因，帮助调度器生成可观测信号。
+///
+/// # 设计意图（Why）
+/// - 与错误分类矩阵保持一致，使 `Retryable` 错误在广播 `RetryAfter` 前先给出
+///   可观测的繁忙主语义（上游/下游）。
+///
+/// # 契约说明（What）
+/// - **输入**：稳定错误码；
+/// - **输出**：若存在约定的繁忙语义则返回 [`BusyReason`]，否则 `None`；
+/// - **前置条件**：调用前已确认错误码遵循矩阵约定。
+fn busy_reason_from_code(code: &str) -> Option<BusyReason> {
+    use crate::error::codes;
+
+    match code {
+        codes::TRANSPORT_IO | codes::APP_BACKPRESSURE_APPLIED => Some(BusyReason::downstream()),
+        codes::CLUSTER_NODE_UNAVAILABLE
+        | codes::CLUSTER_NETWORK_PARTITION
+        | codes::CLUSTER_LEADER_LOST
+        | codes::DISCOVERY_STALE_READ => Some(BusyReason::upstream()),
+        _ => None,
+    }
 }
