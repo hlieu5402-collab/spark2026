@@ -1,11 +1,22 @@
-use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
+use alloc::string::ToString;
+use alloc::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
+
+use arc_swap::ArcSwap;
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use spin::Mutex;
 
 use crate::{
-    buffer::PipelineMessage, error::CoreError, observability::CoreUserEvent, runtime::CoreServices,
+    buffer::PipelineMessage,
+    contract::{CallContext, CloseReason, Deadline},
+    error::{CoreError, SparkError},
+    observability::{CoreUserEvent, TraceContext},
+    runtime::CoreServices,
     sealed::Sealed,
 };
 
 use super::{
+    channel::{Channel, WriteSignal},
+    context::Context as PipelineContext,
     handler::{self, InboundHandler, OutboundHandler},
     middleware::{ChainBuilder, Middleware},
 };
@@ -77,9 +88,69 @@ impl ControllerEvent {
     }
 }
 
+/// 控制器内部使用的 Handler 句柄，配合热插拔操作标识链路节点。
+///
+/// # 教案式说明
+/// - **意图（Why）**：在运行时热更新场景中，调用方需要一种稳定且易比较的标识来定位某个 Handler，
+///   以便执行插入、替换、移除等操作。简单使用下标会受到并发修改的影响，因此引入显式句柄。
+/// - **逻辑（How）**：句柄的最低位编码方向（0=Inbound，1=Outbound），高位为单调递增的序列号；
+///   同时保留两个保留值作为“虚拟哨兵”，分别代表入站/出站链路的头部锚点，便于在链首插入新 Handler。
+/// - **契约（What）**：句柄在控制器生命周期内唯一；比较与拷贝均为常数时间；
+///   `direction()` 返回该句柄所属方向或锚点的方向提示。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ControllerHandleId(u64);
+
+impl ControllerHandleId {
+    /// 入站链路的虚拟头部锚点，用于“在最前方插入”。
+    pub const INBOUND_HEAD: Self = Self(0);
+    /// 出站链路的虚拟头部锚点。
+    pub const OUTBOUND_HEAD: Self = Self(1);
+
+    /// 根据方向返回对应的锚点句柄，便于统一写法。
+    pub fn head(direction: HandlerDirection) -> Self {
+        match direction {
+            HandlerDirection::Inbound => Self::INBOUND_HEAD,
+            HandlerDirection::Outbound => Self::OUTBOUND_HEAD,
+        }
+    }
+
+    /// 判定句柄是否为虚拟锚点。
+    pub fn is_anchor(self) -> bool {
+        self == Self::INBOUND_HEAD || self == Self::OUTBOUND_HEAD
+    }
+
+    /// 返回句柄所属方向；虚拟锚点也会返回其绑定方向。
+    pub fn direction(self) -> HandlerDirection {
+        if self == Self::INBOUND_HEAD {
+            HandlerDirection::Inbound
+        } else if self == Self::OUTBOUND_HEAD {
+            HandlerDirection::Outbound
+        } else if self.0 & 1 == 0 {
+            HandlerDirection::Inbound
+        } else {
+            HandlerDirection::Outbound
+        }
+    }
+
+    /// 将内部编码暴露给调试工具或日志系统。
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+
+    /// 控制器内部使用的构造函数：基于方向与序列号生成唯一句柄。
+    pub(crate) fn new(direction: HandlerDirection, sequence: u64) -> Self {
+        let direction_bit = match direction {
+            HandlerDirection::Inbound => 0u64,
+            HandlerDirection::Outbound => 1u64,
+        };
+        Self((sequence << 1) | direction_bit)
+    }
+}
+
 /// Handler 注册信息，协助调度器与观测系统理解链路结构。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HandlerRegistration {
+    handle_id: ControllerHandleId,
     label: String,
     descriptor: super::middleware::MiddlewareDescriptor,
     direction: HandlerDirection,
@@ -87,16 +158,31 @@ pub struct HandlerRegistration {
 
 impl HandlerRegistration {
     /// 构造注册信息。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：Pipeline introspection 需要同时暴露 Handler 的语义标签与可变更句柄，
+    ///   以支撑后续的热插拔、可观测性标注与灰度回滚。
+    /// - **逻辑（How）**：调用方传入 Handler 元数据，由注册表负责封装为只读快照；控制器在更新链路
+    ///   时重新生成该快照，保证外部观察者读取到的结构与执行序一致。
+    /// - **契约（What）**：`handle_id` 必须由控制器分配且在当前生命周期内唯一；`label`、`descriptor`
+    ///   分别用于人类可读名称与静态描述；`direction` 指示事件流向。
     pub fn new(
+        handle_id: ControllerHandleId,
         label: impl Into<String>,
         descriptor: super::middleware::MiddlewareDescriptor,
         direction: HandlerDirection,
     ) -> Self {
         Self {
+            handle_id,
             label: label.into(),
             descriptor,
             direction,
         }
+    }
+
+    /// 返回 Handler 句柄，用于热插拔与回滚定位。
+    pub fn handle_id(&self) -> ControllerHandleId {
+        self.handle_id
     }
 
     /// 获取 Handler 标签。
@@ -138,6 +224,85 @@ pub trait HandlerRegistry: Send + Sync + Sealed {
     fn snapshot(&self) -> Vec<HandlerRegistration>;
 }
 
+/// 统一的 Handler 动态封装，供热插拔接口复用。
+///
+/// # 教案式说明
+/// - **意图（Why）**：控制器在运行时接收 `Arc<dyn Handler>`，需在不暴露具体 Handler 类型的情况下
+///   执行事件派发与元数据提取；该 trait 承担“方向判断 + Handler 克隆”职责。
+/// - **逻辑（How）**：实现者必须返回自身的方向、静态描述，并在需要时克隆出入站或出站 Handler 的
+///   `Arc`。借助 `Arc` 的引用计数语义，我们可以安全地在快照之间共享实例。
+/// - **契约（What）**：若 `direction()` 返回 `Inbound`，则 `clone_inbound()` 必须返回 `Some`；
+///   同理，`Outbound` 方向要求 `clone_outbound()` 返回 `Some`。允许同一 Handler 同时实现双向能力。
+pub trait Handler: Send + Sync + Sealed {
+    /// 返回 Handler 的主要方向，用于决定调度链路。
+    fn direction(&self) -> HandlerDirection;
+
+    /// 返回 Handler 的静态描述信息，用于构建注册表快照。
+    fn descriptor(&self) -> super::middleware::MiddlewareDescriptor;
+
+    /// 克隆出入站 Handler 引用；若不提供入站能力需返回 `None`。
+    fn clone_inbound(&self) -> Option<Arc<dyn InboundHandler>> {
+        None
+    }
+
+    /// 克隆出出站 Handler 引用；若不提供出站能力需返回 `None`。
+    fn clone_outbound(&self) -> Option<Arc<dyn OutboundHandler>> {
+        None
+    }
+}
+
+/// 将入站 Handler 封装为通用 `Handler`，便于在热插拔接口中使用。
+///
+/// # 教案式说明
+/// - **意图**：为调用方提供零拷贝转换入口，避免重复编写包装结构。
+/// - **逻辑**：内部仅存储一份 `Arc<dyn InboundHandler>`，对外暴露 `Handler` 接口并在需要时克隆。
+/// - **契约**：返回值可直接传递给 [`Controller::add_handler_after`] 等方法；底层 Handler 生命周期
+///   由 `Arc` 管理。
+pub fn handler_from_inbound(handler: Arc<dyn InboundHandler>) -> Arc<dyn Handler> {
+    Arc::new(InboundHandlerSlot { inner: handler })
+}
+
+/// 将出站 Handler 封装为通用 `Handler`。
+pub fn handler_from_outbound(handler: Arc<dyn OutboundHandler>) -> Arc<dyn Handler> {
+    Arc::new(OutboundHandlerSlot { inner: handler })
+}
+
+struct InboundHandlerSlot {
+    inner: Arc<dyn InboundHandler>,
+}
+
+impl Handler for InboundHandlerSlot {
+    fn direction(&self) -> HandlerDirection {
+        HandlerDirection::Inbound
+    }
+
+    fn descriptor(&self) -> super::middleware::MiddlewareDescriptor {
+        self.inner.describe()
+    }
+
+    fn clone_inbound(&self) -> Option<Arc<dyn InboundHandler>> {
+        Some(Arc::clone(&self.inner))
+    }
+}
+
+struct OutboundHandlerSlot {
+    inner: Arc<dyn OutboundHandler>,
+}
+
+impl Handler for OutboundHandlerSlot {
+    fn direction(&self) -> HandlerDirection {
+        HandlerDirection::Outbound
+    }
+
+    fn descriptor(&self) -> super::middleware::MiddlewareDescriptor {
+        self.inner.describe()
+    }
+
+    fn clone_outbound(&self) -> Option<Arc<dyn OutboundHandler>> {
+        Some(Arc::clone(&self.inner))
+    }
+}
+
 /// Controller 是 Pipeline 的核心控制面，负责：
 /// 1. 组织 Handler 链路（含 Middleware 装配）。
 /// 2. 广播事件至 Handler。
@@ -152,10 +317,11 @@ pub trait HandlerRegistry: Send + Sync + Sealed {
 /// - `install_middleware`：将 Middleware 声明式配置转换为 Handler 链。
 /// - `emit_*`：向链路广播事件。
 /// - `registry`：返回 Handler 注册信息，支持管理面查询。
+/// - `add_handler_after` / `remove_handler` / `replace_handler`：基于句柄的热插拔接口，保证运行时链路一致性。
 ///
 /// # 线程安全与生命周期约束
 /// - Trait 继承 `Send + Sync + 'static`：
-///   - **原因**：控制器常由运行时线程池并发访问，并在链路初始化后长期驻留；若不要求 `'static`，将无法安全放入 `Arc<dyn Controller>`。
+///   - **原因**：控制器常由运行时线程池并发访问，并在链路初始化后长期驻留；若不要求 `'static`，将无法安全放入 `Arc<dyn Controller<HandleId = ControllerHandleId>>`。
 ///   - **对比**：`Context` 仅要求 `Send + Sync`，生命周期绑定单次事件回调，可由控制器控制释放时机。
 /// - Handler 注册提供“拥有型 Box”与“借用型 `'static` 引用”双入口：
 ///   - `register_*_handler` 适合一次性构造后交由控制面托管；
@@ -169,6 +335,9 @@ pub trait HandlerRegistry: Send + Sync + Sealed {
 /// - 在高负载场景下，Middleware 装配应尽量避免动态分配，可预先缓存 Handler 实例。
 /// - 若实现支持热更新，需保证 `install_middleware` 幂等且可回滚。
 pub trait Controller: Send + Sync + 'static + Sealed {
+    /// Handler 句柄类型，由具体实现指定。
+    type HandleId: Copy + Eq + Send + Sync + 'static;
+
     /// 注册入站 Handler。
     fn register_inbound_handler(&self, label: &str, handler: Box<dyn InboundHandler>);
 
@@ -219,9 +388,551 @@ pub trait Controller: Send + Sync + 'static + Sealed {
 
     /// 获取 Handler 注册表，用于链路 introspection。
     fn registry(&self) -> &dyn HandlerRegistry;
+
+    /// 在指定句柄之后插入新的 Handler，返回新 Handler 的句柄。
+    fn add_handler_after(
+        &self,
+        anchor: Self::HandleId,
+        label: &str,
+        handler: Arc<dyn Handler>,
+    ) -> Self::HandleId;
+
+    /// 根据句柄移除 Handler，若存在返回 `true`。
+    fn remove_handler(&self, handle: Self::HandleId) -> bool;
+
+    /// 使用新的实现替换指定句柄对应的 Handler。
+    fn replace_handler(&self, handle: Self::HandleId, handler: Arc<dyn Handler>) -> bool;
+
+    /// 返回当前链路的逻辑 epoch，用于观察热更新是否完成。
+    fn epoch(&self) -> u64;
 }
 
-impl ChainBuilder for dyn Controller {
+/// 内部链路节点，保存 Handler 元数据与实际回调引用。
+///
+/// # 教案式说明
+/// - **意图（Why）**：在执行期需要一份紧凑、可原子替换的结构来描述 Handler，以便在 `ArcSwap`
+///   中复制、替换并为注册表提供快照。
+/// - **逻辑（How）**：`HandlerEntry` 预先缓存 `label`、`descriptor` 与方向信息，事件调度时即可直接
+///   读取；`inbound` / `outbound` 字段仅在对应方向存在时为 `Some`，避免无意义的动态分派。
+/// - **契约（What）**：`id` 必须对应控制器分配的句柄；若一个节点只实现入站（或出站）能力，另一侧
+///   字段必须为 `None`，否则会造成事件重复分发。
+struct HandlerEntry {
+    id: ControllerHandleId,
+    label: String,
+    descriptor: super::middleware::MiddlewareDescriptor,
+    direction: HandlerDirection,
+    inbound: Option<Arc<dyn InboundHandler>>,
+    #[allow(dead_code)]
+    outbound: Option<Arc<dyn OutboundHandler>>,
+}
+
+impl HandlerEntry {
+    /// 依据通用 Handler 构造节点。
+    fn new(id: ControllerHandleId, label: &str, handler: Arc<dyn Handler>) -> Self {
+        let direction = handler.direction();
+        Self {
+            id,
+            label: label.to_string(),
+            descriptor: handler.descriptor(),
+            direction,
+            inbound: handler.clone_inbound(),
+            outbound: handler.clone_outbound(),
+        }
+    }
+
+    /// 复用既有元数据构造替换节点。
+    fn with_replacement(id: ControllerHandleId, label: String, handler: Arc<dyn Handler>) -> Self {
+        let direction = handler.direction();
+        Self {
+            id,
+            label,
+            descriptor: handler.descriptor(),
+            direction,
+            inbound: handler.clone_inbound(),
+            outbound: handler.clone_outbound(),
+        }
+    }
+
+    fn handle_id(&self) -> ControllerHandleId {
+        self.id
+    }
+
+    fn label(&self) -> &str {
+        &self.label
+    }
+
+    fn descriptor(&self) -> &super::middleware::MiddlewareDescriptor {
+        &self.descriptor
+    }
+
+    fn direction(&self) -> HandlerDirection {
+        self.direction
+    }
+
+    fn inbound(&self) -> Option<&dyn InboundHandler> {
+        self.inbound.as_deref()
+    }
+
+    #[allow(dead_code)]
+    fn outbound(&self) -> Option<&dyn OutboundHandler> {
+        self.outbound.as_deref()
+    }
+}
+
+/// 内建注册表实现，基于 `ArcSwap` 提供锁自由快照。
+struct HotSwapRegistry {
+    entries: ArcSwap<Vec<HandlerRegistration>>,
+}
+
+impl HotSwapRegistry {
+    fn new() -> Self {
+        Self {
+            entries: ArcSwap::from_pointee(Vec::new()),
+        }
+    }
+
+    fn update(&self, snapshot: Arc<Vec<HandlerRegistration>>) {
+        self.entries.store(snapshot);
+    }
+}
+
+impl HandlerRegistry for HotSwapRegistry {
+    fn snapshot(&self) -> Vec<HandlerRegistration> {
+        (*self.entries.load_full()).clone()
+    }
+}
+
+/// 支持运行期热插拔的默认控制器实现。
+///
+/// # 教案式说明
+/// - **意图（Why）**：为满足“不中断流量的链路变更”需求，控制器需在读写热路径上提供锁自由的 Handler
+///   快照，并在变更时以 epoch 栅栏协调并发访问。
+/// - **逻辑（How）**：
+///   1. Handler 链以 `ArcSwap<Vec<Arc<HandlerEntry>>>` 保存，事件分发前先读取快照；
+///   2. 热更新操作在 `Mutex` 保护下复制向量，插入/替换节点并原子更新 `ArcSwap`；
+///   3. 每次变更自增 `epoch`，外部可据此判断新快照是否已对所有线程可见。
+/// - **契约（What）**：构造时需注入通道、核心服务、调用上下文与追踪上下文；调用者必须通过 `Arc`
+///   持有控制器，以保证在事件回调期间对象存活。
+pub struct HotSwapController {
+    channel: Arc<dyn Channel>,
+    services: CoreServices,
+    call_context: CallContext,
+    trace_context: TraceContext,
+    handlers: ArcSwap<Vec<Arc<HandlerEntry>>>,
+    registry: HotSwapRegistry,
+    epoch: AtomicU64,
+    sequence: AtomicU64,
+    mutation: Mutex<()>,
+}
+
+impl HotSwapController {
+    /// 构造新的热插拔控制器。
+    ///
+    /// # 教案式说明
+    /// - **意图**：初始化时将运行时依赖、通道以及初始上下文固定，后续热更新仅需关注 Handler 链。
+    /// - **逻辑**：`ArcSwap` 初始为空向量；`sequence` 从 1 开始保证句柄不与哨兵值冲突；`epoch`
+    ///   自 0 计数，便于观察第一个变更。
+    /// - **契约**：`channel` 必须在控制器生命周期内保持有效；`services`、`call_context`、`trace_context`
+    ///   会被克隆存储，调用方可在构造后继续使用原值。
+    pub fn new(
+        channel: Arc<dyn Channel>,
+        services: CoreServices,
+        call_context: CallContext,
+        trace_context: TraceContext,
+    ) -> Self {
+        Self {
+            channel,
+            services,
+            call_context,
+            trace_context,
+            handlers: ArcSwap::from_pointee(Vec::new()),
+            registry: HotSwapRegistry::new(),
+            epoch: AtomicU64::new(0),
+            sequence: AtomicU64::new(1),
+            mutation: Mutex::new(()),
+        }
+    }
+
+    fn append_handler(&self, label: &str, handler: Arc<dyn Handler>) -> ControllerHandleId {
+        let _guard = self.mutation.lock();
+        let current = self.handlers.load_full();
+        let mut chain: Vec<_> = current.iter().cloned().collect();
+        let direction = handler.direction();
+        let insert_index = chain
+            .iter()
+            .rposition(|entry| entry.direction() == direction)
+            .map(|idx| idx + 1)
+            .unwrap_or(chain.len());
+        let id = self.next_handle_id(direction);
+        chain.insert(
+            insert_index,
+            Arc::new(HandlerEntry::new(id, label, handler)),
+        );
+        self.commit_chain(chain);
+        id
+    }
+
+    fn next_handle_id(&self, direction: HandlerDirection) -> ControllerHandleId {
+        let sequence = self.sequence.fetch_add(1, Ordering::Relaxed);
+        ControllerHandleId::new(direction, sequence)
+    }
+
+    fn commit_chain(&self, chain: Vec<Arc<HandlerEntry>>) {
+        let arc_chain = Arc::new(chain);
+        let registrations = self.rebuild_registry(&arc_chain);
+        self.handlers.store(Arc::clone(&arc_chain));
+        self.registry.update(registrations);
+        self.bump_epoch();
+    }
+
+    fn rebuild_registry(
+        &self,
+        handlers: &Arc<Vec<Arc<HandlerEntry>>>,
+    ) -> Arc<Vec<HandlerRegistration>> {
+        let mut entries = Vec::with_capacity(handlers.len());
+        for entry in handlers.iter() {
+            entries.push(HandlerRegistration::new(
+                entry.handle_id(),
+                entry.label().to_string(),
+                entry.descriptor().clone(),
+                entry.direction(),
+            ));
+        }
+        Arc::new(entries)
+    }
+
+    fn locate_insertion_index(
+        chain: &[Arc<HandlerEntry>],
+        anchor: ControllerHandleId,
+        direction: HandlerDirection,
+    ) -> usize {
+        if anchor.is_anchor() {
+            chain
+                .iter()
+                .position(|entry| entry.direction() == direction)
+                .unwrap_or(chain.len())
+        } else if let Some(pos) = chain.iter().position(|entry| entry.handle_id() == anchor) {
+            pos + 1
+        } else {
+            chain.len()
+        }
+    }
+
+    fn bump_epoch(&self) {
+        self.epoch.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn build_context(
+        &self,
+        snapshot: Arc<Vec<Arc<HandlerEntry>>>,
+        next_index: usize,
+    ) -> HotSwapContext {
+        HotSwapContext::new(
+            self,
+            Arc::clone(&self.channel),
+            &self.services,
+            &self.call_context,
+            &self.trace_context,
+            snapshot,
+            next_index,
+        )
+    }
+
+    fn dispatch_inbound_from(
+        &self,
+        snapshot: Arc<Vec<Arc<HandlerEntry>>>,
+        start_index: usize,
+        msg: PipelineMessage,
+    ) {
+        if let Some(index) = Self::find_next_inbound(&snapshot, start_index)
+            && let Some(handler) = snapshot[index].inbound()
+        {
+            let ctx = self.build_context(snapshot.clone(), index + 1);
+            handler.on_read(&ctx, msg);
+        }
+    }
+
+    fn find_next_inbound(snapshot: &[Arc<HandlerEntry>], start_index: usize) -> Option<usize> {
+        let mut idx = start_index;
+        while let Some(entry) = snapshot.get(idx) {
+            if entry.inbound().is_some() {
+                return Some(idx);
+            }
+            idx += 1;
+        }
+        None
+    }
+
+    fn notify_inbound<F>(&self, mut callback: F)
+    where
+        F: FnMut(&dyn InboundHandler, HotSwapContext),
+    {
+        let snapshot = self.handlers.load_full();
+        for (index, entry) in snapshot.iter().enumerate() {
+            if let Some(handler) = entry.inbound() {
+                let ctx = self.build_context(Arc::clone(&snapshot), index + 1);
+                callback(handler, ctx);
+            }
+        }
+    }
+
+    fn remove_by_handle(&self, handle: ControllerHandleId) -> bool {
+        if handle.is_anchor() {
+            return false;
+        }
+        let _guard = self.mutation.lock();
+        let current = self.handlers.load_full();
+        let mut chain: Vec<_> = current.iter().cloned().collect();
+        if let Some(pos) = chain.iter().position(|entry| entry.handle_id() == handle) {
+            chain.remove(pos);
+            self.commit_chain(chain);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn replace_by_handle(&self, handle: ControllerHandleId, handler: Arc<dyn Handler>) -> bool {
+        if handle.is_anchor() {
+            return false;
+        }
+        let _guard = self.mutation.lock();
+        let current = self.handlers.load_full();
+        let mut chain: Vec<_> = current.iter().cloned().collect();
+        if let Some(pos) = chain.iter().position(|entry| entry.handle_id() == handle) {
+            let existing = chain[pos].clone();
+            if existing.direction() != handler.direction() {
+                return false;
+            }
+            chain[pos] = Arc::new(HandlerEntry::with_replacement(
+                handle,
+                existing.label().to_string(),
+                handler,
+            ));
+            self.commit_chain(chain);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl Controller for HotSwapController {
+    type HandleId = ControllerHandleId;
+
+    fn register_inbound_handler(&self, label: &str, handler: Box<dyn InboundHandler>) {
+        let dyn_handler = handler_from_inbound(Arc::from(handler));
+        self.append_handler(label, dyn_handler);
+    }
+
+    fn register_outbound_handler(&self, label: &str, handler: Box<dyn OutboundHandler>) {
+        let dyn_handler = handler_from_outbound(Arc::from(handler));
+        self.append_handler(label, dyn_handler);
+    }
+
+    fn install_middleware(
+        &self,
+        _middleware: &dyn Middleware,
+        _services: &CoreServices,
+    ) -> Result<(), CoreError> {
+        Err(CoreError::new(
+            "spark.pipeline.install_middleware",
+            "HotSwapController::install_middleware 尚未实现：请通过 add_handler_after 装配",
+        ))
+    }
+
+    fn emit_channel_activated(&self) {
+        self.notify_inbound(|handler, ctx| handler.on_channel_active(&ctx));
+    }
+
+    fn emit_read(&self, msg: PipelineMessage) {
+        let snapshot = self.handlers.load_full();
+        self.dispatch_inbound_from(snapshot, 0, msg);
+    }
+
+    fn emit_read_completed(&self) {
+        self.notify_inbound(|handler, ctx| handler.on_read_complete(&ctx));
+    }
+
+    fn emit_writability_changed(&self, is_writable: bool) {
+        self.notify_inbound(|handler, ctx| handler.on_writability_changed(&ctx, is_writable));
+    }
+
+    fn emit_user_event(&self, event: CoreUserEvent) {
+        self.notify_inbound(|handler, ctx| handler.on_user_event(&ctx, clone_user_event(&event)));
+    }
+
+    fn emit_exception(&self, error: CoreError) {
+        let snapshot = self.handlers.load_full();
+        if let Some(index) = Self::find_next_inbound(&snapshot, 0)
+            && let Some(handler) = snapshot[index].inbound()
+        {
+            let ctx = self.build_context(Arc::clone(&snapshot), index + 1);
+            handler.on_exception_caught(&ctx, error);
+        }
+    }
+
+    fn emit_channel_deactivated(&self) {
+        self.notify_inbound(|handler, ctx| handler.on_channel_inactive(&ctx));
+    }
+
+    fn registry(&self) -> &dyn HandlerRegistry {
+        &self.registry
+    }
+
+    fn add_handler_after(
+        &self,
+        anchor: Self::HandleId,
+        label: &str,
+        handler: Arc<dyn Handler>,
+    ) -> Self::HandleId {
+        let _guard = self.mutation.lock();
+        let current = self.handlers.load_full();
+        let mut chain: Vec<_> = current.iter().cloned().collect();
+        let direction = handler.direction();
+        let insert_index = Self::locate_insertion_index(&chain, anchor, direction);
+        let id = self.next_handle_id(direction);
+        chain.insert(
+            insert_index,
+            Arc::new(HandlerEntry::new(id, label, handler)),
+        );
+        self.commit_chain(chain);
+        id
+    }
+
+    fn remove_handler(&self, handle: Self::HandleId) -> bool {
+        self.remove_by_handle(handle)
+    }
+
+    fn replace_handler(&self, handle: Self::HandleId, handler: Arc<dyn Handler>) -> bool {
+        self.replace_by_handle(handle, handler)
+    }
+
+    fn epoch(&self) -> u64 {
+        self.epoch.load(Ordering::SeqCst)
+    }
+}
+
+/// 事件调度时注入 Handler 的上下文实现。
+struct HotSwapContext {
+    controller: *const HotSwapController,
+    channel: Arc<dyn Channel>,
+    services: CoreServices,
+    call_context: CallContext,
+    trace_context: TraceContext,
+    snapshot: Arc<Vec<Arc<HandlerEntry>>>,
+    next_index: AtomicUsize,
+}
+
+impl HotSwapContext {
+    fn new(
+        controller: &HotSwapController,
+        channel: Arc<dyn Channel>,
+        services: &CoreServices,
+        call_context: &CallContext,
+        trace_context: &TraceContext,
+        snapshot: Arc<Vec<Arc<HandlerEntry>>>,
+        next_index: usize,
+    ) -> Self {
+        Self {
+            controller: controller as *const _,
+            channel,
+            services: services.clone(),
+            call_context: call_context.clone(),
+            trace_context: trace_context.clone(),
+            snapshot,
+            next_index: AtomicUsize::new(next_index),
+        }
+    }
+}
+
+unsafe impl Send for HotSwapContext {}
+unsafe impl Sync for HotSwapContext {}
+
+impl PipelineContext for HotSwapContext {
+    fn channel(&self) -> &dyn Channel {
+        self.channel.as_ref()
+    }
+
+    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+        unsafe { &*self.controller }
+    }
+
+    fn executor(&self) -> &dyn crate::runtime::TaskExecutor {
+        self.services.runtime() as &dyn crate::runtime::TaskExecutor
+    }
+
+    fn timer(&self) -> &dyn crate::runtime::TimeDriver {
+        self.services.time_driver()
+    }
+
+    fn buffer_pool(&self) -> &dyn crate::buffer::BufferPool {
+        self.services.buffer_pool.as_ref()
+    }
+
+    fn trace_context(&self) -> &TraceContext {
+        &self.trace_context
+    }
+
+    fn metrics(&self) -> &dyn crate::observability::MetricsProvider {
+        self.services.metrics.as_ref()
+    }
+
+    fn logger(&self) -> &dyn crate::observability::Logger {
+        self.services.logger.as_ref()
+    }
+
+    fn membership(&self) -> Option<&dyn crate::cluster::ClusterMembership> {
+        self.services.membership.as_deref()
+    }
+
+    fn discovery(&self) -> Option<&dyn crate::cluster::ServiceDiscovery> {
+        self.services.discovery.as_deref()
+    }
+
+    fn call_context(&self) -> &CallContext {
+        &self.call_context
+    }
+
+    fn forward_read(&self, msg: PipelineMessage) {
+        let index = self.next_index.fetch_add(1, Ordering::SeqCst);
+        unsafe {
+            (*self.controller).dispatch_inbound_from(self.snapshot.clone(), index, msg);
+        }
+    }
+
+    fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+        self.channel.write(msg)
+    }
+
+    fn flush(&self) {
+        self.channel.flush();
+    }
+
+    fn close_graceful(&self, reason: CloseReason, deadline: Option<Deadline>) {
+        self.channel.close_graceful(reason, deadline);
+    }
+
+    fn closed(&self) -> crate::future::BoxFuture<'static, Result<(), SparkError>> {
+        self.channel.closed()
+    }
+}
+
+fn clone_user_event(event: &CoreUserEvent) -> CoreUserEvent {
+    match event {
+        CoreUserEvent::TlsEstablished(info) => CoreUserEvent::TlsEstablished(info.clone()),
+        CoreUserEvent::IdleTimeout(timeout) => CoreUserEvent::IdleTimeout(*timeout),
+        CoreUserEvent::RateLimited(rate) => CoreUserEvent::RateLimited(*rate),
+        CoreUserEvent::ConfigChanged { keys } => {
+            CoreUserEvent::ConfigChanged { keys: keys.clone() }
+        }
+        CoreUserEvent::ApplicationSpecific(ev) => {
+            CoreUserEvent::ApplicationSpecific(Arc::clone(ev))
+        }
+    }
+}
+
+impl ChainBuilder for dyn Controller<HandleId = ControllerHandleId> {
     fn register_inbound(&mut self, label: &str, handler: Box<dyn InboundHandler>) {
         Controller::register_inbound_handler(self, label, handler);
     }

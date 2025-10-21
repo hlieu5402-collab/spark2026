@@ -1,6 +1,6 @@
 use crate::{CoreError, runtime::CoreServices, sealed::Sealed};
 
-use crate::pipeline::Controller;
+use crate::pipeline::{Controller, controller::ControllerHandleId};
 
 /// 泛型层的控制器工厂合约，提供零虚分派的装配路径。
 ///
@@ -24,7 +24,7 @@ use crate::pipeline::Controller;
 /// - 若控制器构造失败，必须返回结构化的 [`CoreError`]，以便宿主记录诊断信息。
 pub trait ControllerFactory: Send + Sync + 'static + Sealed {
     /// 泛型层构造出的控制器类型。
-    type Controller: Controller;
+    type Controller: Controller<HandleId = ControllerHandleId>;
 
     /// 构建控制器并装配完整 Pipeline 链路。
     fn build(&self, core_services: &CoreServices) -> Result<Self::Controller, CoreError>;
