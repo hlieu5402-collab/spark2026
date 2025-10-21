@@ -2,7 +2,7 @@ use alloc::{boxed::Box, sync::Arc};
 
 use crate::{CoreError, runtime::CoreServices, sealed::Sealed};
 
-use crate::pipeline::Controller;
+use crate::pipeline::{Controller, controller::ControllerHandleId};
 
 use super::generic::ControllerFactory;
 
@@ -14,7 +14,7 @@ use super::generic::ControllerFactory;
 ///
 /// # 行为逻辑（How）
 /// - `build_dyn` 接收 [`CoreServices`]，内部通常调用泛型实现再做类型擦除；
-/// - 返回值为 [`ControllerHandle`]，封装 `Arc<dyn Controller>`，方便在多线程环境复用；
+/// - 返回值为 [`ControllerHandle`]，封装 `Arc<dyn Controller<HandleId = ControllerHandleId>>`，方便在多线程环境复用；
 /// - 适配器 [`ControllerFactoryObject`] 负责将泛型实现桥接到对象层。
 ///
 /// # 契约说明（What）
@@ -32,19 +32,19 @@ pub trait DynControllerFactory: Send + Sync + Sealed {
 /// `ControllerHandle` 持有对象层控制器，实现 [`Controller`] 以便在泛型上下文复用。
 #[derive(Clone)]
 pub struct ControllerHandle {
-    inner: Arc<dyn Controller>,
+    inner: Arc<dyn Controller<HandleId = ControllerHandleId>>,
 }
 
 impl ControllerHandle {
-    /// 以 `Arc<dyn Controller>` 包裹现有控制器。
-    pub fn new(inner: Arc<dyn Controller>) -> Self {
+    /// 以 `Arc<dyn Controller<HandleId = ControllerHandleId>>` 包裹现有控制器。
+    pub fn new(inner: Arc<dyn Controller<HandleId = ControllerHandleId>>) -> Self {
         Self { inner }
     }
 
     /// 从泛型控制器创建对象层句柄。
     pub fn from_controller<C>(controller: C) -> Self
     where
-        C: Controller,
+        C: Controller<HandleId = ControllerHandleId>,
     {
         Self {
             inner: Arc::new(controller),
@@ -52,12 +52,14 @@ impl ControllerHandle {
     }
 
     /// 以 trait 对象形式访问内部控制器。
-    pub fn as_dyn(&self) -> &(dyn Controller) {
+    pub fn as_dyn(&self) -> &(dyn Controller<HandleId = ControllerHandleId>) {
         &*self.inner
     }
 }
 
 impl Controller for ControllerHandle {
+    type HandleId = ControllerHandleId;
+
     fn register_inbound_handler(
         &self,
         label: &str,
@@ -128,6 +130,31 @@ impl Controller for ControllerHandle {
 
     fn registry(&self) -> &dyn crate::pipeline::HandlerRegistry {
         self.inner.registry()
+    }
+
+    fn add_handler_after(
+        &self,
+        anchor: Self::HandleId,
+        label: &str,
+        handler: Arc<dyn crate::pipeline::controller::Handler>,
+    ) -> Self::HandleId {
+        self.inner.add_handler_after(anchor, label, handler)
+    }
+
+    fn remove_handler(&self, handle: Self::HandleId) -> bool {
+        self.inner.remove_handler(handle)
+    }
+
+    fn replace_handler(
+        &self,
+        handle: Self::HandleId,
+        handler: Arc<dyn crate::pipeline::controller::Handler>,
+    ) -> bool {
+        self.inner.replace_handler(handle, handler)
+    }
+
+    fn epoch(&self) -> u64 {
+        self.inner.epoch()
     }
 }
 

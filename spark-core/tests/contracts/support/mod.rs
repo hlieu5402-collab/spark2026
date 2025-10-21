@@ -18,11 +18,13 @@
 //! - 若后续核心结构字段发生变更，需要同步更新这里的构造逻辑，以免测试误判；
 //! - 为保证覆盖率统计的稳定性，辅助函数不隐藏关键逻辑（如预算消费），仅负责装配测试输入。
 
-mod macros;
+mod r#async;
 mod deterministic;
+mod macros;
 
-pub(crate) use macros::*;
+pub(crate) use r#async::block_on;
 pub(crate) use deterministic::*;
+pub(crate) use macros::*;
 
 use spark_core::contract::BudgetKind;
 use spark_core::runtime::MonotonicTimePoint;
@@ -129,4 +131,3 @@ pub(crate) fn build_custom_budget_kind(name: &str) -> (BudgetKind, Arc<str>) {
     let arc_name: Arc<str> = Arc::from(name);
     (BudgetKind::custom(Arc::clone(&arc_name)), arc_name)
 }
-

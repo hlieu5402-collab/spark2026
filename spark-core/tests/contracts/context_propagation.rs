@@ -20,7 +20,10 @@ use spark_core::context::ExecutionContext;
 use spark_core::error::codes;
 use spark_core::future::BoxFuture;
 use spark_core::observability::trace::{TraceContext, TraceFlags};
-use spark_core::pipeline::{Channel, ChannelState, Controller, HandlerRegistry, WriteSignal};
+use spark_core::pipeline::{
+    Channel, ChannelState, Controller, HandlerRegistry, WriteSignal,
+};
+use spark_core::pipeline::controller::ControllerHandleId;
 use spark_core::router::binding::{RouteBinding, RouteDecision};
 use spark_core::router::catalog::{RouteCatalog, RouteDescriptor};
 use spark_core::router::context::{RoutingContext, RoutingIntent, RoutingSnapshot};
@@ -777,7 +780,7 @@ impl Channel for TestChannel {
         true
     }
 
-    fn controller(&self) -> &dyn Controller {
+    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
         &self.controller
     }
 
@@ -838,6 +841,7 @@ impl ExtensionsMap for NoopExtensions {
 struct NoopController;
 
 impl Controller for NoopController {
+    type HandleId = ControllerHandleId;
     fn register_inbound_handler(&self, _: &str, _: Box<dyn spark_core::pipeline::handler::InboundHandler>) {}
 
     fn register_outbound_handler(&self, _: &str, _: Box<dyn spark_core::pipeline::handler::OutboundHandler>) {}
@@ -866,6 +870,31 @@ impl Controller for NoopController {
 
     fn registry(&self) -> &dyn HandlerRegistry {
         &NoopRegistry
+    }
+
+    fn add_handler_after(
+        &self,
+        _anchor: Self::HandleId,
+        _label: &str,
+        _handler: Arc<dyn spark_core::pipeline::controller::Handler>,
+    ) -> Self::HandleId {
+        spark_core::pipeline::controller::ControllerHandleId::INBOUND_HEAD
+    }
+
+    fn remove_handler(&self, _handle: Self::HandleId) -> bool {
+        false
+    }
+
+    fn replace_handler(
+        &self,
+        _handle: Self::HandleId,
+        _handler: Arc<dyn spark_core::pipeline::controller::Handler>,
+    ) -> bool {
+        false
+    }
+
+    fn epoch(&self) -> u64 {
+        0
     }
 }
 

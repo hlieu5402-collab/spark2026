@@ -21,6 +21,7 @@
 pub mod channel;
 pub mod context;
 pub mod controller;
+pub mod default_handlers;
 pub mod extensions;
 pub mod factory;
 pub mod handler;
@@ -30,6 +31,7 @@ pub mod traits;
 pub use channel::{Channel, ChannelState, WriteSignal};
 pub use context::Context;
 pub use controller::{Controller, ControllerEvent, ControllerEventKind, HandlerRegistry};
+pub use default_handlers::{ExceptionAutoResponder, ReadyStateEvent};
 pub use extensions::ExtensionsMap;
 pub use handler::{DuplexHandler, InboundHandler, OutboundHandler};
 pub use middleware::{ChainBuilder, Middleware, MiddlewareDescriptor};

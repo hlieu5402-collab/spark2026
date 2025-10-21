@@ -100,8 +100,8 @@ pub use contract::{
     SecurityContextSnapshot,
 };
 pub use error::{
-    CoreError, DomainError, DomainErrorKind, ErrorCause, ImplError, ImplErrorKind, IntoCoreError,
-    IntoDomainError, SparkError,
+    CoreError, DomainError, DomainErrorKind, ErrorCategory, ErrorCause, ImplError, ImplErrorKind,
+    IntoCoreError, IntoDomainError, SparkError,
 };
 pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use host::{
@@ -141,14 +141,20 @@ pub use runtime::{
     SloPolicyRule, SloPolicyTrigger, TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle,
     TaskLaunchOptions, TaskPriority, TaskResult, TimeDriver, TimeoutConfigError,
     TimeoutRuntimeConfig, TimeoutSettings, slo_policy_table_key,
+    AsyncRuntime, BlockingTaskSubmission, CoreServices, JoinHandle, LocalTaskSubmission,
+    ManagedBlockingTask, ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
+    SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
+    SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger, TaskCancellationStrategy, TaskError,
+    TaskExecutor, TaskExecutorExt, TaskHandle, TaskLaunchOptions, TaskPriority, TaskResult,
+    TimeDriver, slo_policy_table_key,
 };
 pub use security::{
     Credential, CredentialDescriptor, CredentialMaterial, CredentialScope, CredentialState,
     IdentityDescriptor, IdentityKind, IdentityProof, KeyMaterial, KeyPurpose, KeyRequest,
     KeyResponse, KeyRetrievalError, KeySource, NegotiationContext, NegotiationError,
     NegotiationOutcome, NegotiationResult, PolicyAttachment, PolicyEffect, PolicyRule,
-    ResourcePattern, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy, SecurityProtocol,
-    SecurityProtocolOffer, SubjectMatcher,
+    ResourcePattern, SecurityClass, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy,
+    SecurityProtocol, SecurityProtocolOffer, SubjectMatcher,
 };
 pub use service::{
     AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,

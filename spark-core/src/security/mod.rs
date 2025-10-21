@@ -16,12 +16,14 @@
 //! - 仅定义 API 契约，不内置任何默认实现，调用者需结合具体后端（如 SDS、Vault）实现。
 //! - 所有公开结构均可序列化/传输，建议结合 `serde` 等库在上层进行编解码。
 
+pub mod class;
 pub mod credential;
 pub mod identity;
 pub mod keystore;
 pub mod negotiation;
 pub mod policy;
 
+pub use class::SecurityClass;
 pub use credential::{
     Credential, CredentialDescriptor, CredentialMaterial, CredentialScope, CredentialState,
 };
