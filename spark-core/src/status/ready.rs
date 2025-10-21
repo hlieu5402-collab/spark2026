@@ -21,6 +21,7 @@
 //! - 在 `no_std` 环境下依赖 `alloc`，需要调用方在启用 `alloc` 特性时同步链接；
 //! - 扩展状态时须评估对序列化、兼容层的影响，避免新分支破坏旧版本调用方的匹配逻辑。
 use crate::contract::{BudgetDecision, BudgetSnapshot};
+use crate::runtime::MonotonicTimePoint;
 use alloc::{borrow::Cow, fmt};
 use core::convert::TryFrom;
 use core::task::Poll;
@@ -283,6 +284,76 @@ impl RetryAdvice {
     pub fn with_reason(mut self, reason: impl Into<Cow<'static, str>>) -> Self {
         self.reason = Some(reason.into());
         self
+    }
+}
+
+/// RetryAfter 节律追踪器：在连续收到软退避信号时累加等待窗口。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：在实践中，服务可能连续多次返回 `ReadyState::RetryAfter`。若仅按照“最后一次”
+///   的等待时间重试，容易过早触发下一次请求，破坏退避节奏。本结构维护累积的“下一次最早可重试时间点”，
+///   确保端到端延迟满足契约要求。
+/// - **契约 (What)**：
+///   - `observe`：传入当前时间与 `RetryAdvice`，返回最新的最早可重试时间；
+///   - `next_ready_at`：查询内部记录的时间点；
+///   - `remaining_delay`：给出距离允许重试的剩余时长；
+///   - `accumulated_wait`：统计自首次观测以来累计等待时间；
+///   - **前置条件**：所有时间点必须来自同一计时源 [`MonotonicTimePoint`]；
+///   - **后置条件**：内部状态单调递增，不会回退到更早的时间点。
+/// - **实现 (How)**：
+///   1. 记录 `next_allowed`（最早可重试时间）。每次 `observe` 时取 `max(now, next_allowed)` 作为基线，
+///      叠加建议的等待时长；
+///   2. 使用 `saturating_add` 防止 Duration 溢出；
+///   3. 通过 `MonotonicTimePoint::saturating_duration_since` 计算剩余等待时间，确保在时间回退时返回 0。
+/// - **风险与权衡 (Trade-offs)**：
+///   - 若长时间未收到新的 RetryAfter 信号，可调用方自行在成功请求后 `reset`（当前未实现，可根据需求扩展）；
+///   - `accumulated_wait` 仅做线性累加，若后续需要指数退避或自定义策略，可在上层封装额外逻辑。
+#[derive(Clone, Debug, Default)]
+pub struct RetryRhythm {
+    next_allowed: Option<MonotonicTimePoint>,
+    accumulated: Duration,
+}
+
+impl RetryRhythm {
+    /// 创建空的节律追踪器。
+    pub const fn new() -> Self {
+        Self {
+            next_allowed: None,
+            accumulated: Duration::from_secs(0),
+        }
+    }
+
+    /// 记录一次 RetryAfter 信号并返回最新的可重试时间点。
+    pub fn observe(&mut self, now: MonotonicTimePoint, advice: &RetryAdvice) -> MonotonicTimePoint {
+        let anchor = self.next_allowed.unwrap_or(now);
+        let base = if now > anchor { now } else { anchor };
+        let next = base.saturating_add(advice.wait);
+        self.next_allowed = Some(next);
+        self.accumulated = self.accumulated.saturating_add(advice.wait);
+        next
+    }
+
+    /// 查询当前累积的等待时间。
+    pub fn accumulated_wait(&self) -> Duration {
+        self.accumulated
+    }
+
+    /// 返回最早可重试的时间点。
+    pub fn next_ready_at(&self) -> Option<MonotonicTimePoint> {
+        self.next_allowed
+    }
+
+    /// 计算距离允许重试的剩余时间，若已到期则返回 0。
+    pub fn remaining_delay(&self, now: MonotonicTimePoint) -> Duration {
+        match self.next_allowed {
+            Some(deadline) if deadline > now => deadline.saturating_duration_since(now),
+            _ => Duration::from_secs(0),
+        }
+    }
+
+    /// 判断当前是否已到最早可重试时间。
+    pub fn is_ready(&self, now: MonotonicTimePoint) -> bool {
+        self.remaining_delay(now).is_zero()
     }
 }
 

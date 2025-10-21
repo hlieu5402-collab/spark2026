@@ -213,6 +213,31 @@ impl OwnedAttributeSet {
         }
     }
 
+    /// 将借用视图中的键值对扩展为拥有所有权的集合。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：`ServiceMetricsHook` 等组件需要在保留原有标签的同时追加新的观测标签，
+    ///   若每次手动克隆 `Vec<KeyValue>` 容易遗漏字段。此方法提供集中化的扩展入口，
+    ///   确保标签复制逻辑一致且易于审计。
+    /// - **契约 (What)**：
+    ///   - **输入**：`borrowed` 为只读的属性切片，生命周期可短于 `OwnedAttributeSet`；
+    ///   - **输出**：当前集合会追加对应键值的拥有所有权副本；已有条目保持不变；
+    ///   - **前置条件**：调用方需保证切片中不存在重复键或超出基数约束的值；
+    ///   - **后置条件**：每个键值均转化为 `'static` 生命周期的 [`KeyValue`]，适合跨异步任务传递。
+    /// - **实现 (How)**：逐条克隆键（通过 [`Cow::into_owned`]）和值（通过 [`MetricAttributeValue::into_owned`]），
+    ///   并推入内部 `Vec`；使用 `reserve` 优化批量复制时的分配次数。
+    /// - **风险与权衡 (Trade-offs)**：复制操作会导致额外的分配成本；若在高频路径调用，建议复用
+    ///   `OwnedAttributeSet` 并配合 [`OwnedAttributeSet::clear`] 降低分配次数。
+    pub fn extend_from(&mut self, borrowed: AttributeSet<'_>) {
+        self.entries.reserve(borrowed.len());
+        for kv in borrowed {
+            self.entries.push(KeyValue {
+                key: Cow::Owned(kv.key.clone().into_owned()),
+                value: kv.value.clone().into_owned(),
+            });
+        }
+    }
+
     /// 将键值对以拥有所有权的方式追加到集合中。
     ///
     /// # 契约说明

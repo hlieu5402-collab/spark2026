@@ -1,8 +1,10 @@
 use core::time::Duration;
 
 use crate::observability::{
-    AttributeSet, InstrumentDescriptor, MetricsProvider, metrics::contract::service as contract,
+    AttributeSet, InstrumentDescriptor, MetricsProvider, OwnedAttributeSet,
+    metrics::contract::service as contract,
 };
+use crate::status::{BusyReason, ReadyState, RetryAdvice};
 
 /// 描述请求载荷方向。
 ///
@@ -166,5 +168,85 @@ impl<'a> ServiceMetricsHook<'a> {
     ) {
         self.provider
             .record_counter_add(direction.descriptor(), bytes, attributes);
+    }
+
+    /// 记录 `Service::poll_ready` 的返回结果，并在遇到 `RetryAfter` 时追加节律指标。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：统一将 Ready/Busy/BudgetExhausted/RetryAfter 四态映射到指标，
+    ///   便于在 Grafana 上与 `spark.request.ready_state`、`retry_after_total` 等图表对齐；
+    ///   特别是 RetryAfter 需要同步记录等待时长，才能验证退避策略是否符合预期节奏。
+    /// - **契约 (What)**：
+    ///   - **输入参数**：
+    ///     - `base_attributes`：服务通用标签集合（`service.name` 等），会被复制后追加 `ready.*` 标签；
+    ///     - `state`：`poll_ready` 返回的 [`ReadyState`]；
+    ///   - **前置条件**：调用方需保证 `base_attributes` 使用稳定标签值；
+    ///   - **后置条件**：
+    ///     1. `spark.request.ready_state` 计数器累加一次；
+    ///     2. 若 `state` 为 `RetryAfter`，额外累加 `retry_after_total` 并将等待毫秒数写入直方图；
+    ///     3. 标签集始终包含 `ready.state` 与 `ready.detail`，避免出现“缺失维度”的观测陷阱。
+    /// - **实现 (How)**：
+    ///   1. 根据 `state` 解析出稳定标签值（例如 `busy` + `queue_full`）；
+    ///   2. 使用 [`OwnedAttributeSet::extend_from`] 克隆基础标签并追加 `ready.*` 标签；
+    ///   3. 写入 `REQUEST_READY_STATE` 计数器；
+    ///   4. 当分支为 `RetryAfter` 时，调用内部辅助函数写入次数与延迟直方图。
+    /// - **风险与权衡 (Trade-offs)**：
+    ///   - 复制标签会产生少量堆分配，建议上层复用 `OwnedAttributeSet` 或按需抽样；
+    ///   - `RetryAdvice` 未来若扩展绝对时间 (`at`) 语义，需要在标签映射中新增对 `ready.detail` 的映射。
+    pub fn record_ready_state(&self, base_attributes: AttributeSet<'_>, state: &ReadyState) {
+        let (state_label, detail_label) = ready_state_labels(state);
+        let mut owned = OwnedAttributeSet::new();
+        owned.extend_from(base_attributes);
+        owned.push_owned(contract::ATTR_READY_STATE, state_label);
+        owned.push_owned(contract::ATTR_READY_DETAIL, detail_label);
+
+        let attributes = owned.as_slice();
+        self.provider
+            .record_counter_add(&contract::REQUEST_READY_STATE, 1, attributes);
+
+        if let ReadyState::RetryAfter(advice) = state {
+            self.record_retry_after_metrics(advice, attributes);
+        }
+    }
+
+    /// 将 RetryAfter 信号映射为次数与延迟直方图。
+    fn record_retry_after_metrics(&self, advice: &RetryAdvice, attributes: AttributeSet<'_>) {
+        self.provider
+            .record_counter_add(&contract::RETRY_AFTER_TOTAL, 1, attributes);
+
+        let wait_ms = advice.wait.as_secs_f64() * 1_000.0;
+        self.provider
+            .record_histogram(&contract::RETRY_AFTER_DELAY_MS, wait_ms, attributes);
+    }
+}
+
+/// 根据 `ReadyState` 返回稳定的标签取值。
+fn ready_state_labels(state: &ReadyState) -> (&'static str, &'static str) {
+    match state {
+        ReadyState::Ready => (
+            contract::READY_STATE_READY,
+            contract::READY_DETAIL_PLACEHOLDER,
+        ),
+        ReadyState::Busy(reason) => (
+            contract::READY_STATE_BUSY,
+            match reason {
+                BusyReason::Upstream => contract::READY_DETAIL_UPSTREAM,
+                BusyReason::Downstream => contract::READY_DETAIL_DOWNSTREAM,
+                BusyReason::QueueFull(_) => contract::READY_DETAIL_QUEUE_FULL,
+                BusyReason::Custom(_) => contract::READY_DETAIL_CUSTOM,
+            },
+        ),
+        ReadyState::BudgetExhausted(_) => (
+            contract::READY_STATE_BUDGET_EXHAUSTED,
+            contract::READY_DETAIL_PLACEHOLDER,
+        ),
+        ReadyState::RetryAfter(advice) => {
+            let detail = if advice.reason.is_some() {
+                contract::READY_DETAIL_CUSTOM
+            } else {
+                contract::READY_DETAIL_RETRY_AFTER
+            };
+            (contract::READY_STATE_RETRY_AFTER, detail)
+        }
     }
 }

@@ -26,6 +26,8 @@
 | Service | `spark.request.inflight` | Gauge (`requests`) | 并发中的调用数 | `service.name` `route.id` `operation` `protocol` |
 | Service | `spark.request.errors` | Counter (`requests`) | 失败调用次数 | `service.name` `route.id` `operation` `protocol` `error.kind` |
 | Service | `spark.request.ready_state` | Counter (`checks`) | `poll_ready` 结果统计，覆盖 ReadyState 的 Busy/BudgetExhausted/RetryAfter | `service.name` `route.id` `operation` `protocol` `ready.state` `ready.detail` |
+| Service | `spark.request.retry_after_total` | Counter (`events`) | RetryAfter 信号出现次数，用于量化退避频率 | `service.name` `route.id` `operation` `protocol` `ready.state` `ready.detail` |
+| Service | `spark.request.retry_after_delay_ms_bucket` | Histogram (`ms`) | RetryAfter 建议等待时长分布（Prometheus 导出会生成 `_bucket/_sum/_count` 指标） | `service.name` `route.id` `operation` `protocol` `ready.state` `ready.detail` |
 | Service | `spark.bytes.inbound` / `spark.bytes.outbound` | Counter (`bytes`) | 请求/响应字节量 | `service.name` `route.id` `operation` `protocol` |
 | Codec | `spark.codec.encode.duration` / `spark.codec.decode.duration` | Histogram (`ms`) | 编解码耗时 | `codec.name` `codec.mode` `content.type` |
 | Codec | `spark.codec.encode.bytes` / `spark.codec.decode.bytes` | Counter (`bytes`) | 编解码后的字节量 | `codec.name` `codec.mode` `content.type` |
@@ -65,6 +67,8 @@
 > **落地约束**：`ready.detail` 必须使用上表枚举或 `_` 作为占位，严禁写入请求 ID、租户 ID 等高基数字段；如需额外上下文，请通过日志或临时实验性指标承载。
 
 `spark.request.ready_state` 指标应在每次 `poll_ready` 调用后立刻计数一次，以便观察 Busy/Exhausted/RetryAfter 的相对频次。常见实现是在 `poll_ready` 返回后直接调用 `MetricsProvider::record_counter`，并附带上表约定的标签集（如通过 `OwnedAttributeSet` 组合 `ready.state` / `ready.detail`）。
+
+`spark.request.retry_after_total` 与 `spark.request.retry_after_delay_ms_bucket` 需在 `ReadyState::RetryAfter` 分支中同时记录，以便结合次数与延迟分布分析退避节律。推荐在同一标签集合下写入，保持 `ready.state=retry_after` 与 `ready.detail` 的细分取值（`after` 或 `custom`）。
 
 示例：在对象层 Service 实现中记录调用生命周期指标：
 
