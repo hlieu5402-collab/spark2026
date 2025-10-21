@@ -88,6 +88,7 @@
 - 与 CEP 相关的实现 PR 必须在描述中引用 `CEP-xxxx` 编号；
 - CODEOWNERS 列出的目录 Owner 拥有否决权，可要求补充数据或修订方案；
 - CEP 实施完成后，应在“变更记录”章节登记上线结果与遗留问题。
+- 若实现 PR 触及 `ReadyState` / `PollReady` / `ExecutionContext`，必须同时提交契约测试、指标/Runbook 与 `cargo semver-checks` 报告，并在 PR 模板中的对应核对项打勾；CI 会针对缺失项阻断合并。
 
 ## 附录
 
