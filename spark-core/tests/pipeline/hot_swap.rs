@@ -20,8 +20,8 @@ use spark_core::{
         handler::InboundHandler,
     },
     runtime::{
-        AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission,
-        SendTaskSubmission, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
+        AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
+        TaskExecutor, TaskHandle, TaskResult, TimeDriver,
     },
 };
 
@@ -445,23 +445,19 @@ impl NoopRuntime {
 }
 
 impl TaskExecutor for NoopRuntime {
-    fn spawn(&self, _task: SendTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopHandle)
-    }
-
-    fn spawn_blocking(&self, _task: BlockingTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopHandle)
-    }
-
-    fn spawn_local(&self, _task: LocalTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopHandle)
+    fn spawn_dyn(
+        &self,
+        _ctx: &CallContext,
+        _fut: BoxFuture<'static, TaskResult<Box<dyn std::any::Any + Send>>>,
+    ) -> JoinHandle<Box<dyn std::any::Any + Send>> {
+        JoinHandle::from_task_handle(Box::new(NoopHandle))
     }
 }
 
 #[async_trait::async_trait]
 impl TimeDriver for NoopRuntime {
-    fn now(&self) -> spark_core::runtime::MonotonicTimePoint {
-        spark_core::runtime::MonotonicTimePoint::from_offset(*self.now.lock().expect("time"))
+    fn now(&self) -> MonotonicTimePoint {
+        MonotonicTimePoint::from_offset(*self.now.lock().expect("time"))
     }
 
     async fn sleep(&self, duration: Duration) {
@@ -474,7 +470,9 @@ struct NoopHandle;
 
 #[async_trait::async_trait]
 impl TaskHandle for NoopHandle {
-    fn cancel(&self, _strategy: spark_core::runtime::TaskCancellationStrategy) {}
+    type Output = Box<dyn std::any::Any + Send>;
+
+    fn cancel(&self, _strategy: TaskCancellationStrategy) {}
 
     fn is_finished(&self) -> bool {
         true
@@ -490,8 +488,8 @@ impl TaskHandle for NoopHandle {
 
     fn detach(self: Box<Self>) {}
 
-    async fn join(self: Box<Self>) -> TaskResult {
-        Ok(())
+    async fn join(self: Box<Self>) -> TaskResult<Self::Output> {
+        Ok(Box::new(()) as Box<dyn std::any::Any + Send>)
     }
 }
 

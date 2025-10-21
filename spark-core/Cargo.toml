@@ -23,7 +23,6 @@ loom-model = ["dep:loom"]
 
 [dependencies]
 async-trait = { version = "0.1", default-features = false }
-arc-swap = { version = "1.7", default-features = false }
 spark-macros = { path = "../crates/spark-macros" }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 sha2 = { version = "0.10", default-features = false }
@@ -67,6 +66,7 @@ path = "tests/contracts/service_macro.rs"
 [[test]]
 name = "contracts_context_propagation_spawn"
 path = "tests/contracts/context_propagation_spawn.rs"
+[[test]]
 name = "pipeline"
 path = "tests/pipeline/mod.rs"
 
