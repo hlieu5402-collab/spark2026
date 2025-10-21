@@ -1,0 +1,16 @@
+[package]
+name = "spark-macros"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+authors = ["Gemini 架构组 <architecture@gemini.example>"]
+license = "Apache-2.0"
+description = "Spark 框架的过程宏集合，提供 service 派生等开发体验增强。"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full"] }
