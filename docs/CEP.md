@@ -89,6 +89,11 @@
 - CODEOWNERS 列出的目录 Owner 拥有否决权，可要求补充数据或修订方案；
 - CEP 实施完成后，应在“变更记录”章节登记上线结果与遗留问题。
 - 若实现 PR 触及 `ReadyState` / `PollReady` / `ExecutionContext`，必须同时提交契约测试、指标/Runbook 与 `cargo semver-checks` 报告，并在 PR 模板中的对应核对项打勾；CI 会针对缺失项阻断合并。
+- 若实现 PR 涉及 ReadyState / PollReady / ExecutionContext，需在描述中勾选以下核对框：
+  - [ ] 附带最新的合约测试更新与结果摘要
+  - [ ] 同步指标与 Runbook，确保运维团队掌握新行为
+  - [ ] 上传 `semver-checks` 报告或提供可复核的产出链接
+  > ⚠️ CI 将自动校验 PR 描述是否包含以上材料的关键信息；如确属不适用，需在核对框后标注 `N/A` 并补充理由。
 
 ## 附录
 

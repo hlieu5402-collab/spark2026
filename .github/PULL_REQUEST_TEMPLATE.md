@@ -42,6 +42,14 @@
 - [ ] 构建 / DevOps
 - [ ] 其他（请注明）：
 
+## ReadyState / PollReady / ExecutionContext 变更治理
+
+- [ ] 已更新相关 ReadyState / PollReady / ExecutionContext 合约测试，并在 PR 中附带变更说明
+- [ ] 已更新对应指标与 Runbook，确保运维手册同步覆盖新行为
+- [ ] 已生成并附上最新的 `semver-checks` 报告链接或关键信息
+
+> ⚠️ CI 会校验 PR 描述中是否包含上述材料的关键信息；如判定“不适用”，请在对应复选框后标注 `N/A` 并说明原因。
+
 ## CEP 关联（公共 API 必填）
 
 - CEP 编号：`CEP-xxxx`
