@@ -186,6 +186,20 @@ impl BoxService {
     pub fn as_dyn(&self) -> &(dyn DynService) {
         &*self.inner
     }
+
+    /// 消费句柄并返回内部的 [`Arc<dyn DynService>`]。
+    ///
+    /// # 教案式注释
+    /// - **意图 (Why)**：在测试或需要直接驱动对象层服务的框架内部，常需要获得可变引用以调用
+    ///   `poll_ready_dyn`/`call_dyn`；通过返回 `Arc`，调用方可在未共享前使用
+    ///   [`Arc::get_mut`](alloc::sync::Arc::get_mut) 获取 `&mut dyn DynService`；
+    /// - **位置 (Where)**：对象层 `BoxService` 的便捷入口，供运行时与测试代码重用；
+    /// - **契约 (What)**：消耗当前句柄并返回内部 `Arc`；若后续仍需克隆句柄，请在调用本方法前完成；
+    /// - **风险提示 (Trade-offs)**：一旦 `Arc` 被克隆，将无法再通过 `Arc::get_mut` 获得可变引用，调用方需
+    ///   在桥接后的第一时间完成必要的对象层操作。
+    pub fn into_arc(self) -> Arc<dyn DynService> {
+        self.inner
+    }
 }
 
 impl fmt::Debug for BoxService {
