@@ -1,20 +1,16 @@
-# T00 Final Baseline Report
+T00 基线检查输出
+================
 
-## Command Outputs
 
-### rg -nEI "enum\s+PollReady" --glob 'spark-core/**'
+$ rg -n -i 'enum\s+PollReady' --glob 'spark-core/**'
 
-### rg -n -I "enum\s+PollReady" --glob 'spark-core/**' (adjusted, because -E flag invalid)
+$ rg -n -i '\bBackpressureReason\b' --glob 'spark-core/**'
 
-### rg -nEI "\bBackpressureReason\b" --glob 'spark-core/**'
+$ rg -n -i 'Busy\s*\(\s*.*Budget'
+tools/ci/check_consistency.sh:289:#   2. 发现 `Busy(` 后跟踪括号深度，仅在该调用作用域内搜寻 `Budget`/`BudgetExhausted`；
+tools/ci/check_consistency.sh:299:#   - 若业务使用 `let budget = ...; ReadyState::Busy(budget.into())` 且 `into` 内部才引用 `Budget`，
 
-### rg -n -I "\bBackpressureReason\b" --glob 'spark-core/**' (adjusted, because -E flag invalid)
-
-### rg -nEI "Busy\s*\(\s*.*Budget"
-
-### rg -n -I "Busy\s*\(\s*.*Budget" (adjusted, because -E flag invalid)
-
-### rg -n "fn .*\(.*&ExecutionContext" spark-core/src/transport/traits
+$ rg -n "fn .*\\(.*&ExecutionContext" spark-core/src/transport/traits
 spark-core/src/transport/traits/object.rs:54:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
 spark-core/src/transport/traits/object.rs:110:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
 spark-core/src/transport/traits/object.rs:160:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str;
@@ -22,166 +18,80 @@ spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &Exe
 spark-core/src/transport/traits/generic.rs:60:    fn local_addr(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
 spark-core/src/transport/traits/generic.rs:140:    fn scheme(&self, ctx: &ExecutionContext<'_>) -> &'static str;
 
-### cargo build --workspace && cargo clippy --workspace --all-targets -D warnings && cargo test --workspace
-   Compiling typenum v1.19.0
-   Compiling proc-macro2 v1.0.101
-   Compiling version_check v0.9.5
-   Compiling quote v1.0.41
-   Compiling generic-array v0.14.9
-   Compiling unicode-ident v1.0.19
-   Compiling serde_core v1.0.228
-   Compiling syn v2.0.107
-   Compiling crypto-common v0.1.6
-   Compiling block-buffer v0.10.4
-   Compiling serde v1.0.228
-   Compiling serde_json v1.0.145
-   Compiling digest v0.10.7
-   Compiling serde_derive v1.0.228
-   Compiling cpufeatures v0.2.17
-   Compiling memchr v2.7.6
-   Compiling cfg-if v1.0.4
-   Compiling itoa v1.0.15
-   Compiling ryu v1.0.20
-   Compiling sha2 v0.10.9
-   Compiling async-trait v0.1.89
-   Compiling spin v0.9.8
-   Compiling spark-deprecation-lint v0.1.0 (/workspace/spark2026/tools/deprecation-lint)
-   Compiling spark-core v0.1.0 (/workspace/spark2026/spark-core)
-   Compiling spark-codec-line v0.1.0 (/workspace/spark2026/spark-codec-line)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 20.77s
-error: unexpected argument '-D' found
+$ cargo fmt --all --check
 
-Usage: cargo check [OPTIONS]
-
-For more information, try '--help'.
-
-### cargo clippy --workspace --all-targets -- -D warnings
-   Compiling syn v2.0.107
-    Checking serde_core v1.0.228
-    Checking typenum v1.19.0
-    Checking cfg-if v1.0.4
-   Compiling serde v1.0.228
-    Checking generic-array v0.14.9
-    Checking memchr v2.7.6
-   Compiling serde_derive v1.0.228
-    Checking itoa v1.0.15
-    Checking ryu v1.0.20
-    Checking serde_json v1.0.145
-    Checking crypto-common v0.1.6
-    Checking block-buffer v0.10.4
-   Compiling crossbeam-utils v0.8.21
-    Checking digest v0.10.7
-    Checking cpufeatures v0.2.17
-   Compiling zerocopy v0.8.27
-    Checking sha2 v0.10.9
-   Compiling async-trait v0.1.89
-   Compiling zerocopy-derive v0.8.27
-    Checking spin v0.9.8
-   Compiling autocfg v1.5.0
-   Compiling num-traits v0.2.19
-    Checking crossbeam-epoch v0.9.18
-   Compiling libc v0.2.177
-    Checking either v1.15.0
-   Compiling rayon-core v1.13.0
-    Checking crossbeam-deque v0.8.6
-    Checking half v2.7.1
+$ cargo clippy --workspace --all-targets -- -D warnings
     Checking spark-core v0.1.0 (/workspace/spark2026/spark-core)
-    Checking plotters-backend v0.3.7
-    Checking anstyle v1.0.13
-    Checking regex-syntax v0.8.8
-    Checking ciborium-io v0.2.2
-    Checking clap_lex v0.7.6
-    Checking clap_builder v4.5.50
-    Checking ciborium-ll v0.2.2
-    Checking regex-automata v0.4.13
-    Checking plotters-svg v0.3.7
-    Checking itertools v0.10.5
-    Checking cast v0.3.0
-    Checking same-file v1.0.6
-    Checking criterion-plot v0.5.0
-    Checking walkdir v2.5.0
-    Checking is-terminal v0.4.16
-    Checking rayon v1.11.0
-    Checking regex v1.12.2
-    Checking plotters v0.3.7
-    Checking clap v4.5.50
-    Checking ciborium v0.2.2
-    Checking tinytemplate v1.2.1
-    Checking once_cell v1.21.3
-    Checking anes v0.1.6
-    Checking oorandom v11.1.5
-    Checking spark-codec-line v0.1.0 (/workspace/spark2026/spark-codec-line)
-    Checking criterion v0.5.1
     Checking spark-deprecation-lint v0.1.0 (/workspace/spark2026/tools/deprecation-lint)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 28.76s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.67s
 
-### cargo test --workspace
-   Compiling serde v1.0.228
-   Compiling crossbeam-utils v0.8.21
-   Compiling zerocopy v0.8.27
+$ cargo build --workspace
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s
+
+$ cargo build --workspace --no-default-features --features alloc
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.15s
+
+$ cargo clippy --workspace --all-targets -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.34s
+
+$ cargo test --workspace
    Compiling spark-core v0.1.0 (/workspace/spark2026/spark-core)
-   Compiling crossbeam-epoch v0.9.18
-   Compiling either v1.15.0
-   Compiling crossbeam-deque v0.8.6
-   Compiling half v2.7.1
-   Compiling regex-syntax v0.8.8
-   Compiling ciborium-io v0.2.2
-   Compiling plotters-backend v0.3.7
-   Compiling clap_lex v0.7.6
-   Compiling anstyle v1.0.13
-   Compiling plotters-svg v0.3.7
-   Compiling clap_builder v4.5.50
-   Compiling ciborium-ll v0.2.2
-   Compiling regex-automata v0.4.13
-   Compiling num-traits v0.2.19
-   Compiling rayon-core v1.13.0
-   Compiling libc v0.2.177
-   Compiling itertools v0.10.5
-   Compiling same-file v1.0.6
-   Compiling cast v0.3.0
-   Compiling walkdir v2.5.0
-   Compiling criterion-plot v0.5.0
-   Compiling is-terminal v0.4.16
-   Compiling plotters v0.3.7
-   Compiling rayon v1.11.0
-   Compiling regex v1.12.2
-   Compiling clap v4.5.50
-   Compiling ciborium v0.2.2
-   Compiling tinytemplate v1.2.1
-   Compiling oorandom v11.1.5
-   Compiling once_cell v1.21.3
-   Compiling anes v0.1.6
    Compiling spark-codec-line v0.1.0 (/workspace/spark2026/spark-codec-line)
-   Compiling criterion v0.5.1
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 31.82s
-     Running unittests src/lib.rs (target/debug/deps/spark_codec_line-4fceca62fb07f013)
+   Compiling spark-contract-tests-macros v0.1.0 (/workspace/spark2026/crates/spark-contract-tests-macros)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.38s
+     Running unittests src/lib.rs (target/debug/deps/spark_codec_line-a842a357da99f91c)
 
 running 4 tests
-test line::tests::decode_respects_frame_budget ... ok
 test line::tests::decode_marks_incomplete_without_newline ... ok
+test line::tests::decode_respects_frame_budget ... ok
 test line::tests::decode_returns_complete_when_newline_present ... ok
 test line::tests::encode_appends_newline ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (target/debug/deps/spark_core-294e61ef70492e54)
+     Running unittests src/lib.rs (target/debug/deps/spark_contract_tests-e762a7e663f76835)
 
-running 28 tests
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/mock_transport.rs (target/debug/deps/mock_transport-840684cb047cee46)
+
+running 7 tests
+test mock_transport_tck::cancellation_suite ... ok
+test mock_transport_tck::backpressure_suite ... ok
+test mock_transport_tck::errors_suite ... ok
+test mock_transport_tck::hot_swap_suite ... ok
+test mock_transport_tck::observability_suite ... ok
+test mock_transport_tck::state_machine_suite ... ok
+test mock_transport_tck::hot_reload_suite ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/spark_contract_tests_macros-2012f19abf3f7b58)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/spark_core-27b9b6413315706b)
+
+running 30 tests
 test buffer::message::tests::downcast_helpers_work_for_user_message ... ok
 test buffer::message::tests::try_into_user_preserves_original_on_failure ... ok
 test configuration::builder::tests::apply_change_detects_hash_gap ... ok
 test configuration::builder::tests::apply_change_emits_audit_event ... ok
 test configuration::builder::tests::apply_change_rolls_back_on_audit_failure ... ok
 test configuration::builder::tests::build_generates_redacted_snapshot ... ok
-test configuration::builder::tests::build_requires_profile ... ok
 test configuration::builder::tests::build_propagates_source_failure ... ok
+test configuration::builder::tests::build_requires_profile ... ok
 test configuration::builder::tests::build_requires_sources ... ok
 test configuration::snapshot::tests::snapshot_redacts_encrypted_text ... ok
 test deprecation::tests::emit_only_once ... ok
 test deprecation::tests::emit_with_fields ... ok
 [spark-core][deprecation] symbol=demo since=0.1.0 removal=0.3.0 tracking=None migration=None
-test error::tests::impl_to_domain_to_core_roundtrip_preserves_message_and_cause ... ok
 test deprecation::tests::has_emitted_tracks_state ... ok
+test error::tests::impl_to_domain_to_core_roundtrip_preserves_message_and_cause ... ok
 test limits::tests::default_plan_matches_resource ... ok
 test limits::tests::evaluate_queue_allows_until_capacity ... ok
 test limits::tests::metrics_hook_records_drop_and_usage ... ok
@@ -189,26 +99,51 @@ test limits::tests::settings_parse_overrides ... ok
 test observability::events::tests::application_event_helpers_work ... ok
 test runtime::slo::tests::ensure_hot_reloadable_guard ... ok
 test runtime::slo::tests::parse_and_evaluate_rule ... ok
-test status::ready::tests::budget_decision_exhausted_maps_to_budget_state ... ok
 test runtime::slo::tests::trigger_evaluate_with_hysteresis ... ok
-test status::ready::tests::budget_decision_granted_zero_remaining_maps_to_budget_state ... ok
+test runtime::timeouts::tests::parsing_accepts_integer_and_duration_values ... ok
+test runtime::timeouts::tests::runtime_config_updates_epoch ... ok
+test status::ready::tests::budget_decision_exhausted_maps_to_budget_state ... ok
 test status::ready::tests::budget_decision_granted_with_remaining_maps_to_ready ... ok
+test status::ready::tests::budget_decision_granted_zero_remaining_maps_to_budget_state ... ok
 test status::ready::tests::budget_exhaustion_maps_to_budget_state ... ok
 test status::ready::tests::queue_full_maps_to_busy ... ok
 test status::ready::tests::recovery_maps_to_ready ... ok
 
-test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/codec_limits.rs (target/debug/deps/codec_limits-0110d3e223c2bef3)
+     Running tests/codec_limits.rs (target/debug/deps/codec_limits-cdb8f6e48119e2c7)
 
 running 3 tests
-test decode_context_rejects_oversized_frame ... ok
 test decode_context_budget_consumption_and_refund ... ok
+test decode_context_rejects_oversized_frame ... ok
 test encode_context_budget_and_depth_behavior_matches_decoder ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/errors_human_hint.rs (target/debug/deps/errors_human_hint-9c046ea352c0a831)
+     Running tests/contracts/context_propagation_spawn.rs (target/debug/deps/contracts_context_propagation_spawn-38de5027f1ef0aeb)
+
+running 2 tests
+test tests::contracts::context_propagation_spawn::cancellation_reaches_spawned_task ... ok
+test tests::contracts::context_propagation_spawn::deadline_expiry_propagates_cancel ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/contracts/service_macro.rs (target/debug/deps/contracts_service_macro-da36d7e27c3e3fd7)
+
+running 2 tests
+test double_poll_no_ub ... ok
+test poll_ready_pending_then_wake ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/dyn_bridge.rs (target/debug/deps/dyn_bridge-354afa65de14875a)
+
+running 1 test
+test into_dyn_bridge_roundtrip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/errors_human_hint.rs (target/debug/deps/errors_human_hint-eba0b0f50874009f)
 
 running 2 tests
 test errors_human_hint_known_code ... ok
@@ -216,20 +151,67 @@ test errors_human_hint_unknown_code ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/loom_concurrency.rs (target/debug/deps/loom_concurrency-2312a36e1f39bbcb)
+     Running tests/hotreload.rs (target/debug/deps/hotreload-9f51db03ebad0693)
+
+running 1 test
+test tests::hotreload::hot_reload_limits_and_timeouts_is_atomic ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/loom_concurrency.rs (target/debug/deps/loom_concurrency-e49e1edaccced35d)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/slo_policy_map.rs (target/debug/deps/slo_policy_map-2615565ed5b7912d)
+     Running tests/observability/mod.rs (target/debug/deps/observability-4703fee221304608)
+
+running 1 test
+test trace_autoinject::trace_context_auto_injected_and_spans_form_parent_child_tree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pipeline/mod.rs (target/debug/deps/pipeline-42e696d366f2c035)
+
+running 1 test
+test hot_swap::hot_swap_inserts_handler_without_dropping_messages ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/slo_policy_map.rs (target/debug/deps/slo_policy_map-c5e287df94b6ec5c)
 
 running 1 test
 test slo_policy_mapping_baseline ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
+     Running tests/state_machine_properties.rs (target/debug/deps/state_machine_properties-37213df94878e6d8)
+
+running 2 tests
+test prop_legal_sequences_have_no_unreachable_state ... ok
+test prop_pending_intervals_have_visible_wake ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (target/debug/deps/spark_otel-866dd2284a668794)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
    Doc-tests spark_codec_line
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests spark_contract_tests
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests spark_contract_tests_macros
 
 running 0 tests
 
@@ -241,11 +223,140 @@ running 8 tests
 test spark-core/src/buffer/pool.rs - buffer::pool::BufferPool (line 32) ... ok
 test spark-core/src/buffer/message.rs - buffer::message::PipelineMessage (line 122) ... ok
 test spark-core/src/cluster/flow_control.rs - cluster::flow_control::SubscriptionStream (line 145) ... ignored
-test spark-core/src/error.rs - error::CoreError::new (line 67) ... ok
 test spark-core/src/buffer/pool.rs - buffer::pool::PoolStats (line 216) ... ok
+test spark-core/src/error.rs - error::CoreError::new (line 71) ... ok
 test spark-core/src/observability/events.rs - observability::events::OpsEventBus::set_event_policy (line 391) ... ignored
 test spark-core/src/security/policy.rs - security::policy (line 9) ... ignored
 test spark-core/src/observability/events.rs - observability::events::CoreUserEvent (line 111) ... ok
 
 test result: ok. 5 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
+   Doc-tests spark_macros
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests spark_otel
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+$ cargo doc --workspace
+ Documenting spark-core v0.1.0 (/workspace/spark2026/spark-core)
+ Documenting spark-otel v0.1.0 (/workspace/spark2026/crates/spark-otel)
+ Documenting spark-contract-tests v0.1.0 (/workspace/spark2026/crates/spark-contract-tests)
+ Documenting spark-codec-line v0.1.0 (/workspace/spark2026/spark-codec-line)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.70s
+   Generated /workspace/spark2026/target/doc/spark_codec_line/index.html and 7 other files
+
+$ cargo bench --workspace -- --quick
+    Finished `bench` profile [optimized] target(s) in 0.18s
+     Running benches/async_contract_overhead.rs (target/release/deps/async_contract_overhead-323e2738421f1cf8)
+future_inline_elapsed_ns=1292393
+future_inline_per_iter_ns=6.4620
+future_boxed_elapsed_ns=1251597
+future_boxed_per_iter_ns=6.2580
+stream_inline_elapsed_ns=310693
+stream_inline_per_iter_ns=6.2139
+stream_boxed_elapsed_ns=302675
+stream_boxed_per_iter_ns=6.0535
+future_overhead_ratio=0.968
+stream_overhead_ratio=0.974
+     Running benches/buffer_roundtrip.rs (target/release/deps/buffer_roundtrip-b311c118bb2cf6e1)
+Gnuplot not found, using plotters backend
+Benchmarking buffer_roundtrip
+Benchmarking buffer_roundtrip: Warming up for 100.00 ms
+Benchmarking buffer_roundtrip: Collecting 10 samples in estimated 250.00 ms (3.2M iterations)
+Benchmarking buffer_roundtrip: Analyzing
+buffer_roundtrip        time:   [74.522 ns 81.323 ns 93.781 ns]
+                        change: [+1.7998% +10.357% +19.042%] (p = 0.05 > 0.05)
+                        No change in performance detected.
+
+     Running benches/codec.rs (target/release/deps/codec-3ee18654b5b8c85f)
+Gnuplot not found, using plotters backend
+Benchmarking noop
+Benchmarking noop: Analyzing
+noop                    time:   [39.025 ps 39.128 ps 39.541 ps]
+                        change: [-1.8302% -0.7276% +0.3851%] (p = 0.50 > 0.05)
+                        No change in performance detected.
+
+     Running benches/configuration.rs (target/release/deps/configuration-7ea3143fff398030)
+Gnuplot not found, using plotters backend
+Benchmarking configuration_build_static_layer
+Benchmarking configuration_build_static_layer: Analyzing
+configuration_build_static_layer
+                        time:   [2.3317 µs 2.3457 µs 2.4016 µs]
+                        change: [-2.4392% -0.1267% +2.2257%] (p = 0.87 > 0.05)
+                        No change in performance detected.
+
+     Running benches/smoke.rs (target/release/deps/smoke-0a327e5cafa7ab3f)
+smoke_iterations=10000
+smoke_elapsed_ns=171
+
+$ make ci-lints
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.37s
+cargo run --quiet --package spark-deprecation-lint
+
+$ make ci-zc-asm
+cargo build --workspace
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.16s
+
+$ make ci-no-std-alloc
+cargo build --workspace --no-default-features --features alloc
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.18s
+
+$ make ci-doc-warning
+cargo doc --workspace
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.18s
+   Generated /workspace/spark2026/target/doc/spark_codec_line/index.html and 7 other files
+
+$ make ci-bench-smoke
+# `spark-macros` 为 proc-macro crate，未引入 Criterion，因此需排除以避免 `--quick` 参数触发 libtest 错误。
+cargo bench --workspace --exclude spark-macros -- --quick
+    Finished `bench` profile [optimized] target(s) in 0.21s
+     Running benches/async_contract_overhead.rs (target/release/deps/async_contract_overhead-323e2738421f1cf8)
+future_inline_elapsed_ns=1399856
+future_inline_per_iter_ns=6.9993
+future_boxed_elapsed_ns=1531375
+future_boxed_per_iter_ns=7.6569
+stream_inline_elapsed_ns=322838
+stream_inline_per_iter_ns=6.4568
+stream_boxed_elapsed_ns=356370
+stream_boxed_per_iter_ns=7.1274
+future_overhead_ratio=1.094
+stream_overhead_ratio=1.104
+     Running benches/buffer_roundtrip.rs (target/release/deps/buffer_roundtrip-b311c118bb2cf6e1)
+Gnuplot not found, using plotters backend
+Benchmarking buffer_roundtrip
+Benchmarking buffer_roundtrip: Warming up for 100.00 ms
+Benchmarking buffer_roundtrip: Collecting 10 samples in estimated 250.00 ms (2.9M iterations)
+Benchmarking buffer_roundtrip: Analyzing
+buffer_roundtrip        time:   [80.606 ns 91.648 ns 101.84 ns]
+                        change: [-7.7531% +3.0302% +15.821%] (p = 0.63 > 0.05)
+                        No change in performance detected.
+
+     Running benches/codec.rs (target/release/deps/codec-3ee18654b5b8c85f)
+Gnuplot not found, using plotters backend
+Benchmarking noop
+Benchmarking noop: Analyzing
+noop                    time:   [37.979 ps 39.181 ps 39.481 ps]
+                        change: [-3.9494% -1.4067% +1.1697%] (p = 0.60 > 0.05)
+                        No change in performance detected.
+
+     Running benches/configuration.rs (target/release/deps/configuration-7ea3143fff398030)
+Gnuplot not found, using plotters backend
+Benchmarking configuration_build_static_layer
+Benchmarking configuration_build_static_layer: Analyzing
+configuration_build_static_layer
+                        time:   [2.3250 µs 2.3314 µs 2.3571 µs]
+                        change: [-3.1917% -1.0824% +1.0900%] (p = 0.58 > 0.05)
+                        No change in performance detected.
+
+     Running benches/smoke.rs (target/release/deps/smoke-0a327e5cafa7ab3f)
+smoke_iterations=10000
+smoke_elapsed_ns=149

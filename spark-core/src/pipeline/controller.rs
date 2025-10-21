@@ -1,7 +1,7 @@
 use alloc::string::ToString;
 use alloc::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
 
-use arc_swap::ArcSwap;
+use crate::arc_swap::ArcSwap;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use spin::Mutex;
 

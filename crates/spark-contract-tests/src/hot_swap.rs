@@ -71,19 +71,20 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
         health_checks: Arc::new(Vec::new()),
     };
 
-    let call_context = CallContext::builder().build();
     let trace_context = TraceContext::new(
         [0x11; TraceContext::TRACE_ID_LENGTH],
         [0x22; TraceContext::SPAN_ID_LENGTH],
         TraceFlags::new(TraceFlags::SAMPLED),
     );
+    let call_context = CallContext::builder()
+        .with_trace_context(trace_context.clone())
+        .build();
 
     let channel = Arc::new(TestChannel::new("hot-swap-channel"));
     let controller = Arc::new(HotSwapController::new(
         channel.clone() as Arc<dyn Channel>,
         services,
         call_context,
-        trace_context,
     ));
     channel
         .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
