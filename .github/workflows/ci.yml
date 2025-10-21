@@ -29,7 +29,7 @@ jobs:
         run: tools/ci/check_readystate_governance.sh
 
       - name: Consistency guardrails
-        run: tools/ci/check_consistency.sh
+        run: bash tools/ci/check_consistency.sh
 
       - name: Unified protocol governance gate
         run: tools/ci/check_unified_protocol_guard.sh

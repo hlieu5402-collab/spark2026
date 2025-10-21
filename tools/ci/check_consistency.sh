@@ -156,7 +156,252 @@ check_public_ready_naming() {
     fi
 }
 
-## 检查五：禁止将 `ReadyState::BudgetExhausted` 映射为 `Busy(...)`
+## 检查五：禁止在泛型层直接调用 `tokio::spawn`
+# - **意图 (Why)**：
+#   1. 泛型层承担“零虚分派 + 不携带运行时假设”的职责，若在此层直接 `tokio::spawn`，
+#      将强迫所有实现默认依赖 Tokio 调度器，破坏“可在不同执行器上复用”的设计前提。
+#   2. 历史上出现过“泛型层偷用 Tokio 特性”导致 `no_std`/自定义 runtime 场景无法编译的问题，
+#      本检查将问题前置到 CI，避免再次回归。
+# - **所在位置 (Where)**：位于一致性脚本中，介于命名守卫与语义守卫之间，确保在编译前尽早失败。
+# - **执行策略 (How)**：
+#   1. 利用 `git ls-files` 精确枚举所有 `*/traits/generic.rs` 泛型层文件；
+#   2. 使用 `rg` 搜索 `tokio::spawn(` 调用（允许存在空格），一旦命中即提示；
+#   3. 若未来泛型层新增拆分模块，可在 allowlist 中扩展匹配规则。
+# - **契约 (What)**：
+#   - **输入**：仓库中所有受 Git 管理的 `generic` 层 Rust 文件；
+#   - **输出**：打印违规位置及修复建议；
+#   - **前置条件**：环境需具备 `rg`；
+#   - **后置条件**：命中即设置 `violation_count`，阻断流水线。
+# - **设计权衡 (Trade-offs)**：
+#   - 直接匹配字符串而非解析 AST，换取实现简洁；若未来允许特定宏包装需另行豁免。
+# - **风险提示 (Gotchas)**：
+#   - 若某实现通过 re-export 将 `tokio::spawn` 重命名后调用，此检查无法捕获，需要 code review 配合。
+check_generic_layer_tokio_spawn() {
+    local files
+    local matches=()
+
+    mapfile -t files < <(git ls-files 'spark-core/src/**/traits/generic.rs')
+
+    for file in "${files[@]}"; do
+        [[ -z "$file" ]] && continue
+        while IFS= read -r line; do
+            matches+=("$line")
+        done < <(rg --color=never --pcre2 -n 'tokio::spawn\s*\(' "$file" || true)
+    done
+
+    if ((${#matches[@]} > 0)); then
+        printf '错误：检测到泛型层直接调用 `tokio::spawn`，违背“无运行时假设”原则。\n' >&2
+        printf '位置：\n' >&2
+        printf '  %s\n' "${matches[@]}" >&2
+        printf '建议：请在对象层或 runtime 适配层发起任务，泛型层仅暴露抽象接口。\n' >&2
+        violation_count=1
+    fi
+}
+
+## 检查六：禁止新增“第二表达”的就绪/背压枚举
+# - **意图 (Why)**：
+#   1. 框架已将就绪/背压语义收敛为 `ReadyState/ReadyCheck/BusyReason`，
+#      新增平行的枚举将让上下游再次面临“多语义并存”的混乱局面。
+#   2. 通过守卫禁止除 `status::ready` 模块以外的同类枚举，确保所有演进集中在单一文件维护。
+# - **所在位置 (Where)**：继泛型层约束之后，继续巩固语义一致性。
+# - **执行策略 (How)**：
+#   1. 遍历所有位于 `*/src/` 的 Rust 文件；
+#   2. 使用正则捕获名称中包含 `Ready`/`Busy`/`Backpressure` 的 `enum` 定义；
+#   3. 将合法枚举（`ReadyState`、`ReadyCheck`、`BusyReason`）限定在 `spark-core/src/status/ready.rs`，其他命中视为违规。
+# - **契约 (What)**：
+#   - **输入**：仓库内所有源代码枚举定义；
+#   - **输出**：违规枚举的文件、行号与名称；
+#   - **前置条件**：`python3` 可用；
+#   - **后置条件**：命中即计入违规。
+# - **设计权衡 (Trade-offs)**：使用简单正则即可覆盖“新增并行枚举”的典型情形，避免引入重量级解析库。
+# - **风险提示 (Gotchas)**：测试代码或兼容层若确需自定义枚举，应置于 `tests/` 或显式放行；未来若需扩展 allowlist，请在此函数中更新。
+check_duplicate_ready_backpressure_expression() {
+    local python_output
+
+    python_output=$(python3 - <<'PY'
+import subprocess
+import sys
+from pathlib import Path
+import re
+
+ALLOWED = {
+    (Path('spark-core/src/status/ready.rs'), 'ReadyState'),
+    (Path('spark-core/src/status/ready.rs'), 'ReadyCheck'),
+    (Path('spark-core/src/status/ready.rs'), 'BusyReason'),
+}
+
+pattern = re.compile(r'^\s*(?:pub\s+)?enum\s+([A-Za-z0-9_]*(?:Ready|Busy|Backpressure)[A-Za-z0-9_]*)')
+
+try:
+    files = subprocess.check_output(['git', 'ls-files', '*.rs'], text=True).splitlines()
+except subprocess.CalledProcessError as exc:
+    sys.stderr.write(f'无法枚举 Rust 文件：{exc}\n')
+    sys.exit(1)
+
+violations = []
+
+for rel in files:
+    if '/tests/' in rel or rel.startswith('tools/'):
+        continue
+
+    path = Path(rel)
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except OSError as exc:
+        sys.stderr.write(f'读取文件失败 {rel}: {exc}\n')
+        sys.exit(1)
+
+    for idx, line in enumerate(lines, start=1):
+        match = pattern.match(line)
+        if not match:
+            continue
+
+        name = match.group(1)
+        key = (path, name)
+        if key in ALLOWED:
+            continue
+
+        violations.append(f'{rel}:{idx}:{name}')
+
+if violations:
+    for item in violations:
+        print(item)
+PY
+) || true
+
+    if [[ -n "$python_output" ]]; then
+        printf '错误：检测到新增的就绪/背压枚举定义，违背统一语义出口原则。\n' >&2
+        printf '位置（文件:行:枚举名）：\n' >&2
+        printf '  %s\n' "$python_output" >&2
+        printf '建议：请直接扩展 `status::ready` 中的既有枚举，而非在其他模块重建语义。\n' >&2
+        violation_count=1
+    fi
+}
+
+## 检查七：禁止 `Busy(...)` 携带预算上下文
+# - **意图 (Why)**：
+#   1. 预算耗尽应直接映射为 `ReadyState::BudgetExhausted`，若放入 `Busy(...)`，
+#      调用方会误以为“可重试”，从而在软退避后重复触发硬性拒绝。
+#   2. 该检查与前一条“BudgetExhausted → Busy”互补：前者关注状态映射，当前检查聚焦构造参数。
+# - **所在位置 (Where)**：位于语义守卫末端，专门处理跨模块调用的细粒度约束。
+# - **执行策略 (How)**：
+#   1. 逐行扫描所有源文件；
+#   2. 发现 `Busy(` 后跟踪括号深度，仅在该调用作用域内搜寻 `Budget`/`BudgetExhausted`；
+#   3. 忽略注释及字符串字面量中的 `Budget`，尽量降低误报。
+# - **契约 (What)**：
+#   - **输入**：仓库中的 `.rs` 文件；
+#   - **输出**：列出 `Busy` 触发行与捕获的预算相关片段；
+#   - **前置条件**：`python3` 可用；
+#   - **后置条件**：捕获任意一处违规即终止流程。
+# - **设计权衡 (Trade-offs)**：
+#   - 为平衡准确率与实现复杂度，采用固定窗口扫描；若未来出现跨函数宏展开需扩展逻辑。
+# - **风险提示 (Gotchas)**：
+#   - 若业务使用 `let budget = ...; ReadyState::Busy(budget.into())` 且 `into` 内部才引用 `Budget`，
+#      本检查难以捕获，需要配合 code review；
+#   - 对测试/工具代码同样生效，以确保示例不会误导贡献者。
+check_busy_wrapped_budget() {
+    local python_output
+
+    python_output=$(python3 - <<'PY'
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    files = subprocess.check_output(['git', 'ls-files', '*.rs'], text=True).splitlines()
+except subprocess.CalledProcessError as exc:
+    sys.stderr.write(f'无法枚举 Rust 文件：{exc}\n')
+    sys.exit(1)
+
+violations = []
+
+def iter_busy_positions(text: str):
+    start = text.find('Busy(')
+    while start != -1:
+        yield start
+        start = text.find('Busy(', start + 5)
+
+for rel in files:
+    path = Path(rel)
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except OSError as exc:
+        sys.stderr.write(f'读取文件失败 {rel}: {exc}\n')
+        sys.exit(1)
+
+    for idx, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith('//'):
+            continue
+
+        for pos in iter_busy_positions(line):
+            depth = 1
+            budget_hit = False
+
+            segment = line[pos + 5 :]
+            head = line[pos:].strip()
+            if 'Budget' in segment and '"' not in segment:
+                budget_hit = True
+
+            for ch in segment:
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                    if depth == 0:
+                        break
+
+            look = idx + 1
+            budget_line = None
+            budget_text = None
+
+            while not budget_hit and depth > 0 and look < len(lines):
+                neighbor = lines[look]
+                if neighbor.lstrip().startswith('//'):
+                    look += 1
+                    continue
+
+                if 'Budget' in neighbor and '"' not in neighbor:
+                    budget_hit = True
+                    budget_line = look + 1
+                    budget_text = neighbor.strip()
+                    break
+
+                for ch in neighbor:
+                    if ch == '(':
+                        depth += 1
+                    elif ch == ')':
+                        depth -= 1
+                        if depth == 0:
+                            break
+                if depth == 0:
+                    break
+                look += 1
+
+            if budget_hit:
+                if budget_line is not None:
+                    violations.append(
+                        f'{rel}:{idx + 1}->{budget_line}:{budget_text}'
+                    )
+                else:
+                    violations.append(f'{rel}:{idx + 1}:{head}')
+
+if violations:
+    for item in violations:
+        print(item)
+PY
+) || true
+
+    if [[ -n "$python_output" ]]; then
+        printf '错误：检测到 `Busy(...)` 携带预算上下文，违反“预算耗尽需单独表达”的规范。\n' >&2
+        printf '位置（Busy 行 → Budget 行）：\n' >&2
+        printf '  %s\n' "$python_output" >&2
+        printf '建议：改为返回 `ReadyState::BudgetExhausted`，或在繁忙原因中使用非预算信息。\n' >&2
+        violation_count=1
+    fi
+}
+
+## 检查八：禁止将 `ReadyState::BudgetExhausted` 映射为 `Busy(...)`
 # - **意图 (Why)**：
 #   1. `BudgetExhausted` 表示硬性额度耗尽，属于拒绝请求的终止态；若被映射为 `Busy`，
 #      会误导调用方继续重试，造成级联退化。
@@ -265,6 +510,9 @@ check_forbidden_poll_ready
 check_forbidden_backpressure_reason
 check_backpressure_filenames
 check_public_ready_naming
+check_generic_layer_tokio_spawn
+check_duplicate_ready_backpressure_expression
+check_busy_wrapped_budget
 check_budget_exhausted_to_busy
 check_generic_no_tokio_spawn
 
