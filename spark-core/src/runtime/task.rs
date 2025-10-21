@@ -156,7 +156,7 @@ pub trait TaskHandle: Send + Sync + Sealed {
     async fn join(self: Box<Self>) -> TaskResult<Self::Output>;
 }
 
-/// `JoinHandle` 为 [`TaskExecutor::spawn`](super::executor::TaskExecutor::spawn) 的标准返回类型。
+/// `JoinHandle` 为 [`TaskExecutorExt::spawn`](super::executor::TaskExecutorExt::spawn) 的标准返回类型。
 ///
 /// # 设计背景（Why）
 /// - 向调用者暴露与 Tokio/async-std 等运行时一致的 `JoinHandle` 语义，降低学习成本；

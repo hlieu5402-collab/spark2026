@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     pin::Pin,
     sync::{Arc, Mutex, OnceLock},
     task::{Context, Poll},
@@ -20,8 +21,8 @@ use spark_core::{
         handler::InboundHandler,
     },
     runtime::{
-        AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission,
-        SendTaskSubmission, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
+        AsyncRuntime, CoreServices, JoinHandle, TaskCancellationStrategy, TaskError, TaskExecutor,
+        TaskHandle, TaskResult, TimeDriver,
     },
 };
 
@@ -44,19 +45,20 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
         health_checks: Arc::new(Vec::new()),
     };
 
-    let call_context = CallContext::builder().build();
     let trace_context = TraceContext::new(
         [0x11; TraceContext::TRACE_ID_LENGTH],
         [0x22; TraceContext::SPAN_ID_LENGTH],
         TraceFlags::new(TraceFlags::SAMPLED),
     );
+    let call_context = CallContext::builder()
+        .with_trace_context(trace_context.clone())
+        .build();
 
     let channel = Arc::new(TestChannel::new("hot-swap-channel"));
     let controller = Arc::new(HotSwapController::new(
         channel.clone() as Arc<dyn Channel>,
         services,
         call_context,
-        trace_context,
     ));
     channel
         .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
@@ -131,19 +133,20 @@ mod loom_tests {
                 health_checks: Arc::new(Vec::new()),
             };
 
-            let call_context = CallContext::builder().build();
             let trace_context = TraceContext::new(
                 [0x33; TraceContext::TRACE_ID_LENGTH],
                 [0x44; TraceContext::SPAN_ID_LENGTH],
                 TraceFlags::new(TraceFlags::SAMPLED),
             );
+            let call_context = CallContext::builder()
+                .with_trace_context(trace_context.clone())
+                .build();
 
             let channel = Arc::new(TestChannel::new("loom-channel"));
             let controller = Arc::new(HotSwapController::new(
                 channel.clone() as Arc<dyn Channel>,
                 services,
                 call_context,
-                trace_context,
             ));
             channel.bind_controller(
                 controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>
@@ -445,16 +448,26 @@ impl NoopRuntime {
 }
 
 impl TaskExecutor for NoopRuntime {
-    fn spawn(&self, _task: SendTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopHandle)
-    }
-
-    fn spawn_blocking(&self, _task: BlockingTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopHandle)
-    }
-
-    fn spawn_local(&self, _task: LocalTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopHandle)
+    fn spawn_dyn(
+        &self,
+        _ctx: &CallContext,
+        _fut: spark_core::BoxFuture<'static, TaskResult<Box<dyn Any + Send>>>,
+    ) -> JoinHandle<Box<dyn Any + Send>> {
+        // 教案级说明（Why）
+        // - 集成测试无需真实执行异步任务，只要返回一个立即完成的控制句柄即可维持控制面契约。
+        // - 通过始终返回“执行器终止”错误，提醒调用方该桩实现不会调度实际任务。
+        //
+        // 教案级说明（How）
+        // - 使用 [`JoinHandle::from_task_handle`] 封装一个预设结果的 `NoopHandle`。
+        // - 忽略传入的 `CallContext` 与 `Future`，避免在测试环境中引入额外线程。
+        //
+        // 教案级说明（What）
+        // - 输入：运行时代码传入的上下文与任务 Future。
+        // - 输出：一个立即可用的 [`JoinHandle`]，其 `join` 将返回 [`TaskError::ExecutorTerminated`]。
+        //
+        // 教案级说明（Trade-offs）
+        // - 该策略牺牲了任务执行的真实性，换取测试环境的确定性与零线程开销。
+        JoinHandle::from_task_handle(Box::new(NoopHandle))
     }
 }
 
@@ -470,11 +483,32 @@ impl TimeDriver for NoopRuntime {
     }
 }
 
+/// `NoopHandle` 代表一个永远不会调度执行的任务句柄。
+///
+/// # 设计背景（Why）
+/// - 热插拔与可观测性测试关注控制器逻辑，不需要真正的异步执行环境。
+/// - 通过提供空实现，可以确保依赖任务接口的代码路径得以编译并被验证。
+///
+/// # 逻辑解析（How）
+/// - 关联类型 [`TaskHandle::Output`] 固定为 `Box<dyn Any + Send>`，与 `spawn_dyn` 的类型擦除约定保持一致。
+/// - `join` 直接返回 [`TaskError::ExecutorTerminated`]，模拟执行器拒绝任务的情形。
+/// - 其他查询方法返回稳定的常量，以保持句柄语义的一致性。
+///
+/// # 契约说明（What）
+/// - **前置条件**：调用方不得期望任务被实际执行；本句柄仅用于测试桩。
+/// - **后置条件**：一旦 `join` 被调用，将立即得到错误结果且无副作用。
+///
+/// # 风险提示（Trade-offs）
+/// - 若后续测试需要验证任务执行路径，应替换为可调度的运行时实现。
+/// - 长期使用该桩可能掩盖上下文传播中的真实问题，需要在集成测试中补齐覆盖。
+#[derive(Default)]
 struct NoopHandle;
 
 #[async_trait::async_trait]
 impl TaskHandle for NoopHandle {
-    fn cancel(&self, _strategy: spark_core::runtime::TaskCancellationStrategy) {}
+    type Output = Box<dyn Any + Send>;
+
+    fn cancel(&self, _strategy: TaskCancellationStrategy) {}
 
     fn is_finished(&self) -> bool {
         true
@@ -490,8 +524,8 @@ impl TaskHandle for NoopHandle {
 
     fn detach(self: Box<Self>) {}
 
-    async fn join(self: Box<Self>) -> TaskResult {
-        Ok(())
+    async fn join(self: Box<Self>) -> TaskResult<Self::Output> {
+        Err(TaskError::ExecutorTerminated)
     }
 }
 

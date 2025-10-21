@@ -1,5 +1,9 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt;
+#[cfg(not(loom))]
+use core::sync::atomic::{AtomicU64, Ordering};
+#[cfg(loom)]
+use loom::sync::atomic::{AtomicU64, Ordering};
 
 /// 链路追踪上下文，遵循 W3C Trace Context 规范。
 ///
@@ -106,6 +110,68 @@ impl TraceContext {
         self.trace_state.validate()?;
         Ok(())
     }
+
+    /// 生成一个新的根 Span 上下文。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：在未显式注入 Trace 的调用路径上提供统一的根 Span，避免业务层遗漏导致追踪链断裂。
+    /// - **逻辑（How）**：使用原子计数器生成全局唯一的 Trace/Span ID，并默认将采样位设置为开启状态，确保后续子 Span 可以继承。
+    /// - **契约（What）**：返回值携带空的 `TraceState`，调用方可在必要时通过 [`TraceContext::with_state`] 附加供应商扩展；生成过程线程安全且无锁。
+    pub fn generate() -> Self {
+        Self {
+            trace_id: next_trace_id_bytes(),
+            span_id: next_span_id_bytes(),
+            trace_flags: TraceFlags::new(TraceFlags::SAMPLED),
+            trace_state: TraceState::default(),
+        }
+    }
+
+    /// 生成新的 Span ID，供派生上下文使用。
+    ///
+    /// # 契约（What）
+    /// - **前置条件**：无需额外状态；内部使用原子计数保证跨线程唯一。
+    /// - **后置条件**：返回值绝不会为全零，确保符合 W3C Trace Context 要求。
+    pub(crate) fn generate_span_id() -> [u8; Self::SPAN_ID_LENGTH] {
+        next_span_id_bytes()
+    }
+}
+
+#[cfg(not(loom))]
+static TRACE_ID_HIGH: AtomicU64 = AtomicU64::new(0);
+#[cfg(not(loom))]
+static TRACE_ID_LOW: AtomicU64 = AtomicU64::new(1);
+#[cfg(not(loom))]
+static SPAN_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+#[cfg(loom)]
+static TRACE_ID_HIGH: AtomicU64 = AtomicU64::new(0);
+#[cfg(loom)]
+static TRACE_ID_LOW: AtomicU64 = AtomicU64::new(1);
+#[cfg(loom)]
+static SPAN_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+fn next_trace_id_bytes() -> [u8; TraceContext::TRACE_ID_LENGTH] {
+    let high = TRACE_ID_HIGH.fetch_add(1, Ordering::Relaxed);
+    let low = TRACE_ID_LOW.fetch_add(1, Ordering::Relaxed);
+    let mut bytes = [0u8; TraceContext::TRACE_ID_LENGTH];
+    bytes[..8].copy_from_slice(&high.to_be_bytes());
+    bytes[8..].copy_from_slice(&low.to_be_bytes());
+    if bytes.iter().all(|byte| *byte == 0) {
+        // 避免返回全零 ID：在计数溢出等极端情况下强制设置最低位。
+        bytes[TraceContext::TRACE_ID_LENGTH - 1] = 1;
+    }
+    bytes
+}
+
+fn next_span_id_bytes() -> [u8; TraceContext::SPAN_ID_LENGTH] {
+    let mut id = SPAN_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+    if id == 0 {
+        // 计数器溢出后避免返回全零 ID。直接跳过保留值。
+        id = SPAN_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+    }
+    let mut bytes = [0u8; TraceContext::SPAN_ID_LENGTH];
+    bytes.copy_from_slice(&id.to_be_bytes());
+    bytes
 }
 
 /// 链路追踪上下文校验失败时的错误类型。
