@@ -62,6 +62,10 @@ harness = false
 name = "contracts_service_macro"
 path = "tests/contracts/service_macro.rs"
 
+[[test]]
+name = "contracts_context_propagation_spawn"
+path = "tests/contracts/context_propagation_spawn.rs"
+
 [[bin]]
 name = "audit_replay"
 path = "src/bin/audit_replay.rs"

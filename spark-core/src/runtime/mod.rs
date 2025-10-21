@@ -15,8 +15,9 @@
 //! - 运行时所有对象须满足 `Send + Sync + 'static`，以支撑多线程与 `no_std + alloc` 环境。
 //!
 //! # 风险提示（Trade-offs）
-//! - 聚合接口默认最小化，不强制提供 `JoinHandle` 兼容层；如需细粒度控制，可在宿主侧扩展 [`TaskHandle`].
-//! - 若使用 `spawn_local` 运行 `!Send` 任务，请确保宿主线程生命周期覆盖任务执行窗口。
+//! - 聚合接口强调上下文传播，执行器实现必须在 `spawn` 中处理 [`CallContext`](crate::contract::CallContext)；
+//!   若运行时直接委托第三方执行器（如 Tokio），需自行封装一层以保证取消/截止信号不会丢失。
+//! - 若使用 `spawn_local` 运行 `!Send` 任务，请确保宿主线程生命周期覆盖任务执行窗口（该能力需运行时自行扩展）。
 
 mod executor;
 mod services;
@@ -24,14 +25,14 @@ mod slo;
 mod task;
 mod timer;
 
-pub use executor::TaskExecutor;
+pub use executor::{TaskExecutor, TaskExecutorExt};
 pub use services::CoreServices;
 pub use slo::{
     SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
     SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger, slo_policy_table_key,
 };
 pub use task::{
-    BlockingTaskSubmission, LocalTaskSubmission, ManagedBlockingTask, ManagedLocalTask,
+    BlockingTaskSubmission, JoinHandle, LocalTaskSubmission, ManagedBlockingTask, ManagedLocalTask,
     ManagedSendTask, SendTaskSubmission, TaskCancellationStrategy, TaskError, TaskHandle,
     TaskLaunchOptions, TaskPriority, TaskResult,
 };

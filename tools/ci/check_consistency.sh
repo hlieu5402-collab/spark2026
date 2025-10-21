@@ -243,11 +243,30 @@ PY
     fi
 }
 
+## 检查六：generic 层禁止直接调用 `tokio::spawn`
+# - **意图 (Why)**：`TaskExecutor::spawn` 已强制绑定 `CallContext`，若在泛型 Handler 层直接调用
+#   `tokio::spawn` 会绕过上下文传播，导致取消/截止信号丢失。
+# - **执行策略 (How)**：使用 `rg` 定位 `spark-core/src/service/traits/generic.rs` 中的 `tokio::spawn(`；
+#   若命中则立即报错并提醒改用运行时注入的执行器。
+# - **契约 (What)**：仅检查泛型层源文件，避免误报测试或文档。
+check_generic_no_tokio_spawn() {
+    local matches
+    mapfile -t matches < <(rg --color=never -n 'tokio::spawn\(' spark-core/src/service/traits/generic.rs || true)
+    if ((${#matches[@]} > 0)); then
+        printf '错误：generic 层禁止直接调用 `tokio::spawn`，请改用 `TaskExecutor::spawn` 以确保上下文传播。\n' >&2
+        printf '位置：\n' >&2
+        printf '  %s\n' "${matches[@]}" >&2
+        printf '建议：通过依赖注入获取运行时执行器，并传入父 `CallContext`。\n' >&2
+        violation_count=1
+    fi
+}
+
 check_forbidden_poll_ready
 check_forbidden_backpressure_reason
 check_backpressure_filenames
 check_public_ready_naming
 check_budget_exhausted_to_busy
+check_generic_no_tokio_spawn
 
 if ((violation_count > 0)); then
     exit 1
