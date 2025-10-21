@@ -1,4 +1,7 @@
-use crate::{Error, TraceContext, cluster::NodeId, sealed::Sealed, transport::TransportSocketAddr};
+use crate::{
+    Error, TraceContext, cluster::NodeId, contract::BudgetKind, sealed::Sealed,
+    security::SecurityClass, status::RetryAdvice, transport::TransportSocketAddr,
+};
 use alloc::{
     borrow::{Cow, ToOwned},
     boxed::Box,
@@ -43,6 +46,7 @@ pub struct CoreError {
     code: &'static str,
     message: Cow<'static, str>,
     cause: Option<ErrorCause>,
+    metadata: CoreErrorMetadata,
 }
 
 impl CoreError {
@@ -78,6 +82,7 @@ impl CoreError {
             code,
             message: message.into(),
             cause: None,
+            metadata: CoreErrorMetadata::default(),
         }
     }
 
@@ -90,6 +95,38 @@ impl CoreError {
     /// 为现有错误设置底层原因。
     pub fn set_cause(&mut self, cause: impl Error + Send + Sync + 'static) {
         self.cause = Some(Box::new(cause));
+    }
+
+    /// 为错误标记结构化分类信息，驱动自动化容错策略。
+    ///
+    /// # 设计意图（Why）
+    /// - 将“重试/预算/安全”等判定显式化，避免调用方通过解析字符串推断语义；
+    /// - 允许默认 Pipeline 处理器根据分类自动转换为 `ReadyState` 或关闭策略。
+    ///
+    /// # 契约说明（What）
+    /// - **输入**：`category` 表示错误的主要处置策略；
+    /// - **前置条件**：应与错误码语义保持一致，避免将不可重试错误标记为 `Retryable`；
+    /// - **后置条件**：返回新的 `CoreError`，内部分类信息被覆盖。
+    pub fn with_category(mut self, category: ErrorCategory) -> Self {
+        self.metadata.category = Some(category);
+        self
+    }
+
+    /// 就地更新错误的分类信息。
+    pub fn set_category(&mut self, category: ErrorCategory) {
+        self.metadata.category = Some(category);
+    }
+
+    /// 获取结构化错误分类。
+    ///
+    /// # 返回契约
+    /// - 若未显式设置，默认返回 [`ErrorCategory::NonRetryable`]；
+    /// - 调用方可据此驱动重试、预算耗尽或关闭策略。
+    pub fn category(&self) -> ErrorCategory {
+        self.metadata
+            .category
+            .clone()
+            .unwrap_or(ErrorCategory::NonRetryable)
     }
 
     /// 获取稳定错误码。
@@ -167,6 +204,35 @@ impl Error for CoreError {
     }
 }
 
+/// 错误分类枚举，驱动自动化容错策略。
+///
+/// # 设计背景（Why）
+/// - 统一表达“可重试”“预算耗尽”“安全违规”等关键信号，避免上层解析字符串；
+/// - 与 Pipeline 默认处理器协作，将错误即时转换为 `ReadyState` 或关闭动作。
+///
+/// # 契约说明（What）
+/// - `Retryable`：携带退避建议 [`RetryAdvice`]；
+/// - `ResourceExhausted`：指出耗尽的 [`BudgetKind`]；
+/// - `Security`：标记安全分类 [`SecurityClass`]；
+/// - 其余分支对应确定性的策略，如 `Timeout`/`Cancelled` 触发取消，`ProtocolViolation` 触发关闭。
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ErrorCategory {
+    Retryable(RetryAdvice),
+    NonRetryable,
+    Security(SecurityClass),
+    ResourceExhausted(BudgetKind),
+    ProtocolViolation,
+    Cancelled,
+    Timeout,
+}
+
+/// 核心错误的附加属性容器。
+#[derive(Clone, Debug, Default)]
+struct CoreErrorMetadata {
+    category: Option<ErrorCategory>,
+}
+
 /// `SparkError`（DomainError）在核心错误之上附加分布式上下文信息。
 ///
 /// # 设计背景（Why）
@@ -240,6 +306,22 @@ impl SparkError {
     pub fn with_node_id(mut self, node: NodeId) -> Self {
         self.node_id = Some(node);
         self
+    }
+
+    /// 为领域错误标记结构化分类，便于上层根据分类采取措施。
+    pub fn with_category(mut self, category: ErrorCategory) -> Self {
+        self.core = self.core.with_category(category);
+        self
+    }
+
+    /// 更新已有错误的分类信息。
+    pub fn set_category(&mut self, category: ErrorCategory) {
+        self.core.set_category(category);
+    }
+
+    /// 查询错误分类。
+    pub fn category(&self) -> ErrorCategory {
+        self.core.category()
     }
 
     /// 获取可选的链路追踪信息。

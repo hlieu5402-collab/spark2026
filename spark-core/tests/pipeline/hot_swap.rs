@@ -1,0 +1,498 @@
+use std::{
+    pin::Pin,
+    sync::{Arc, Mutex, OnceLock},
+    task::{Context, Poll},
+    time::Duration,
+};
+
+use spark_core::{
+    CoreError, SparkError,
+    buffer::{BufferPool, PipelineMessage, WritableBuffer},
+    contract::{CallContext, CloseReason, Deadline},
+    future::BoxFuture,
+    observability::{
+        AttributeSet, Counter, EventPolicy, Gauge, Histogram, LogRecord, Logger, MetricsProvider,
+        OpsEvent, OpsEventBus, OpsEventKind, TraceContext, TraceFlags,
+    },
+    pipeline::{
+        Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
+        controller::{ControllerHandleId, Handler, HotSwapController, handler_from_inbound},
+        handler::InboundHandler,
+    },
+    runtime::{
+        AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission,
+        SendTaskSubmission, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
+    },
+};
+
+/// 验证热插拔在运行期不会丢包或打乱顺序。
+#[test]
+fn hot_swap_inserts_handler_without_dropping_messages() {
+    let runtime = Arc::new(NoopRuntime::new());
+    let logger = Arc::new(NoopLogger);
+    let ops = Arc::new(NoopOpsBus::default());
+    let metrics = Arc::new(NoopMetrics);
+
+    let services = CoreServices {
+        runtime: runtime as Arc<dyn AsyncRuntime>,
+        buffer_pool: Arc::new(NoopBufferPool),
+        metrics: metrics as Arc<dyn MetricsProvider>,
+        logger: logger as Arc<dyn Logger>,
+        membership: None,
+        discovery: None,
+        ops_bus: ops as Arc<dyn OpsEventBus>,
+        health_checks: Arc::new(Vec::new()),
+    };
+
+    let call_context = CallContext::builder().build();
+    let trace_context = TraceContext::new(
+        [0x11; TraceContext::TRACE_ID_LENGTH],
+        [0x22; TraceContext::SPAN_ID_LENGTH],
+        TraceFlags::new(TraceFlags::SAMPLED),
+    );
+
+    let channel = Arc::new(TestChannel::new("hot-swap-channel"));
+    let controller = Arc::new(HotSwapController::new(
+        channel.clone() as Arc<dyn Channel>,
+        services,
+        call_context,
+        trace_context,
+    ));
+    channel
+        .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    controller.register_inbound_handler(
+        "tls",
+        Box::new(RecordingInbound::new("tls", Arc::clone(&events))),
+    );
+
+    controller.emit_read(PipelineMessage::from_user(TestMessage { id: 1 }));
+
+    {
+        let recorded = events.lock().expect("recording lock");
+        assert_eq!(recorded.as_slice(), ["tls:1"], "插入前仅 TLS 处理消息");
+    }
+
+    let tls_handle = controller
+        .registry()
+        .snapshot()
+        .into_iter()
+        .find(|entry| entry.label() == "tls")
+        .expect("应能在注册表中找到 TLS Handler")
+        .handle_id();
+
+    let logging_handler: Arc<dyn InboundHandler> =
+        Arc::new(RecordingInbound::new("log", Arc::clone(&events)));
+    let dyn_handler: Arc<dyn Handler> = handler_from_inbound(logging_handler);
+    let epoch_before = controller.epoch();
+    let logging_handle = controller.add_handler_after(tls_handle, "logging", dyn_handler);
+    assert_ne!(
+        logging_handle,
+        ControllerHandleId::INBOUND_HEAD,
+        "新句柄不应回退到锚点"
+    );
+    assert!(
+        controller.epoch() > epoch_before,
+        "新增 Handler 应自增 epoch"
+    );
+
+    controller.emit_read(PipelineMessage::from_user(TestMessage { id: 2 }));
+
+    let recorded = events.lock().expect("recording lock");
+    assert_eq!(
+        recorded.as_slice(),
+        ["tls:1", "tls:2", "log:2"],
+        "热插拔后应保持顺序且仅新消息经过 Logging"
+    );
+}
+
+#[cfg(all(feature = "std", loom))]
+mod loom_tests {
+    use super::*;
+    use loom::thread;
+
+    #[test]
+    fn remove_during_on_read_no_ub() {
+        loom::model(|| {
+            let runtime = Arc::new(NoopRuntime::new());
+            let logger = Arc::new(NoopLogger);
+            let ops = Arc::new(NoopOpsBus::default());
+            let metrics = Arc::new(NoopMetrics);
+
+            let services = CoreServices {
+                runtime: runtime as Arc<dyn AsyncRuntime>,
+                buffer_pool: Arc::new(NoopBufferPool),
+                metrics: metrics as Arc<dyn MetricsProvider>,
+                logger: logger as Arc<dyn Logger>,
+                membership: None,
+                discovery: None,
+                ops_bus: ops as Arc<dyn OpsEventBus>,
+                health_checks: Arc::new(Vec::new()),
+            };
+
+            let call_context = CallContext::builder().build();
+            let trace_context = TraceContext::new(
+                [0x33; TraceContext::TRACE_ID_LENGTH],
+                [0x44; TraceContext::SPAN_ID_LENGTH],
+                TraceFlags::new(TraceFlags::SAMPLED),
+            );
+
+            let channel = Arc::new(TestChannel::new("loom-channel"));
+            let controller = Arc::new(HotSwapController::new(
+                channel.clone() as Arc<dyn Channel>,
+                services,
+                call_context,
+                trace_context,
+            ));
+            channel.bind_controller(
+                controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>
+            );
+
+            controller.register_inbound_handler(
+                "a",
+                Box::new(RecordingInbound::new("a", Arc::new(Mutex::new(Vec::new())))),
+            );
+            controller.register_inbound_handler(
+                "b",
+                Box::new(RecordingInbound::new("b", Arc::new(Mutex::new(Vec::new())))),
+            );
+
+            let handle_to_remove = controller
+                .registry()
+                .snapshot()
+                .into_iter()
+                .find(|entry| entry.label() == "b")
+                .map(|entry| entry.handle_id())
+                .expect("第二个 Handler 句柄应存在");
+
+            let reader = controller.clone();
+            let remover = controller.clone();
+
+            let t1 = thread::spawn(move || {
+                reader.emit_read(PipelineMessage::from_user(TestMessage { id: 7 }));
+            });
+
+            let t2 = thread::spawn(move || {
+                remover.remove_handler(handle_to_remove);
+            });
+
+            t1.join().expect("reader thread");
+            t2.join().expect("remover thread");
+        });
+    }
+}
+
+/// 测试通道，为控制器提供固定上下文。
+struct TestChannel {
+    id: String,
+    controller: OnceLock<Arc<dyn Controller<HandleId = ControllerHandleId>>>,
+    extensions: TestExtensions,
+}
+
+impl TestChannel {
+    fn new(id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            controller: OnceLock::new(),
+            extensions: TestExtensions,
+        }
+    }
+
+    fn bind_controller(&self, controller: Arc<dyn Controller<HandleId = ControllerHandleId>>) {
+        let _ = self.controller.set(controller);
+    }
+}
+
+impl Channel for TestChannel {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn state(&self) -> ChannelState {
+        ChannelState::Active
+    }
+
+    fn is_writable(&self) -> bool {
+        true
+    }
+
+    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+        self.controller
+            .get()
+            .expect("controller should be bound")
+            .as_ref()
+    }
+
+    fn extensions(&self) -> &dyn ExtensionsMap {
+        &self.extensions
+    }
+
+    fn peer_addr(&self) -> Option<spark_core::transport::TransportSocketAddr> {
+        None
+    }
+
+    fn local_addr(&self) -> Option<spark_core::transport::TransportSocketAddr> {
+        None
+    }
+
+    fn close_graceful(&self, _reason: CloseReason, _deadline: Option<Deadline>) {}
+
+    fn close(&self) {}
+
+    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn write(&self, _msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+        Ok(WriteSignal::Accepted)
+    }
+
+    fn flush(&self) {}
+}
+
+/// 测试用 ExtensionsMap，避免依赖真实存储以降低样例复杂度。
+///
+/// # 教案式说明
+/// - **意图（Why）**：Pipeline API 要求提供 [`ExtensionsMap`]，但当前测试只关注 Handler 链路热插拔，
+///   因此返回空实现即可，减少与外部状态的耦合。
+/// - **逻辑（How）**：所有方法均为 no-op，`get` 始终返回 `None`，从而保证在测试中不会意外持有引用。
+/// - **契约（What）**：调用方不可依赖此实现存储数据；若未来测试需要验证扩展传播，应替换为真正的 map。
+/// - **权衡（Trade-offs）**：舍弃真实存储换取实现简洁，牺牲了对扩展读写的验证能力。
+#[derive(Default)]
+struct TestExtensions;
+
+impl ExtensionsMap for TestExtensions {
+    fn insert(&self, _key: std::any::TypeId, _value: Box<dyn std::any::Any + Send + Sync>) {}
+
+    fn get<'a>(
+        &'a self,
+        _key: &std::any::TypeId,
+    ) -> Option<&'a (dyn std::any::Any + Send + Sync + 'static)> {
+        None
+    }
+
+    fn remove(&self, _key: &std::any::TypeId) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+        None
+    }
+
+    fn contains_key(&self, _key: &std::any::TypeId) -> bool {
+        false
+    }
+
+    fn clear(&self) {}
+}
+
+struct RecordingInbound {
+    name: &'static str,
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl RecordingInbound {
+    fn new(name: &'static str, events: Arc<Mutex<Vec<String>>>) -> Self {
+        Self { name, events }
+    }
+}
+
+impl InboundHandler for RecordingInbound {
+    fn on_channel_active(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+
+    fn on_read(&self, ctx: &dyn spark_core::pipeline::Context, msg: PipelineMessage) {
+        match msg.try_into_user::<TestMessage>() {
+            Ok(user) => {
+                self.events
+                    .lock()
+                    .expect("recording lock")
+                    .push(format!("{}:{}", self.name, user.id));
+                ctx.forward_read(PipelineMessage::from_user(user));
+            }
+            Err(other) => ctx.forward_read(other),
+        }
+    }
+
+    fn on_read_complete(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+
+    fn on_writability_changed(&self, _ctx: &dyn spark_core::pipeline::Context, _is_writable: bool) {
+    }
+
+    fn on_user_event(
+        &self,
+        _ctx: &dyn spark_core::pipeline::Context,
+        _event: spark_core::observability::CoreUserEvent,
+    ) {
+    }
+
+    fn on_exception_caught(&self, _ctx: &dyn spark_core::pipeline::Context, _error: CoreError) {}
+
+    fn on_channel_inactive(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+}
+
+#[derive(Clone, Copy)]
+struct TestMessage {
+    id: usize,
+}
+
+#[derive(Default)]
+struct NoopOpsBus {
+    events: Mutex<Vec<OpsEvent>>,
+    policies: Mutex<Vec<(OpsEventKind, EventPolicy)>>,
+}
+
+impl OpsEventBus for NoopOpsBus {
+    fn broadcast(&self, event: OpsEvent) {
+        self.events.lock().expect("ops events").push(event);
+    }
+
+    fn subscribe(&self) -> spark_core::BoxStream<'static, OpsEvent> {
+        Box::pin(EmptyStream)
+    }
+
+    fn set_event_policy(&self, kind: OpsEventKind, policy: EventPolicy) {
+        self.policies
+            .lock()
+            .expect("ops policies")
+            .push((kind, policy));
+    }
+}
+
+struct EmptyStream;
+
+impl spark_core::Stream for EmptyStream {
+    type Item = OpsEvent;
+
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Poll::Ready(None)
+    }
+}
+
+#[derive(Default)]
+struct NoopMetrics;
+
+impl MetricsProvider for NoopMetrics {
+    fn counter(
+        &self,
+        _descriptor: &spark_core::observability::InstrumentDescriptor<'_>,
+    ) -> Arc<dyn Counter> {
+        Arc::new(NoopCounter)
+    }
+
+    fn gauge(
+        &self,
+        _descriptor: &spark_core::observability::InstrumentDescriptor<'_>,
+    ) -> Arc<dyn Gauge> {
+        Arc::new(NoopGauge)
+    }
+
+    fn histogram(
+        &self,
+        _descriptor: &spark_core::observability::InstrumentDescriptor<'_>,
+    ) -> Arc<dyn Histogram> {
+        Arc::new(NoopHistogram)
+    }
+}
+
+struct NoopCounter;
+
+impl Counter for NoopCounter {
+    fn add(&self, _value: u64, _attributes: AttributeSet<'_>) {}
+}
+
+struct NoopGauge;
+
+impl Gauge for NoopGauge {
+    fn set(&self, _value: f64, _attributes: AttributeSet<'_>) {}
+    fn increment(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
+    fn decrement(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
+}
+
+struct NoopHistogram;
+
+impl Histogram for NoopHistogram {
+    fn record(&self, _value: f64, _attributes: AttributeSet<'_>) {}
+}
+
+struct NoopLogger;
+
+impl Logger for NoopLogger {
+    fn log(&self, _record: &LogRecord<'_>) {}
+}
+
+struct NoopBufferPool;
+
+impl BufferPool for NoopBufferPool {
+    fn acquire(&self, _min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
+        Err(CoreError::new("test.buffer", "acquire unused in tests"))
+    }
+
+    fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+        Ok(0)
+    }
+
+    fn statistics(&self) -> Result<spark_core::buffer::PoolStats, CoreError> {
+        Ok(Default::default())
+    }
+}
+
+#[derive(Default)]
+struct NoopRuntime {
+    now: Mutex<Duration>,
+}
+
+impl NoopRuntime {
+    fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl TaskExecutor for NoopRuntime {
+    fn spawn(&self, _task: SendTaskSubmission) -> Box<dyn TaskHandle> {
+        Box::new(NoopHandle)
+    }
+
+    fn spawn_blocking(&self, _task: BlockingTaskSubmission) -> Box<dyn TaskHandle> {
+        Box::new(NoopHandle)
+    }
+
+    fn spawn_local(&self, _task: LocalTaskSubmission) -> Box<dyn TaskHandle> {
+        Box::new(NoopHandle)
+    }
+}
+
+#[async_trait::async_trait]
+impl TimeDriver for NoopRuntime {
+    fn now(&self) -> spark_core::runtime::MonotonicTimePoint {
+        spark_core::runtime::MonotonicTimePoint::from_offset(*self.now.lock().expect("time"))
+    }
+
+    async fn sleep(&self, duration: Duration) {
+        let mut guard = self.now.lock().expect("time");
+        *guard = guard.checked_add(duration).unwrap_or(Duration::MAX);
+    }
+}
+
+struct NoopHandle;
+
+#[async_trait::async_trait]
+impl TaskHandle for NoopHandle {
+    fn cancel(&self, _strategy: spark_core::runtime::TaskCancellationStrategy) {}
+
+    fn is_finished(&self) -> bool {
+        true
+    }
+
+    fn is_cancelled(&self) -> bool {
+        false
+    }
+
+    fn id(&self) -> Option<&str> {
+        None
+    }
+
+    fn detach(self: Box<Self>) {}
+
+    async fn join(self: Box<Self>) -> TaskResult {
+        Ok(())
+    }
+}
+
+// `AsyncRuntime` 为 blanket trait，无需显式实现。

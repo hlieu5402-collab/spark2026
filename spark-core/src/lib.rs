@@ -85,12 +85,13 @@ pub use codec::{
 pub use common::{Empty, IntoEmpty, Loopback, legacy_loopback_outbound};
 pub use configuration::{
     BuildError, BuildErrorKind, BuildErrorStage, BuildOutcome, BuildReport, ChangeEvent,
-    ChangeNotification, ChangeSet, ConfigKey, ConfigMetadata, ConfigScope, ConfigValue,
-    ConfigurationBuilder, ConfigurationError, ConfigurationHandle, ConfigurationLayer,
-    ConfigurationSnapshot, ConfigurationSource, LayeredConfiguration, ProfileDescriptor, ProfileId,
+    ChangeNotification, ChangeSet, ConfigDelta, ConfigKey, ConfigMetadata, ConfigScope,
+    ConfigValue, ConfigurationBuilder, ConfigurationError, ConfigurationHandle, ConfigurationLayer,
+    ConfigurationSnapshot, ConfigurationSource, ConfigurationUpdate, ConfigurationUpdateKind,
+    ConfigurationWatch, LayeredConfiguration, NoopConfigStream, ProfileDescriptor, ProfileId,
     ProfileLayering, ResolvedConfiguration, SnapshotEntry, SnapshotLayer, SnapshotMetadata,
     SnapshotProfile, SnapshotValue, SourceMetadata, ValidationFinding, ValidationReport,
-    ValidationState, WatchToken,
+    ValidationState,
 };
 pub use context::ExecutionContext;
 pub use contract::{
@@ -99,8 +100,8 @@ pub use contract::{
     SecurityContextSnapshot,
 };
 pub use error::{
-    CoreError, DomainError, DomainErrorKind, ErrorCause, ImplError, ImplErrorKind, IntoCoreError,
-    IntoDomainError, SparkError,
+    CoreError, DomainError, DomainErrorKind, ErrorCategory, ErrorCause, ImplError, ImplErrorKind,
+    IntoCoreError, IntoDomainError, SparkError,
 };
 pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use host::{
@@ -138,15 +139,22 @@ pub use runtime::{
     ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission, SloPolicyAction,
     SloPolicyConfigError, SloPolicyDirective, SloPolicyManager, SloPolicyReloadReport,
     SloPolicyRule, SloPolicyTrigger, TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle,
-    TaskLaunchOptions, TaskPriority, TaskResult, TimeDriver, slo_policy_table_key,
+    TaskLaunchOptions, TaskPriority, TaskResult, TimeDriver, TimeoutConfigError,
+    TimeoutRuntimeConfig, TimeoutSettings, slo_policy_table_key,
+    AsyncRuntime, BlockingTaskSubmission, CoreServices, JoinHandle, LocalTaskSubmission,
+    ManagedBlockingTask, ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
+    SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
+    SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger, TaskCancellationStrategy, TaskError,
+    TaskExecutor, TaskExecutorExt, TaskHandle, TaskLaunchOptions, TaskPriority, TaskResult,
+    TimeDriver, slo_policy_table_key,
 };
 pub use security::{
     Credential, CredentialDescriptor, CredentialMaterial, CredentialScope, CredentialState,
     IdentityDescriptor, IdentityKind, IdentityProof, KeyMaterial, KeyPurpose, KeyRequest,
     KeyResponse, KeyRetrievalError, KeySource, NegotiationContext, NegotiationError,
     NegotiationOutcome, NegotiationResult, PolicyAttachment, PolicyEffect, PolicyRule,
-    ResourcePattern, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy, SecurityProtocol,
-    SecurityProtocolOffer, SubjectMatcher,
+    ResourcePattern, SecurityClass, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy,
+    SecurityProtocol, SecurityProtocolOffer, SubjectMatcher,
 };
 pub use service::{
     AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,

@@ -1,19 +1,25 @@
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloc::{boxed::Box, sync::Arc};
-use core::fmt;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::{
+    fmt,
+    pin::Pin,
+    sync::atomic::{AtomicU64, Ordering},
+    task::{Context, Poll},
+};
 
-use crate::audit::{AuditChangeSet, AuditEntityRef, AuditEventV1, AuditPipeline, AuditStateHasher};
+use crate::{
+    audit::{AuditChangeSet, AuditEntityRef, AuditEventV1, AuditPipeline, AuditStateHasher},
+    future::{BoxStream, Stream},
+};
 
 use super::{
-    ChangeCallback, ChangeEvent, ChangeNotification, ChangeSet, ConfigKey, ConfigValue,
+    ChangeEvent, ChangeNotification, ChangeSet, ConfigDelta, ConfigKey, ConfigValue,
     ConfigurationError, ConfigurationErrorKind, ConfigurationLayer, ConfigurationSnapshot,
     ConfigurationSource, ProfileDescriptor, ProfileId, ProfileLayering, SourceRegistrationError,
-    WatchToken,
 };
 
 /// 已解析的配置结果。
@@ -44,20 +50,142 @@ pub struct ResolvedConfiguration {
 /// ### 契约说明（What）
 /// - `profile`：当前句柄绑定的 Profile。
 /// - `layers`：存放原始 Layer，保持可追溯性。
-/// - `watchers`：记录回调，确保变更时能广播。
 /// - `audit`：可选的审计流水线，当存在时在变更后写入哈希链事件。
 /// - `audit_chain_tip`：最近一次成功写入的状态哈希，用于检测事件缺失。
 ///
-/// ### 设计取舍（Trade-offs）
-/// - 当前实现仅提供同步回调列表；异步扩展可在上层包装。
 pub struct LayeredConfiguration {
     profile: ProfileId,
     layering: ProfileLayering,
     layers: Vec<ConfigurationLayer>,
-    watchers: Vec<Arc<dyn ChangeCallback + Send + Sync>>, // 简化实现：直接存储回调引用
     version: AtomicU64,
     audit: Option<AuditPipeline>,
     audit_chain_tip: Option<String>,
+}
+
+/// 配置更新的分类，区分增量通知与全量刷新。
+///
+/// ### 设计目的（Why）
+/// - 运行时在处理更新时通常需要区分“局部差异”与“全量替换”，该枚举提供显式标签，避免魔法布尔值。
+///
+/// ### 契约说明（What）
+/// - `Incremental`：包含原始 [`ChangeNotification`] 与解析好的 [`ChangeSet`]，便于调用方获取细粒度差异。
+/// - `Refresh`：表示底层层次被整体替换，调用方应直接使用新快照覆盖缓存。
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConfigurationUpdateKind {
+    Incremental {
+        notification: ChangeNotification,
+        change_set: ChangeSet,
+    },
+    Refresh,
+}
+
+/// 热更新流的单次输出。
+///
+/// ### 设计目的（Why）
+/// - 将最新解析快照与触发事件绑定在一起，方便调用方原子地读取配置与元信息。
+///
+/// ### 契约说明（What）
+/// - `snapshot`：变更应用后的完整配置视图，版本号保证单调递增。
+/// - `kind`：指示触发事件类型，见 [`ConfigurationUpdateKind`]。
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConfigurationUpdate {
+    pub snapshot: ResolvedConfiguration,
+    pub kind: ConfigurationUpdateKind,
+}
+
+/// 聚合多源增量通知的流式驱动器。
+///
+/// ### 设计目的（Why）
+/// - 将多个配置源的 `watch` 输出合并为单一 `Stream`，避免调用方手动管理多路选择与并发。
+/// - 与 [`ConfigurationHandle`] 紧密协作：内部直接持有 [`LayeredConfiguration`] 的可变引用，以便原子更新快照。
+///
+/// ### 契约说明（What）
+/// - 实现 [`Stream`]，每次轮询最多处理一个事件，保持顺序与源侧一致。
+/// - 所有源结束后流即结束；若中途出现错误，会以 `Err` 事件向外传播。
+pub struct ConfigurationWatch<'a> {
+    layered: &'a mut LayeredConfiguration,
+    streams: Vec<Option<BoxStream<'a, ConfigDelta>>>,
+    cursor: usize,
+}
+
+impl<'a> ConfigurationWatch<'a> {
+    fn new(
+        layered: &'a mut LayeredConfiguration,
+        streams: Vec<BoxStream<'a, ConfigDelta>>,
+    ) -> Self {
+        let wrapped = streams.into_iter().map(Some).collect();
+        Self {
+            layered,
+            streams: wrapped,
+            cursor: 0,
+        }
+    }
+}
+
+impl<'a> Stream for ConfigurationWatch<'a> {
+    type Item = Result<ConfigurationUpdate, ConfigurationError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+
+        if this.streams.is_empty() {
+            return Poll::Ready(None);
+        }
+
+        let len = this.streams.len();
+
+        for offset in 0..len {
+            let index = (this.cursor + offset) % len;
+            let stream_slot = &mut this.streams[index];
+            let Some(stream) = stream_slot.as_mut() else {
+                continue;
+            };
+
+            match stream.as_mut().poll_next(cx) {
+                Poll::Ready(Some(delta)) => {
+                    this.cursor = (index + 1) % len;
+                    match delta {
+                        ConfigDelta::Change(notification) => {
+                            match this.layered.apply_change(notification.clone()) {
+                                Ok(change_set) => {
+                                    let snapshot = this.layered.resolve();
+                                    let update = ConfigurationUpdate {
+                                        snapshot,
+                                        kind: ConfigurationUpdateKind::Incremental {
+                                            notification,
+                                            change_set,
+                                        },
+                                    };
+                                    return Poll::Ready(Some(Ok(update)));
+                                }
+                                Err(error) => return Poll::Ready(Some(Err(error))),
+                            }
+                        }
+                        ConfigDelta::Refresh(layers) => match this.layered.apply_refresh(layers) {
+                            Ok(snapshot) => {
+                                let update = ConfigurationUpdate {
+                                    snapshot,
+                                    kind: ConfigurationUpdateKind::Refresh,
+                                };
+                                return Poll::Ready(Some(Ok(update)));
+                            }
+                            Err(error) => return Poll::Ready(Some(Err(error))),
+                        },
+                    }
+                }
+                Poll::Ready(None) => {
+                    *stream_slot = None;
+                }
+                Poll::Pending => {}
+            }
+        }
+
+        if this.streams.iter().all(|entry| entry.is_none()) {
+            Poll::Ready(None)
+        } else {
+            Poll::Pending
+        }
+    }
 }
 
 impl LayeredConfiguration {
@@ -79,7 +207,6 @@ impl LayeredConfiguration {
             profile,
             layering,
             layers: Vec::new(),
-            watchers: Vec::new(),
             version: AtomicU64::new(0),
             audit: None,
             audit_chain_tip: None,
@@ -133,39 +260,6 @@ impl LayeredConfiguration {
         }
         let version = self.version.load(Ordering::SeqCst);
         ResolvedConfiguration { values, version }
-    }
-
-    /// 注册配置变更回调。
-    ///
-    /// ### 设计意图（Why）
-    /// - 支持运行时以观察者模式订阅变更，实现配置热更新。
-    ///
-    /// ### 契约（What）
-    /// - **输入**：实现了 [`ChangeCallback`] 的回调指针，通常由上层组件封装。
-    /// - **后置条件**：回调被保存，后续调用 [`broadcast`](Self::broadcast) 时会按注册顺序触发。
-    ///
-    /// ### 风险提示（Trade-offs）
-    /// - 当前实现未实现去重，重复注册会导致多次通知；调用方需自行治理。
-    pub fn watch(&mut self, callback: Arc<dyn ChangeCallback + Send + Sync>) {
-        self.watchers.push(callback);
-    }
-
-    /// 向所有观察者广播变更。
-    ///
-    /// ### 设计意图（Why）
-    /// - 当配置发生更新时，确保所有观察者获得一致的增量事件。
-    ///
-    /// ### 契约（What）
-    /// - **输入**：`notification` 为按顺序整理的事件列表。
-    /// - **后置条件**：所有回调均被调用；若任一回调返回错误，将提前中止并把错误向上传递。
-    ///
-    /// ### 性能考量（Trade-offs）
-    /// - 采用同步遍历，保证顺序一致性；若回调耗时较长可能阻塞后续回调，使用者可在上层引入异步调度。
-    pub fn broadcast(&self, notification: ChangeNotification) -> Result<(), ConfigurationError> {
-        for watcher in &self.watchers {
-            watcher.on_change(notification.clone())?;
-        }
-        Ok(())
     }
 }
 
@@ -827,7 +921,6 @@ impl ConfigurationBuilder {
             layered,
             descriptor,
             sources,
-            watch_tokens: Vec::new(),
         };
 
         Ok(BuildOutcome {
@@ -847,7 +940,6 @@ pub struct ConfigurationHandle {
     pub(crate) layered: LayeredConfiguration,
     pub(crate) descriptor: ProfileDescriptor,
     pub(crate) sources: Vec<Box<dyn ConfigurationSource>>,
-    pub(crate) watch_tokens: Vec<Box<dyn WatchToken>>,
 }
 
 impl ConfigurationHandle {
@@ -876,65 +968,44 @@ impl ConfigurationHandle {
         self.layered.resolve()
     }
 
-    /// 注册配置变更回调。
+    /// 构建一个增量更新流，串联所有配置源的 `watch` 能力。
     ///
     /// ### 设计意图（Why）
-    /// - 连接数据源的推送能力与上层组件，打造统一的热更新入口。
+    /// - 将多源增量通知统一汇聚，生成按发生顺序输出的配置快照，供运行时组件驱动热更新。
     ///
     /// ### 契约说明（What）
-    /// - **输入**：实现 [`ChangeCallback`] 的 `Arc` 指针；使用 `Arc` 确保回调可跨线程共享。
-    /// - **后置条件**：
-    ///   1. 回调被注册进内部观察者列表。
-    ///   2. 若数据源实现了 `watch`，其返回的 [`WatchToken`] 会被保存，生命周期与句柄绑定。
-    ///
-    /// ### 风险提示（Trade-offs）
-    /// - 若任何数据源返回 `Err`，当前实现会忽略错误并继续尝试其它源；可在未来扩展为聚合错误。
-    pub fn observe(&mut self, callback: Arc<dyn ChangeCallback + Send + Sync>) {
-        self.layered.watch(callback.clone());
-        // 同步已有来源的 watch 能力
+    /// - **返回值**：[`ConfigurationWatch`]，实现 [`Stream`]，每次轮询返回一次 [`ConfigurationUpdate`]。
+    /// - 若所有数据源均不支持增量推送，返回的流会立即结束。
+    /// - 错误场景（如审计哈希不一致）以 [`ConfigurationError`] 形式暴露。
+    pub fn watch(&mut self) -> Result<ConfigurationWatch<'_>, ConfigurationError> {
+        let mut streams = Vec::with_capacity(self.sources.len());
         for source in &self.sources {
-            if let Ok(Some(token)) = source.watch(
-                &self.descriptor.identifier,
-                Box::new(ForwardingCallback {
-                    delegate: callback.clone(),
-                }),
-            ) {
-                self.watch_tokens.push(token);
-            }
+            let stream = source.watch(&self.descriptor.identifier)?;
+            streams.push(stream);
         }
-    }
-}
-
-/// 负责将数据源回调转发给外部观察者的适配器。
-struct ForwardingCallback {
-    delegate: Arc<dyn ChangeCallback + Send + Sync>,
-}
-
-impl ChangeCallback for ForwardingCallback {
-    fn on_change(&self, notification: ChangeNotification) -> Result<(), ConfigurationError> {
-        self.delegate.on_change(notification)
+        Ok(ConfigurationWatch::new(&mut self.layered, streams))
     }
 }
 
 impl LayeredConfiguration {
-    /// 根据最新变更更新内部状态，并返回差异集合。
+    /// 根据最新增量通知更新内部状态，并返回差异集合。
     ///
     /// ### 使用场景（Why）
-    /// - 当数据源推送增量变更时，调用此方法更新快照，并向观察者广播。
+    /// - 当配置源推送 [`ChangeNotification`] 时，热更新驱动调用本方法，随后再衍生新的快照交付给业务组件。
     ///
     /// ### 契约说明（What）
-    /// - **输入**：[`ChangeNotification`]，包含单调递增的序号与事件列表。
-    /// - **前置条件**：通知内的事件需遵循时间顺序；该方法不进行排序。
-    /// - **后置条件**：返回的 [`ChangeSet`] 按事件类型分类，同时内部版本号自增并触发观察者回调。
+    /// - **输入**：保证单调递增的序列号与按时间排序的事件列表。
+    /// - **前置条件**：调用方须确保事件顺序已经在源端稳定；方法本身不会重新排序。
+    /// - **后置条件**：返回的 [`ChangeSet`] 收集增量差异，同时内部版本号递增并更新审计链哈希。
     ///
     /// ### 执行逻辑（How）
-    /// 1. 遍历事件，根据类型分别调用 `upsert_entry` 或 `remove_entry`。
-    /// 2. 将受影响的键值收集到增量结果中。
-    /// 3. 生成审计事件并写入 Recorder（若已配置）；失败时回滚并返回 [`ConfigurationErrorKind::Audit`]。
-    /// 4. 自增版本号并调用 [`broadcast`](Self::broadcast)。
+    /// 1. 遍历事件，调用 `upsert_entry` 或 `remove_entry` 应用变更；
+    /// 2. 收集创建、更新、删除的键值，构造 [`ChangeSet`]；
+    /// 3. 若配置了审计流水线，写入事件并在失败时回滚；
+    /// 4. 自增版本号并更新最新快照的哈希链表头。
     ///
     /// ### 风险提示（Trade-offs）
-    /// - 若通知包含重复事件（同一键多次更新），后一个事件会覆盖前一事件，返回值亦体现最终状态。
+    /// - 若通知中出现同一键的多次修改，最终结果以最后一次事件为准，`ChangeSet` 仅记录最终值。
     pub fn apply_change(
         &mut self,
         notification: ChangeNotification,
@@ -1020,9 +1091,44 @@ impl LayeredConfiguration {
         }
 
         self.audit_chain_tip = Some(state_curr_hash);
-        self.broadcast(notification.clone())?;
 
         Ok(change_set)
+    }
+
+    /// 以新 Layer 列表替换当前配置，并返回刷新后的快照。
+    ///
+    /// ### 设计目的（Why）
+    /// - 支持无法提供增量事件的数据源在重大变更时执行全量刷新，避免逐条计算差异的高昂成本。
+    ///
+    /// ### 契约说明（What）
+    /// - **输入**：完整的 [`ConfigurationLayer`] 列表，按照优先级从低到高排序。
+    /// - **前置条件**：调用方需确保传入的 Layer 覆盖了后续解析所需的全部键值。
+    /// - **后置条件**：内部版本号自增，并将审计链表头更新为最新快照的哈希值。
+    pub fn apply_refresh(
+        &mut self,
+        layers: Vec<ConfigurationLayer>,
+    ) -> Result<ResolvedConfiguration, ConfigurationError> {
+        let before_snapshot = self.resolve();
+        let state_prev_hash = AuditStateHasher::hash_configuration(before_snapshot.values.iter());
+        if let Some(chain_tip) = &self.audit_chain_tip {
+            if chain_tip != &state_prev_hash {
+                return Err(ConfigurationError::with_context(
+                    ConfigurationErrorKind::Conflict,
+                    "audit hash mismatch before applying refresh",
+                ));
+            }
+        } else {
+            self.audit_chain_tip = Some(state_prev_hash);
+        }
+
+        self.layers = layers;
+        self.version.fetch_add(1, Ordering::SeqCst);
+
+        let snapshot = self.resolve();
+        let state_curr_hash = AuditStateHasher::hash_configuration(snapshot.values.iter());
+        self.audit_chain_tip = Some(state_curr_hash);
+
+        Ok(snapshot)
     }
 
     /// 在现有 Layer 中插入或更新配置项。
