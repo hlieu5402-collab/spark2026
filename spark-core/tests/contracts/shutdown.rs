@@ -1,15 +1,16 @@
-use std::future::Future;
 use std::pin::Pin;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc, Mutex,
 };
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use std::any::Any;
+use std::panic::{self, AssertUnwindSafe};
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use spark_core::async_trait;
 use spark_core::buffer::BufferPool;
-use spark_core::contract::{CloseReason, Deadline};
+use spark_core::contract::{CallContext, CloseReason, Deadline};
 use spark_core::error::CoreError;
 use spark_core::future::{BoxFuture, Stream};
 use spark_core::host::{
@@ -20,37 +21,12 @@ use spark_core::observability::{
     MetricAttributeValue, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
 };
 use spark_core::runtime::{
-    AsyncRuntime, BlockingTaskSubmission, CoreServices, LocalTaskSubmission, MonotonicTimePoint,
-    SendTaskSubmission, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
+    AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
+    TaskError, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
 };
 use spark_core::{BoxStream, SparkError};
 
-use super::support::monotonic;
-
-/// 简易的 `block_on` 实现，利用空唤醒器轮询 Future 直至完成。
-fn block_on<F: Future>(mut future: F) -> F::Output {
-    fn noop_raw_waker() -> RawWaker {
-        fn clone(_: *const ()) -> RawWaker {
-            noop_raw_waker()
-        }
-        fn wake(_: *const ()) {}
-        fn wake_by_ref(_: *const ()) {}
-        fn drop(_: *const ()) {}
-        const VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-        RawWaker::new(std::ptr::null(), &VTABLE)
-    }
-
-    let waker = unsafe { Waker::from_raw(noop_raw_waker()) };
-    let mut cx = Context::from_waker(&waker);
-    // 安全性：`future` 仅在本函数内被固定，不会跨越调用栈泄漏。
-    let mut future = unsafe { Pin::new_unchecked(&mut future) };
-    loop {
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(result) => break result,
-            Poll::Pending => continue,
-        }
-    }
-}
+use super::support::{block_on, monotonic};
 
 /// 空事件流，满足 `OpsEventBus::subscribe` 的返回需求。
 struct EmptyStream;
@@ -147,16 +123,17 @@ impl TestRuntime {
 }
 
 impl TaskExecutor for TestRuntime {
-    fn spawn(&self, _task: SendTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopHandle)
-    }
-
-    fn spawn_blocking(&self, _task: BlockingTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopHandle)
-    }
-
-    fn spawn_local(&self, _task: LocalTaskSubmission) -> Box<dyn TaskHandle> {
-        Box::new(NoopHandle)
+    fn spawn_dyn(
+        &self,
+        _ctx: &CallContext,
+        fut: BoxFuture<'static, TaskResult<Box<dyn Any + Send>>>,
+    ) -> JoinHandle<Box<dyn Any + Send>> {
+        let result = panic::catch_unwind(AssertUnwindSafe(|| block_on(fut)));
+        let task_result = match result {
+            Ok(value) => value,
+            Err(_) => Err(TaskError::Panicked),
+        };
+        JoinHandle::from_task_handle(Box::new(ReadyHandle::new(task_result)))
     }
 }
 
@@ -173,19 +150,40 @@ impl TimeDriver for TestRuntime {
     }
 }
 
-/// 空实现的 `TaskHandle`，用于满足执行器契约。
-struct NoopHandle;
+/// 即时完成的测试句柄，将 `spawn` 的结果封装为 [`JoinHandle`]。
+struct ReadyHandle<T> {
+    result: Mutex<Option<TaskResult<T>>>,
+    finished: AtomicBool,
+    cancelled: AtomicBool,
+}
+
+impl<T> ReadyHandle<T> {
+    fn new(result: TaskResult<T>) -> Self {
+        Self {
+            result: Mutex::new(Some(result)),
+            finished: AtomicBool::new(true),
+            cancelled: AtomicBool::new(false),
+        }
+    }
+}
 
 #[async_trait]
-impl TaskHandle for NoopHandle {
-    fn cancel(&self, _strategy: spark_core::runtime::TaskCancellationStrategy) {}
+impl<T> TaskHandle for ReadyHandle<T>
+where
+    T: Send + 'static,
+{
+    type Output = T;
+
+    fn cancel(&self, _strategy: TaskCancellationStrategy) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
 
     fn is_finished(&self) -> bool {
-        true
+        self.finished.load(Ordering::Acquire)
     }
 
     fn is_cancelled(&self) -> bool {
-        false
+        self.cancelled.load(Ordering::Acquire)
     }
 
     fn id(&self) -> Option<&str> {
@@ -194,8 +192,13 @@ impl TaskHandle for NoopHandle {
 
     fn detach(self: Box<Self>) {}
 
-    async fn join(self: Box<Self>) -> TaskResult {
-        Ok(())
+    async fn join(self: Box<Self>) -> TaskResult<Self::Output> {
+        self.finished.store(true, Ordering::Release);
+        self.result
+            .lock()
+            .unwrap()
+            .take()
+            .expect("ReadyHandle::join called multiple times")
     }
 }
 

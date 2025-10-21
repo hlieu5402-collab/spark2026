@@ -64,6 +64,8 @@ name = "contracts_service_macro"
 path = "tests/contracts/service_macro.rs"
 
 [[test]]
+name = "contracts_context_propagation_spawn"
+path = "tests/contracts/context_propagation_spawn.rs"
 name = "pipeline"
 path = "tests/pipeline/mod.rs"
 

@@ -36,19 +36,11 @@ macro_rules! assert_idempotent_effect {
     ) => {{
         let first_result = ($action)();
         let _: &dyn Debug = &first_result;
-        assert_eq!(
-            first_result,
-            $first,
-            "首次调用未达到契约期望"
-        );
+        assert_eq!(first_result, $first, "首次调用未达到契约期望");
 
         let second_result = ($action)();
         let _: &dyn Debug = &second_result;
-        assert_eq!(
-            second_result,
-            $second,
-            "重复调用未保持幂等语义"
-        );
+        assert_eq!(second_result, $second, "重复调用未保持幂等语义");
     }};
 }
 
@@ -98,21 +90,9 @@ macro_rules! assert_budget_decision {
         match $decision {
             spark_core::contract::BudgetDecision::$variant { snapshot } => {
                 let expected_kind = $kind;
-                assert_eq!(
-                    snapshot.kind(),
-                    &expected_kind,
-                    "预算种类不符合契约"
-                );
-                assert_eq!(
-                    snapshot.remaining(),
-                    $remaining,
-                    "预算剩余量不符合契约"
-                );
-                assert_eq!(
-                    snapshot.limit(),
-                    $limit,
-                    "预算上限不符合契约"
-                );
+                assert_eq!(snapshot.kind(), &expected_kind, "预算种类不符合契约");
+                assert_eq!(snapshot.remaining(), $remaining, "预算剩余量不符合契约");
+                assert_eq!(snapshot.limit(), $limit, "预算上限不符合契约");
             }
             other => panic!(
                 "预算决策枚举不匹配：期待 {:?}，实际 {:?}",
