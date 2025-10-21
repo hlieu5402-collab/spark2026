@@ -99,8 +99,8 @@ pub use contract::{
     SecurityContextSnapshot,
 };
 pub use error::{
-    CoreError, DomainError, DomainErrorKind, ErrorCause, ImplError, ImplErrorKind, IntoCoreError,
-    IntoDomainError, SparkError,
+    CoreError, DomainError, DomainErrorKind, ErrorCategory, ErrorCause, ImplError, ImplErrorKind,
+    IntoCoreError, IntoDomainError, SparkError,
 };
 pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use host::{
@@ -145,8 +145,8 @@ pub use security::{
     IdentityDescriptor, IdentityKind, IdentityProof, KeyMaterial, KeyPurpose, KeyRequest,
     KeyResponse, KeyRetrievalError, KeySource, NegotiationContext, NegotiationError,
     NegotiationOutcome, NegotiationResult, PolicyAttachment, PolicyEffect, PolicyRule,
-    ResourcePattern, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy, SecurityProtocol,
-    SecurityProtocolOffer, SubjectMatcher,
+    ResourcePattern, SecurityClass, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy,
+    SecurityProtocol, SecurityProtocolOffer, SubjectMatcher,
 };
 pub use service::{
     AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,

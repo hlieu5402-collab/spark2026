@@ -36,3 +36,4 @@ mod handshake;
 mod context_propagation;
 mod retry_after;
 mod service_macro;
+mod error_category_autoresponse;
