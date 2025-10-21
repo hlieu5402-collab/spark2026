@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     pin::Pin,
     sync::{Arc, Mutex, OnceLock},
     task::{Context, Poll},
@@ -44,19 +45,20 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
         health_checks: Arc::new(Vec::new()),
     };
 
-    let call_context = CallContext::builder().build();
     let trace_context = TraceContext::new(
         [0x11; TraceContext::TRACE_ID_LENGTH],
         [0x22; TraceContext::SPAN_ID_LENGTH],
         TraceFlags::new(TraceFlags::SAMPLED),
     );
+    let call_context = CallContext::builder()
+        .with_trace_context(trace_context.clone())
+        .build();
 
     let channel = Arc::new(TestChannel::new("hot-swap-channel"));
     let controller = Arc::new(HotSwapController::new(
         channel.clone() as Arc<dyn Channel>,
         services,
         call_context,
-        trace_context,
     ));
     channel
         .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
@@ -131,19 +133,20 @@ mod loom_tests {
                 health_checks: Arc::new(Vec::new()),
             };
 
-            let call_context = CallContext::builder().build();
             let trace_context = TraceContext::new(
                 [0x33; TraceContext::TRACE_ID_LENGTH],
                 [0x44; TraceContext::SPAN_ID_LENGTH],
                 TraceFlags::new(TraceFlags::SAMPLED),
             );
+            let call_context = CallContext::builder()
+                .with_trace_context(trace_context.clone())
+                .build();
 
             let channel = Arc::new(TestChannel::new("loom-channel"));
             let controller = Arc::new(HotSwapController::new(
                 channel.clone() as Arc<dyn Channel>,
                 services,
                 call_context,
-                trace_context,
             ));
             channel.bind_controller(
                 controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>
@@ -466,11 +469,30 @@ impl TimeDriver for NoopRuntime {
     }
 }
 
+/// `NoopHandle` 代表一个永远不会调度执行的任务句柄。
+///
+/// # 设计背景（Why）
+/// - 热插拔与可观测性测试关注控制器逻辑，不需要真正的异步执行环境。
+/// - 通过提供空实现，可以确保依赖任务接口的代码路径得以编译并被验证。
+///
+/// # 逻辑解析（How）
+/// - 关联类型 [`TaskHandle::Output`] 固定为 `Box<dyn Any + Send>`，与 `spawn_dyn` 的类型擦除约定保持一致。
+/// - `join` 直接返回 [`TaskError::ExecutorTerminated`]，模拟执行器拒绝任务的情形。
+/// - 其他查询方法返回稳定的常量，以保持句柄语义的一致性。
+///
+/// # 契约说明（What）
+/// - **前置条件**：调用方不得期望任务被实际执行；本句柄仅用于测试桩。
+/// - **后置条件**：一旦 `join` 被调用，将立即得到错误结果且无副作用。
+///
+/// # 风险提示（Trade-offs）
+/// - 若后续测试需要验证任务执行路径，应替换为可调度的运行时实现。
+/// - 长期使用该桩可能掩盖上下文传播中的真实问题，需要在集成测试中补齐覆盖。
+#[derive(Default)]
 struct NoopHandle;
 
 #[async_trait::async_trait]
 impl TaskHandle for NoopHandle {
-    type Output = Box<dyn std::any::Any + Send>;
+    type Output = Box<dyn Any + Send>;
 
     fn cancel(&self, _strategy: TaskCancellationStrategy) {}
 
@@ -489,7 +511,7 @@ impl TaskHandle for NoopHandle {
     fn detach(self: Box<Self>) {}
 
     async fn join(self: Box<Self>) -> TaskResult<Self::Output> {
-        Ok(Box::new(()) as Box<dyn std::any::Any + Send>)
+        Err(TaskError::ExecutorTerminated)
     }
 }
 

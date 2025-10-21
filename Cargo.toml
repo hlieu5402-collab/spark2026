@@ -3,6 +3,7 @@ members = [
     "spark-core",
     "spark-codec-line",
     "crates/spark-macros",
+    "crates/spark-otel",
     "tools/deprecation-lint",
     "crates/spark-contract-tests",
     "crates/spark-contract-tests-macros",
