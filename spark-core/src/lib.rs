@@ -148,7 +148,10 @@ pub use security::{
     ResourcePattern, SecurityNegotiationPlan, SecurityNegotiator, SecurityPolicy, SecurityProtocol,
     SecurityProtocolOffer, SubjectMatcher,
 };
-pub use service::{BoxService, DynService, Layer, Service, ServiceObject};
+pub use service::{
+    AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,
+    type_mismatch_error,
+};
 #[rustfmt::skip]
 pub use status::{
     BusyReason,
