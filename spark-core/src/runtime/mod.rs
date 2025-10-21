@@ -26,7 +26,7 @@ mod task;
 mod timeouts;
 mod timer;
 
-pub use executor::{TaskExecutor, TaskExecutorExt};
+pub use executor::TaskExecutor;
 pub use services::CoreServices;
 pub use slo::{
     SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,

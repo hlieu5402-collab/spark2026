@@ -140,8 +140,8 @@ pub use runtime::{
     ManagedBlockingTask, ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
     SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
     SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger, TaskCancellationStrategy, TaskError,
-    TaskExecutor, TaskExecutorExt, TaskHandle, TaskLaunchOptions, TaskPriority, TaskResult,
-    TimeDriver, TimeoutConfigError, TimeoutRuntimeConfig, TimeoutSettings, slo_policy_table_key,
+    TaskExecutor, TaskHandle, TaskLaunchOptions, TaskPriority, TaskResult, TimeDriver,
+    TimeoutConfigError, TimeoutRuntimeConfig, TimeoutSettings, slo_policy_table_key,
 };
 pub use security::{
     Credential, CredentialDescriptor, CredentialMaterial, CredentialScope, CredentialState,

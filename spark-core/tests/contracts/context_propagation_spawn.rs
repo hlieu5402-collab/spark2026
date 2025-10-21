@@ -18,7 +18,7 @@ mod tests {
             use spark_core::contract::{CallContext, CallContextBuilder, Deadline};
             use spark_core::runtime::{
                 JoinHandle, MonotonicTimePoint, TaskCancellationStrategy, TaskError, TaskExecutor,
-                TaskExecutorExt, TaskHandle, TaskResult,
+                TaskHandle, TaskResult,
             };
 
             use crate::async_support::block_on;
