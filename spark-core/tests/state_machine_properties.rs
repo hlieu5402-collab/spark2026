@@ -50,6 +50,210 @@ use std::collections::BTreeSet;
 
 use proptest::prelude::*;
 
+#[cfg(loom)]
+mod loom_scenarios {
+    //! ReadyState Pending → 唤醒 → 恢复 的 Loom 并发模型。
+    //!
+    //! ## 教案级导览
+    //!
+    //! - **核心目标 (Why)**：验证 Pending 注册与唤醒之间的内存可见性，确保“无灰区”——调度线程在离开 Pending 之前一定观测到
+    //!   至少一个被允许的唤醒源。
+    //! - **整体位置 (Why)**：该模块仅在 `--features loom-model` 下编译，作为文档《docs/state_machines.md》“性质三”的模型化补充，
+    //!   与同文件中的 proptest 影子模型共同覆盖 ReadyState 契约。
+    //! - **设计手法 (Why)**：使用 `loom::model` 穷举调度交错，三个线程分别代表 `poll_ready()` 驱动与两类唤醒源（I/O、定时器），
+    //!   第三个唤醒源 `ConfigReload` 在本场景中被禁止，专门验证“未注册来源不得唤醒”。
+    //!
+    //! ## 结构与职责 (How)
+    //!
+    //! - `LoomReadySlot`：以原子变量模拟 ReadyState 的核心字段：当前节点、允许的唤醒掩码、已观测唤醒掩码。
+    //!   通过严格的 Acquire/Release 顺序保证调度线程在看到 `Pending` 时必然先看到唤醒配置。
+    //! - `register_pending()`：由调度线程调用，登记允许的唤醒掩码并进入 `Pending`。
+    //! - `record_wake_if_allowed()`：唤醒线程根据掩码决定是否触发唤醒。
+    //! - `await_wake_and_resolve()`：调度线程轮询唤醒掩码，观测到至少一个允许来源后才恢复到非 Pending。
+    //! - `pending_requires_observable_wake_before_resolution()`：Loom 场景，断言最终状态一定包含至少一个允许唤醒。
+    //!
+    //! ## 契约与边界 (What)
+    //!
+    //! - **输入参数**：线程间共享 `Arc<LoomReadySlot>`，唤醒线程仅在检测到当前掩码允许自身来源时写入唤醒标记。
+    //! - **前置条件**：`register_pending()` 必须在唤醒线程观察 `Pending` 之前完成掩码登记；通过 Release/Acquire 保证顺序。
+    //! - **后置条件**：`await_wake_and_resolve()` 返回时，状态必为 Ready，且 `observed_mask & allowed_mask != 0`。
+    //! - **设计权衡 (Trade-offs)**：采用自旋等待 + `thread::yield_now()` 以让 Loom 探索交错。牺牲一定执行效率，换取可读的模型结构。
+    //!   若未来 ReadyState 引入更多唤醒源，可按位扩展掩码并补充线程。
+
+    use super::WakeSource;
+    use loom::{
+        model,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        thread,
+    };
+
+    const READY: usize = 0;
+    const PENDING: usize = 1;
+
+    /// 以原子字段模拟 ReadyState Pending 契约的最小载体。
+    ///
+    /// ### 教案级说明
+    /// - **意图 (Why)**：浓缩 Pending -> Wake -> Ready 的读写顺序，验证允许唤醒掩码在多线程下不会失效。
+    /// - **逻辑 (How)**：`allowed_mask` 与 `observed_mask` 分别通过 `AtomicUsize` 维护，配合 Release/Acquire 顺序确保调度线程观测顺序正确。
+    /// - **契约 (What)**：`state` 仅取 `READY` 或 `PENDING`；调用者必须在进入 `Pending` 前清空 `observed_mask`。
+    /// - **注意事项 (Trade-offs)**：使用位掩码取代枚举存储，简化原子操作；若唤醒源超过 8 个需升级为更宽的整数类型。
+    struct LoomReadySlot {
+        state: AtomicUsize,
+        allowed_mask: AtomicUsize,
+        observed_mask: AtomicUsize,
+    }
+
+    impl LoomReadySlot {
+        fn new() -> Self {
+            Self {
+                state: AtomicUsize::new(READY),
+                allowed_mask: AtomicUsize::new(0),
+                observed_mask: AtomicUsize::new(0),
+            }
+        }
+
+        /// 将状态推进到 Pending，并登记允许的唤醒掩码。
+        ///
+        /// - **输入**：`mask` 表示允许唤醒源的集合，每一位对应一类来源（详见 `mask_for_source`）。
+        /// - **前置条件**：调用方应确保当前状态为 Ready，且本轮 Pending 的掩码非零。
+        /// - **后置条件**：返回后唤醒线程读取 `state` 为 `PENDING` 时，必能通过 Acquire 读取到最新的 `allowed_mask`。
+        fn register_pending(&self, mask: usize) {
+            assert!(mask != 0, "Pending 必须至少允许一个唤醒来源");
+            self.allowed_mask.store(mask, Ordering::Release);
+            self.observed_mask.store(0, Ordering::Release);
+            self.state.store(PENDING, Ordering::Release);
+        }
+
+        /// 若唤醒源被允许，则写入唤醒标记。
+        ///
+        /// - **输入**：`source_mask` 为单一来源的掩码。
+        /// - **逻辑**：先以 Acquire 读取 `allowed_mask` 确认自身被允许，再通过 `fetch_or` 记录唤醒。
+        fn record_wake_if_allowed(&self, source_mask: usize) {
+            if self.allowed_mask.load(Ordering::Acquire) & source_mask != 0 {
+                self.observed_mask.fetch_or(source_mask, Ordering::AcqRel);
+            }
+        }
+
+        /// 阻塞直至观测到至少一个合法唤醒，然后恢复到 Ready。
+        ///
+        /// - **逻辑**：循环读取 `observed_mask`，一旦与 `allowed_mask` 有交集便写入 Ready。
+        /// - **前置条件**：调用前须已调用 `register_pending()`。
+        /// - **后置条件**：返回时 `state == READY`，且记录的唤醒掩码与允许掩码存在交集。
+        fn await_wake_and_resolve(&self) {
+            loop {
+                let allowed = self.allowed_mask.load(Ordering::Acquire);
+                let observed = self.observed_mask.load(Ordering::Acquire);
+                if allowed & observed != 0 {
+                    self.state.store(READY, Ordering::Release);
+                    return;
+                }
+                thread::yield_now();
+            }
+        }
+
+        fn load_state(&self) -> usize {
+            self.state.load(Ordering::Acquire)
+        }
+
+        fn load_allowed_mask(&self) -> usize {
+            self.allowed_mask.load(Ordering::Acquire)
+        }
+
+        fn load_observed_mask(&self) -> usize {
+            self.observed_mask.load(Ordering::Acquire)
+        }
+    }
+
+    fn mask_for_source(source: WakeSource) -> usize {
+        match source {
+            WakeSource::IoReady => 0b001,
+            WakeSource::Timer => 0b010,
+            WakeSource::ConfigReload => 0b100,
+        }
+    }
+
+    #[test]
+    fn pending_requires_observable_wake_before_resolution() {
+        model(|| {
+            let slot = Arc::new(LoomReadySlot::new());
+            let allowed_mask =
+                mask_for_source(WakeSource::IoReady) | mask_for_source(WakeSource::Timer);
+
+            let driver = {
+                let slot = Arc::clone(&slot);
+                thread::spawn(move || {
+                    //
+                    // 教案级说明：调度线程负责进入 Pending 并等待唤醒。
+                    // - **Why**：模拟框架 `poll_ready()` 的驱动方；
+                    // - **How**：登记掩码后轮询 `observed_mask`；
+                    // - **What**：返回时断言状态重新变为 Ready。
+                    slot.register_pending(allowed_mask);
+                    slot.await_wake_and_resolve();
+                })
+            };
+
+            let io_ready = {
+                let slot = Arc::clone(&slot);
+                thread::spawn(move || {
+                    while slot.load_state() != PENDING {
+                        thread::yield_now();
+                    }
+                    slot.record_wake_if_allowed(mask_for_source(WakeSource::IoReady));
+                })
+            };
+
+            let timer = {
+                let slot = Arc::clone(&slot);
+                thread::spawn(move || {
+                    while slot.load_state() != PENDING {
+                        thread::yield_now();
+                    }
+                    slot.record_wake_if_allowed(mask_for_source(WakeSource::Timer));
+                })
+            };
+
+            let config_reload = {
+                let slot = Arc::clone(&slot);
+                thread::spawn(move || {
+                    while slot.load_state() != PENDING {
+                        thread::yield_now();
+                    }
+                    //
+                    // 教案级说明：该线程验证“未登记来源不得唤醒”。
+                    // - 若掩码未包含 ConfigReload，则 `record_wake_if_allowed` 将保持静默。
+                    slot.record_wake_if_allowed(mask_for_source(WakeSource::ConfigReload));
+                })
+            };
+
+            driver.join().expect("调度线程不应 panic");
+            io_ready.join().expect("I/O 唤醒线程不应 panic");
+            timer.join().expect("定时器唤醒线程不应 panic");
+            config_reload.join().expect("配置热更新线程不应 panic");
+
+            let observed = slot.load_observed_mask();
+            let allowed = slot.load_allowed_mask();
+            assert_eq!(
+                slot.load_state(),
+                READY,
+                "离开 Pending 后状态必须回到 Ready"
+            );
+            assert_ne!(
+                observed & allowed,
+                0,
+                "Pending 结束前必须观察到至少一个被允许的唤醒来源"
+            );
+            assert_eq!(
+                observed & mask_for_source(WakeSource::ConfigReload),
+                0,
+                "未登记的 ConfigReload 不应被记录为唤醒来源"
+            );
+        });
+    }
+}
+
 /// ReadyState 的影子节点。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ReadyNode {
