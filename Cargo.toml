@@ -5,6 +5,8 @@ members = [
     "crates/spark-macros",
     "crates/spark-otel",
     "tools/deprecation-lint",
+    "crates/spark-contract-tests",
+    "crates/spark-contract-tests-macros",
 ]
 resolver = "3"
 

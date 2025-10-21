@@ -21,8 +21,8 @@ use spark_core::{
         handler::InboundHandler,
     },
     runtime::{
-        AsyncRuntime, CoreServices, JoinHandle, TaskCancellationStrategy, TaskError, TaskExecutor,
-        TaskHandle, TaskResult, TimeDriver,
+        AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
+        TaskExecutor, TaskHandle, TaskResult, TimeDriver,
     },
 };
 
@@ -451,30 +451,16 @@ impl TaskExecutor for NoopRuntime {
     fn spawn_dyn(
         &self,
         _ctx: &CallContext,
-        _fut: spark_core::BoxFuture<'static, TaskResult<Box<dyn Any + Send>>>,
-    ) -> JoinHandle<Box<dyn Any + Send>> {
-        // 教案级说明（Why）
-        // - 集成测试无需真实执行异步任务，只要返回一个立即完成的控制句柄即可维持控制面契约。
-        // - 通过始终返回“执行器终止”错误，提醒调用方该桩实现不会调度实际任务。
-        //
-        // 教案级说明（How）
-        // - 使用 [`JoinHandle::from_task_handle`] 封装一个预设结果的 `NoopHandle`。
-        // - 忽略传入的 `CallContext` 与 `Future`，避免在测试环境中引入额外线程。
-        //
-        // 教案级说明（What）
-        // - 输入：运行时代码传入的上下文与任务 Future。
-        // - 输出：一个立即可用的 [`JoinHandle`]，其 `join` 将返回 [`TaskError::ExecutorTerminated`]。
-        //
-        // 教案级说明（Trade-offs）
-        // - 该策略牺牲了任务执行的真实性，换取测试环境的确定性与零线程开销。
+        _fut: BoxFuture<'static, TaskResult<Box<dyn std::any::Any + Send>>>,
+    ) -> JoinHandle<Box<dyn std::any::Any + Send>> {
         JoinHandle::from_task_handle(Box::new(NoopHandle))
     }
 }
 
 #[async_trait::async_trait]
 impl TimeDriver for NoopRuntime {
-    fn now(&self) -> spark_core::runtime::MonotonicTimePoint {
-        spark_core::runtime::MonotonicTimePoint::from_offset(*self.now.lock().expect("time"))
+    fn now(&self) -> MonotonicTimePoint {
+        MonotonicTimePoint::from_offset(*self.now.lock().expect("time"))
     }
 
     async fn sleep(&self, duration: Duration) {
