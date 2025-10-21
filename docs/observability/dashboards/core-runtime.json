@@ -116,24 +116,75 @@
         "overrides": []
       }
     },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "并发请求 (Inflight)",
-      "datasource": "Prometheus",
-      "targets": [
-        {
-          "expr": "sum by (operation) (spark_request_inflight{service_name=~\"$service_name\", route_id=~\"$route_id\"})",
-          "legendFormat": "{{operation}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "requests",
-          "min": 0
-        },
-        "overrides": []
+  {
+    "id": 5,
+    "type": "timeseries",
+    "title": "并发请求 (Inflight)",
+    "datasource": "Prometheus",
+    "targets": [
+      {
+        "expr": "sum by (operation) (spark_request_inflight{service_name=~\"$service_name\", route_id=~\"$route_id\"})",
+        "legendFormat": "{{operation}}"
       }
+    ],
+    "fieldConfig": {
+      "defaults": {
+        "unit": "requests",
+        "min": 0
+      },
+      "overrides": []
     }
-  ]
+  },
+  {
+    "id": 6,
+    "type": "timeseries",
+    "title": "RetryAfter 节律",
+    "datasource": "Prometheus",
+    "targets": [
+      {
+        "expr": "sum by (ready_detail) (rate(spark_request_retry_after_total{service_name=~\"$service_name\", route_id=~\"$route_id\"}[5m]))",
+        "legendFormat": "{{ready_detail}} 次/秒"
+      },
+      {
+        "expr": "histogram_quantile(0.95, sum by (le) (rate(spark_request_retry_after_delay_ms_bucket{service_name=~\"$service_name\", route_id=~\"$route_id\"}[5m])))",
+        "legendFormat": "P95 延迟 (ms)"
+      }
+    ],
+    "fieldConfig": {
+      "defaults": {
+        "min": 0
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "P95 延迟 (ms)"
+          },
+          "properties": [
+            {
+              "id": "unit",
+              "value": "ms"
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byRegexp",
+            "options": ".*次/秒"
+          },
+          "properties": [
+            {
+              "id": "unit",
+              "value": "ops"
+            },
+            {
+              "id": "custom.axisPlacement",
+              "value": "right"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]
 }

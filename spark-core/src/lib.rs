@@ -142,6 +142,7 @@ pub use status::{
     ReadyCheck,
     ReadyState,
     RetryAdvice,
+    RetryRhythm,
     SubscriptionBudget,
 };
 pub use transport::{

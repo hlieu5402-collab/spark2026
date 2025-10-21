@@ -24,5 +24,6 @@ pub use ready::{
     ReadyCheck,
     ReadyState,
     RetryAdvice,
+    RetryRhythm,
     SubscriptionBudget,
 };

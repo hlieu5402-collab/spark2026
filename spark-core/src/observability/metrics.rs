@@ -243,6 +243,28 @@ pub mod contract {
                 .with_description("Service 端到端处理时长，单位毫秒")
                 .with_unit("ms");
 
+        /// `poll_ready` 结果统计，涵盖 Ready/Busy/BudgetExhausted/RetryAfter 四态。
+        pub const REQUEST_READY_STATE: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.request.ready_state")
+                .with_description(
+                    "Service::poll_ready 的返回分布，用于观测繁忙、预算耗尽与 RetryAfter 节律",
+                )
+                .with_unit("checks");
+
+        /// RetryAfter 事件计数器，帮助分析退避节律。
+        pub const RETRY_AFTER_TOTAL: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.request.retry_after_total")
+                .with_description("在 poll_ready 中收到 RetryAfter 信号的次数")
+                .with_unit("events");
+
+        /// RetryAfter 推荐延迟的直方图，单位毫秒。
+        pub const RETRY_AFTER_DELAY_MS: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.request.retry_after_delay_ms")
+                .with_description(
+                    "RetryAfter 建议等待时长的分布，结合 histogram_quantile 评估退避策略",
+                )
+                .with_unit("ms");
+
         /// 并发中的请求数量。
         pub const REQUEST_INFLIGHT: InstrumentDescriptor<'static> =
             InstrumentDescriptor::new("spark.request.inflight")
@@ -283,11 +305,37 @@ pub mod contract {
         pub const ATTR_ERROR_KIND: &str = "error.kind";
         /// 标签：对端身份（仅允许小集合，例如 upstream/downstream）。
         pub const ATTR_PEER_IDENTITY: &str = "peer.identity";
+        /// 标签：ReadyState 主枚举值（ready/busy/budget_exhausted/retry_after）。
+        pub const ATTR_READY_STATE: &str = "ready.state";
+        /// 标签：ReadyState 细分详情，例如 queue_full/after。
+        pub const ATTR_READY_DETAIL: &str = "ready.detail";
 
         /// 标签值：成功。
         pub const OUTCOME_SUCCESS: &str = "success";
         /// 标签值：失败。
         pub const OUTCOME_ERROR: &str = "error";
+
+        /// ReadyState 标签：完全就绪。
+        pub const READY_STATE_READY: &str = "ready";
+        /// ReadyState 标签：繁忙。
+        pub const READY_STATE_BUSY: &str = "busy";
+        /// ReadyState 标签：预算耗尽。
+        pub const READY_STATE_BUDGET_EXHAUSTED: &str = "budget_exhausted";
+        /// ReadyState 标签：RetryAfter。
+        pub const READY_STATE_RETRY_AFTER: &str = "retry_after";
+
+        /// Ready detail 占位符，避免缺失标签。
+        pub const READY_DETAIL_PLACEHOLDER: &str = "_";
+        /// Ready detail：上游繁忙。
+        pub const READY_DETAIL_UPSTREAM: &str = "upstream";
+        /// Ready detail：下游繁忙。
+        pub const READY_DETAIL_DOWNSTREAM: &str = "downstream";
+        /// Ready detail：内部队列溢出。
+        pub const READY_DETAIL_QUEUE_FULL: &str = "queue_full";
+        /// Ready detail：自定义繁忙原因。
+        pub const READY_DETAIL_CUSTOM: &str = "custom";
+        /// Ready detail：RetryAfter 相对等待。
+        pub const READY_DETAIL_RETRY_AFTER: &str = "after";
     }
 
     /// Codec 域指标契约定义。
