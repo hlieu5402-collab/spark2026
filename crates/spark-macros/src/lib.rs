@@ -105,9 +105,7 @@ fn expand_service(func: ItemFn) -> Result<proc_macro2::TokenStream, Error> {
 
         #(#attrs)*
         #vis fn #fn_ident() -> impl spark::service::Service<#request_ty, Response = #response_ty, Error = #error_ty> {
-            spark::service::simple::SequentialService::new(
-                spark::service::simple::AsyncFnLogic(|ctx, req| #logic_ident(ctx, req)),
-            )
+            spark::service::simple::SimpleServiceFn::new(#logic_ident)
         }
     };
 
