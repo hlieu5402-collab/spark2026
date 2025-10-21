@@ -52,17 +52,20 @@
 
 ### ReadyState → 指标/标签映射
 
-| ReadyState 分支 | `ready.state` 标签值 | `ready.detail` 标签值 | 说明 |
+> **状态基准**：ReadyState 的四个主干分支必须以固定指标与标签组合曝光，以支持跨团队的 SRE 告警策略复用。所有样例均依赖 `spark.request.ready_state` 与 `spark.request.retry_after_*` 两类指标。
+
+| ReadyState 分支 | 指标名称 | 标签固定组合 | 说明 |
 | --- | --- | --- | --- |
-| `ReadyState::Ready` | `ready` | `_`（占位常量 `_`，避免误解为缺失标签） | 表示服务立即可用；该分支仅用于基准线计算，不参与 Busy/Exhausted/RetryAfter 三态对齐。 |
-| `ReadyState::Busy(BusyReason::Upstream)` | `busy` | `upstream` | 上游依赖不可用或限流，建议调用方退避或切换备份。 |
-| `ReadyState::Busy(BusyReason::Downstream)` | `busy` | `downstream` | 下游（如存储、第三方 API）成为瓶颈。 |
-| `ReadyState::Busy(BusyReason::QueueFull { .. })` | `busy` | `queue_full` | 内部排队深度达到或超过阈值。 |
-| `ReadyState::Busy(BusyReason::Custom(_))` | `busy` | `custom` | 自定义繁忙原因，值由实现者注入，但需保持有限枚举。 |
-| `ReadyState::BudgetExhausted(_)` | `budget_exhausted` | `_` | 流量预算耗尽，必须触发降级或直接拒绝请求。 |
-| `ReadyState::RetryAfter(RetryAdvice::after(_))` | `retry_after` | `after` | 建议在指定毫秒后重试，可配合 `retry.after_ms` 实验性标签输出具体等待时间。 |
-| `ReadyState::RetryAfter(RetryAdvice::at(_))` | `retry_after` | `at` | 建议在某绝对时间点重试，适用于计划内变更。 |
-| 其他 `RetryAdvice` 扩展 | `retry_after` | `custom` | 若后续扩展新的重试建议分支，需同步更新枚举值并记录在本表。 |
+| `ReadyState::Ready` | `spark.request.ready_state`（导出时包含 `_total` 后缀） | `ready.state="ready"` `ready.detail="_"` | 表示服务立即可用；该分支仅用于基准线计算，不参与 Busy/Exhausted/RetryAfter 三态对齐。 |
+| `ReadyState::Busy(_)` | `spark.request.ready_state`（导出时包含 `_total` 后缀） | `ready.state="busy"` `ready.detail` 取 `upstream`/`downstream`/`queue_full`/`custom` | 服务进入繁忙态，建议告警或触发主动扩容。`ready.detail` 必须从列举集合中选取。 |
+| `ReadyState::BudgetExhausted(_)` | `spark.request.ready_state`（导出时包含 `_total` 后缀） | `ready.state="budget_exhausted"` `ready.detail="_"` | 表示预算耗尽，配合限流/降级策略触发。 |
+| `ReadyState::RetryAfter(_)` | `spark.request.ready_state`（导出时包含 `_total` 后缀）、`spark.request.retry_after_total`、`spark.request.retry_after_delay_ms_bucket` | `ready.state="retry_after"` `ready.detail` 取 `after`/`at`/`custom`，可选 `retry.after_ms` | 强制调用方向后退避，需叠加多次出现的退避告警。 |
+
+| RetryAfter 明细 | `ready.detail` 标签值 | 说明 |
+| --- | --- | --- |
+| `RetryAdvice::after(_)` | `after` | 建议在指定毫秒后重试，可配合 `retry.after_ms` 实验性标签输出具体等待时间。 |
+| `RetryAdvice::at(_)` | `at` | 建议在某绝对时间点重试，适用于计划内变更。 |
+| 其他 `RetryAdvice` 扩展 | `custom` | 若后续扩展新的重试建议分支，需同步更新枚举值并记录在本表。 |
 
 > **落地约束**：`ready.detail` 必须使用上表枚举或 `_` 作为占位，严禁写入请求 ID、租户 ID 等高基数字段；如需额外上下文，请通过日志或临时实验性指标承载。
 
@@ -106,8 +109,8 @@ Codec 与 Transport 的钩子使用方式一致，分别面向 `EncodeContext`/`
 
 ## 4. 样例仪表盘与告警规则
 
-- Prometheus 告警规则：见 [`alerts.yaml`](alerts.yaml)，通过 `promtool check rules docs/observability/alerts.yaml` 校验。
-- Grafana 仪表盘：见 [`dashboards/`](dashboards/)，提供服务成功率、P99 延迟、编解码与传输层健康等面板，默认变量 `service_name`/`listener_id`。
+- Prometheus 告警规则：见 [`alerts.yaml`](alerts.yaml) 与 ReadyState 专用的 [`prometheus-rules.yml`](prometheus-rules.yml)，均可通过 `promtool check rules` 校验。
+- Grafana 仪表盘：见 [`dashboards/`](dashboards/)，新增 `ready-state-retry-after.json` 聚焦 Busy/BudgetExhausted/RetryAfter，可与 `service_name`/`listener_id` 等变量联动。
 - Runbook：见 [`../runbook/`](../runbook/)，针对三类核心告警给出排查与恢复步骤。
 
 ## 5. 验收指引
