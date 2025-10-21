@@ -29,12 +29,41 @@ pub trait TaskExecutor: Send + Sync + 'static + Sealed {
         ctx: &CallContext,
         fut: BoxFuture<'static, TaskResult<Box<dyn Any + Send>>>,
     ) -> JoinHandle<Box<dyn Any + Send>>;
-}
 
-/// 为方便使用提供泛型适配层：开发者可直接调用 `spawn` 获得带类型的 [`JoinHandle`]。
-pub trait TaskExecutorExt: TaskExecutor {
+    /// 泛型化的任务提交入口，便于直接获得带类型的 [`JoinHandle`]。
+    ///
+    /// # 设计意图（Why）
+    /// - 契约层需要以最小成本推广“上下文必须随任务传播”的理念，
+    ///   因此在对象安全接口外额外暴露默认实现，方便日常调用直接向下传递 [`CallContext`]；
+    /// - 通过默认实现调用 [`TaskExecutor::spawn_dyn`]，既复用统一的类型擦除逻辑，
+    ///   又允许宿主按需覆写以支持特定的优化（如自定义 join 句柄映射）。
+    ///
+    /// # 执行逻辑（How）
+    /// - 将 `Future` 包装为类型擦除的 `BoxFuture` 并委托给 [`TaskExecutor::spawn_dyn`]；
+    /// - 通过 [`JoinHandle::map`](super::task::JoinHandle::map) 在任务完成时恢复原始输出类型，
+    ///   若 `downcast` 失败则返回 `TaskError::Failed` 以表明实现违背了泛型契约。
+    ///
+    /// # 契约说明（What）
+    /// - **参数**：
+    ///   - `ctx`：父调用上下文，要求实现方在提交任务时保留取消/截止/预算等信号；
+    ///   - `fut`：待执行的异步任务，必须满足 `Send + 'static` 以支持跨线程调度；
+    /// - **返回值**：
+    ///   - 返回带类型的 [`JoinHandle<F::Output>`]，调用 `join` 后可得到任务结果或 [`TaskError`]；
+    /// - **前置条件**：
+    ///   - 仅当实现类型满足 `Self: Sized`（默认实现所需）时可直接使用该方法；
+    ///   - `CallContext` 的生命周期需覆盖任务入队阶段；
+    /// - **后置条件**：
+    ///   - 若返回的 `JoinHandle` 完成，任务必定已经退出；
+    ///   - 当实现遵循协作取消语义时，`ctx.cancellation()` 的状态应与任务协同。
+    ///
+    /// # 风险提示（Trade-offs & Gotchas）
+    /// - 默认实现依赖类型擦除与 `downcast`，在高频场景可能产生细微的分配与 RTTI 成本；
+    ///   若性能敏感，可在具体执行器中覆写此方法以避免装箱；
+    /// - 若调用方意外传入与 `spawn_dyn` 不一致的句柄实现，将在 `downcast` 处触发失败，
+    ///   因此建议保持默认实现或在覆写版本中同步调整类型擦除策略。
     fn spawn<F>(&self, ctx: &CallContext, fut: F) -> JoinHandle<F::Output>
     where
+        Self: Sized,
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
@@ -53,5 +82,3 @@ pub trait TaskExecutorExt: TaskExecutor {
         })
     }
 }
-
-impl<T> TaskExecutorExt for T where T: TaskExecutor + ?Sized {}
