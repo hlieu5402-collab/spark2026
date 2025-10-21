@@ -1,7 +1,7 @@
 //! Service 快速原型工具箱：提供闭包转 Service 的胶水类型，以及过程宏可复用的就绪协调器。
 //!
 //! # 模块定位（Why）
-//! - `SimpleServiceFn`：为轻量场景提供“闭包 -> Service”桥接，便于在测试、样例中快速起步；
+//! - `SimpleServiceFn`：为轻量场景提供“闭包 -> Service”桥接，并在内部复用顺序执行协调器；
 //! - `SequentialService` + `AsyncFnLogic`：组合生成顺序执行的泛型 Service，实现 `#[spark::service]` 的核心；
 //! - `ServiceReadyCoordinator`：封装 `poll_ready`/`call` 状态机，供过程宏在不分配堆内存的前提下实现顺序执行模型；
 //! - `ReadyFutureGuard`/`GuardedFuture`：保证异步调用在正常完成或提前丢弃时都能唤醒等待者，避免背压锁死。
@@ -30,49 +30,81 @@ use crate::{
     status::{PollReady, ReadyCheck, ReadyState},
 };
 
-/// 将闭包直接适配为 `Service` 的轻量封装器。
+/// 将闭包直接适配为顺序执行的 [`Service`]，对过程宏与测试场景一视同仁。
 ///
 /// # 设计动机（Why）
-/// - 在编写样例、测试或简单中间件时，往往只需一段异步闭包即可表达业务逻辑；
-/// - 与 `tower::service_fn` 类似，本类型避免手写样板代码，便于快速验证契约；
-/// - 仍遵循 `spark-core` 的错误抽象，使得测试代码与生产代码保持一致的错误链条。
+/// - `T21` 目标要求“宏展开零堆分配 + 正确的 Pending→Wake”，因此需要一个即插即用的桥接器；
+/// - 将顺序协调器封装到本类型内部，业务只需提供闭包即可获得完整的 `Service` 契约实现；
+/// - 便于在过程宏、单元测试乃至快速原型中复用同一执行模型，保证行为一致。
 ///
 /// # 行为描述（How）
-/// - `poll_ready` 恒返回就绪，适用于对资源占用敏感度较低的无状态逻辑；
-/// - `call` 直接执行闭包并返回其 `Future`，不会拦截或修改业务结果；
-/// - 调用方如需更复杂的背压控制，可组合上层 Layer 或改用 `ServiceReadyCoordinator`。
+/// - `new`：构造持有 [`ServiceReadyCoordinator`] 与闭包逻辑的服务实例，构造过程只进行一次 `Arc` 分配；
+/// - `poll_ready`：委托给协调器，确保在前一次调用尚未完成时返回 `Pending` 并登记 waker；
+/// - `call`：在占用执行权后调用闭包，并返回由 [`GuardedFuture`] 保护的业务 Future，实现完成/取消时的唤醒。
 ///
 /// # 契约说明（What）
 /// - **输入**：闭包类型 `F` 接受 [`CallContext`] 与请求体，并返回实现 [`Future`] 的对象；
-/// - **输出**：实现 [`Service`]，响应类型与错误类型由闭包决定；
-/// - **前置条件**：闭包必须是 `Send + Sync + 'static`，返回的 Future 同样满足 `Send + 'static`；
-/// - **后置条件**：每次调用互不影响，保持零状态保留（stateless）。
+/// - **输出**：满足 [`Service`] 契约的顺序执行服务，响应类型与错误类型沿用闭包定义；
+/// - **前置条件**：闭包及其返回的 Future 必须满足 `Send + Sync + 'static`，确保服务本身也可跨线程安全使用；
+/// - **后置条件**：每次调用结束后必定唤醒等待的 waker，恢复 `Ready` 状态，从而避免背压锁死。
 ///
 /// # 风险提示（Trade-offs & Gotchas）
-/// - 恒定就绪意味着无法表达资源枯竭场景，适合自测或单元测试；
-/// - 若闭包内部捕获非 `'static` 引用将导致编译失败，这是契约明确要求。
-pub struct SimpleServiceFn<F>(pub F);
+/// - 内部通过 `Arc` 共享协调器状态，以支撑 Future 跨线程移动；该分配在构造期发生一次，调用路径保持零堆分配；
+/// - 若闭包捕获非 `'static` 引用或依赖非 `Send` 资源，编译阶段会直接失败，需要调用方调整所有权模型。
+pub struct SimpleServiceFn<F> {
+    /// 顺序执行的核心协调器，负责在 `poll_ready` 与 `call` 之间传递占用状态。
+    ///
+    /// - **架构位置**：复用 [`ServiceReadyCoordinator`]，确保与过程宏展开保持一致的状态机行为；
+    /// - **设计考量**：使用 `Arc` 封装内部状态，允许 Future 在业务线程间自由移动，同时维持零分配热路径。
+    coordinator: ServiceReadyCoordinator,
+    /// 业务逻辑闭包。
+    ///
+    /// - **职责**：生成实际的业务 Future，由 `GuardedFuture` 在外层提供占用释放语义；
+    /// - **约束**：保持 `Send + Sync + 'static`，以便整体服务满足 [`Service`] 对实现者的并发要求。
+    logic: F,
+}
+
+impl<F> SimpleServiceFn<F>
+where
+    F: Send + Sync + 'static,
+{
+    /// 创建顺序执行的闭包 Service。
+    ///
+    /// # 实现细节（How）
+    /// - 内部组合 [`ServiceReadyCoordinator::new`] 与值语义闭包，避免额外装箱或动态分派；
+    /// - `logic` 字段按值存储，确保 `Service` 可在 `Send + Sync` 语境下直接移动；
+    /// - 构造完成后即可立即参与 `poll_ready`/`call` 循环，无需额外初始化步骤。
+    pub fn new(logic: F) -> Self {
+        Self {
+            coordinator: ServiceReadyCoordinator::new(),
+            logic,
+        }
+    }
+}
 
 impl<F, Request, Fut, Response, E> Service<Request> for SimpleServiceFn<F>
 where
     F: FnMut(CallContext, Request) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<Response, E>> + Send + 'static,
-    E: Error,
+    Response: Send + 'static,
+    E: Error + Send + 'static,
 {
     type Response = Response;
     type Error = E;
-    type Future = Fut;
+    type Future = GuardedFuture<Fut, Response, E>;
 
     fn poll_ready(
         &mut self,
         _ctx: &ExecutionContext<'_>,
-        _cx: &mut TaskContext<'_>,
+        cx: &mut TaskContext<'_>,
     ) -> PollReady<Self::Error> {
-        Poll::Ready(ReadyCheck::Ready(ReadyState::Ready))
+        self.coordinator.poll_ready(cx)
     }
 
     fn call(&mut self, ctx: CallContext, req: Request) -> Self::Future {
-        (self.0)(ctx, req)
+        let guard = self.coordinator.begin_call();
+        let fut = (self.logic)(ctx, req);
+        GuardedFuture::new(guard, fut)
     }
 }
 
