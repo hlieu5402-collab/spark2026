@@ -5,14 +5,15 @@ use std::{
 };
 
 use spark_core::contract::{Budget, BudgetKind, CallContext, CallContextBuilder, Cancellation, CloseReason};
-use spark_core::error::{CoreError, ErrorCategory};
+use spark_core::error::{self, CoreError, ErrorCategory};
 use spark_core::observability::{metrics::InstrumentDescriptor, AttributeSet, CoreUserEvent, LogRecord, Logger};
 use spark_core::pipeline::{
     default_handlers::{ExceptionAutoResponder, ReadyStateEvent},
     Context, Controller, HandlerRegistry,
 };
 use spark_core::observability::metrics::{Counter, Gauge, Histogram, MetricsProvider};
-use spark_core::status::{ReadyState, RetryAdvice};
+use spark_core::security::SecurityClass;
+use spark_core::status::{BusyReason, ReadyState, RetryAdvice};
 use spark_core::{
     buffer::{PoolStatDimension, PoolStats, PipelineMessage},
     contract::Deadline,
@@ -28,12 +29,11 @@ use spark_core::{
 #[test]
 fn resource_exhausted_produces_budget_ready_state() {
     let controller = Arc::new(RecordingController::default());
-    let budget = Budget::new(BudgetKind::Flow, 1);
+    let budget = Budget::new(BudgetKind::Decode, 1);
     let _ = budget.try_consume(1);
     let call_context = CallContext::builder().add_budget(budget).build();
     let ctx = RecordingContext::new(controller.clone(), call_context);
-    let error = CoreError::new("test.resource", "budget exhausted")
-        .with_category(ErrorCategory::ResourceExhausted(BudgetKind::Flow));
+    let error = CoreError::new(error::codes::PROTOCOL_BUDGET_EXCEEDED, "budget exhausted");
 
     ExceptionAutoResponder::new().on_exception_caught(&ctx, error);
 
@@ -53,14 +53,27 @@ fn retryable_maps_to_retry_after_signal() {
     let controller = Arc::new(RecordingController::default());
     let call_context = CallContext::builder().build();
     let ctx = RecordingContext::new(controller.clone(), call_context);
-    let advice = RetryAdvice::after(Duration::from_millis(150));
-    let error = CoreError::new("test.retry", "try later").with_category(ErrorCategory::Retryable(advice.clone()));
+    let error = CoreError::new(error::codes::TRANSPORT_IO, "try later");
 
     ExceptionAutoResponder::new().on_exception_caught(&ctx, error);
 
     let states = controller.ready_states();
-    assert_eq!(states.len(), 1);
-    assert_eq!(states[0], ReadyState::RetryAfter(advice));
+    assert_eq!(states.len(), 2, "Retryable 错误应先广播 Busy 再给出 RetryAfter");
+    assert_eq!(states[0], ReadyState::Busy(BusyReason::downstream()));
+    match &states[1] {
+        ReadyState::RetryAfter(advice) => {
+            assert_eq!(advice.wait, Duration::from_millis(150));
+            assert!(
+                advice
+                    .reason
+                    .as_ref()
+                    .map(|s| s.contains("等待链路恢复"))
+                    .unwrap_or(false),
+                "RetryAdvice 原因应描述传输层等待窗口"
+            );
+        }
+        state => panic!("expect retry after but got {:?}", state),
+    }
 }
 
 #[test]
@@ -68,8 +81,7 @@ fn security_violation_triggers_graceful_close() {
     let controller = Arc::new(RecordingController::default());
     let call_context = CallContext::builder().build();
     let ctx = RecordingContext::new(controller, call_context);
-    let error = CoreError::new("test.security", "unauthorized")
-        .with_category(ErrorCategory::Security(spark_core::security::SecurityClass::Authorization));
+    let error = CoreError::new(error::codes::APP_UNAUTHORIZED, "unauthorized");
 
     ExceptionAutoResponder::new().on_exception_caught(&ctx, error);
 
@@ -84,7 +96,7 @@ fn protocol_violation_forces_shutdown() {
     let controller = Arc::new(RecordingController::default());
     let call_context = CallContext::builder().build();
     let ctx = RecordingContext::new(controller, call_context);
-    let error = CoreError::new("test.protocol", "bad frame").with_category(ErrorCategory::ProtocolViolation);
+    let error = CoreError::new(error::codes::PROTOCOL_DECODE, "bad frame");
 
     ExceptionAutoResponder::new().on_exception_caught(&ctx, error);
 
@@ -101,7 +113,7 @@ fn cancelled_marks_cancellation_token() {
         .with_cancellation(cancellation.clone())
         .build();
     let ctx = RecordingContext::new(controller, call_context);
-    let error = CoreError::new("test.cancelled", "cancelled").with_category(ErrorCategory::Cancelled);
+    let error = CoreError::new(error::codes::RUNTIME_SHUTDOWN, "cancelled");
 
     ExceptionAutoResponder::new().on_exception_caught(&ctx, error);
 
@@ -116,7 +128,7 @@ fn timeout_marks_cancellation_token() {
         .with_cancellation(cancellation.clone())
         .build();
     let ctx = RecordingContext::new(controller, call_context);
-    let error = CoreError::new("test.timeout", "timeout").with_category(ErrorCategory::Timeout);
+    let error = CoreError::new(error::codes::TRANSPORT_TIMEOUT, "timeout");
 
     ExceptionAutoResponder::new().on_exception_caught(&ctx, error);
 
@@ -131,7 +143,7 @@ fn non_retryable_performs_no_side_effects() {
         .with_cancellation(cancellation.clone())
         .build();
     let ctx = RecordingContext::new(controller.clone(), call_context);
-    let error = CoreError::new("test.other", "noop").with_category(ErrorCategory::NonRetryable);
+    let error = CoreError::new(error::codes::CLUSTER_SERVICE_NOT_FOUND, "noop");
 
     ExceptionAutoResponder::new().on_exception_caught(&ctx, error);
 
@@ -547,3 +559,106 @@ impl TimeDriver for NoopTimeDriver {
 
     async fn sleep(&self, _: Duration) {}
 }
+/// 验证分类矩阵默认映射与 `CoreError::category` 一致，确保文档、代码与测试联动。
+#[test]
+fn default_category_matrix_matches_lookup_contract() {
+    let cases = vec![
+        (
+            error::codes::TRANSPORT_IO,
+            ErrorCategory::Retryable(
+                RetryAdvice::after(Duration::from_millis(150))
+                    .with_reason("传输层 I/O 故障，等待链路恢复后重试"),
+            ),
+        ),
+        (
+            error::codes::TRANSPORT_TIMEOUT,
+            ErrorCategory::Timeout,
+        ),
+        (
+            error::codes::PROTOCOL_DECODE,
+            ErrorCategory::ProtocolViolation,
+        ),
+        (
+            error::codes::PROTOCOL_NEGOTIATION,
+            ErrorCategory::ProtocolViolation,
+        ),
+        (
+            error::codes::PROTOCOL_TYPE_MISMATCH,
+            ErrorCategory::ProtocolViolation,
+        ),
+        (
+            error::codes::PROTOCOL_BUDGET_EXCEEDED,
+            ErrorCategory::ResourceExhausted(BudgetKind::Decode),
+        ),
+        (
+            error::codes::RUNTIME_SHUTDOWN,
+            ErrorCategory::Cancelled,
+        ),
+        (
+            error::codes::CLUSTER_NODE_UNAVAILABLE,
+            ErrorCategory::Retryable(
+                RetryAdvice::after(Duration::from_millis(250))
+                    .with_reason("集群节点暂不可用，稍后重试"),
+            ),
+        ),
+        (
+            error::codes::CLUSTER_NETWORK_PARTITION,
+            ErrorCategory::Retryable(
+                RetryAdvice::after(Duration::from_millis(250))
+                    .with_reason("集群节点暂不可用，稍后重试"),
+            ),
+        ),
+        (
+            error::codes::CLUSTER_LEADER_LOST,
+            ErrorCategory::Retryable(
+                RetryAdvice::after(Duration::from_millis(250))
+                    .with_reason("集群节点暂不可用，稍后重试"),
+            ),
+        ),
+        (
+            error::codes::CLUSTER_SERVICE_NOT_FOUND,
+            ErrorCategory::NonRetryable,
+        ),
+        (
+            error::codes::APP_ROUTING_FAILED,
+            ErrorCategory::NonRetryable,
+        ),
+        (
+            error::codes::CLUSTER_QUEUE_OVERFLOW,
+            ErrorCategory::ResourceExhausted(BudgetKind::Flow),
+        ),
+        (
+            error::codes::DISCOVERY_STALE_READ,
+            ErrorCategory::Retryable(
+                RetryAdvice::after(Duration::from_millis(120))
+                    .with_reason("服务发现数据陈旧，等待刷新"),
+            ),
+        ),
+        (
+            error::codes::ROUTER_VERSION_CONFLICT,
+            ErrorCategory::ProtocolViolation,
+        ),
+        (
+            error::codes::APP_UNAUTHORIZED,
+            ErrorCategory::Security(SecurityClass::Authorization),
+        ),
+        (
+            error::codes::APP_BACKPRESSURE_APPLIED,
+            ErrorCategory::Retryable(
+                RetryAdvice::after(Duration::from_millis(180))
+                    .with_reason("下游正在施加背压，遵循等待窗口"),
+            ),
+        ),
+    ];
+
+    for (code, expected) in cases {
+        let error = CoreError::new(code, "matrix-check");
+        assert_eq!(
+            error.category(),
+            expected,
+            "默认分类矩阵应与 CoreError::category 返回值一致，错误码：{}",
+            code
+        );
+    }
+}
+
