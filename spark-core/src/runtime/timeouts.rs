@@ -1,5 +1,5 @@
+use crate::arc_swap::ArcSwap;
 use alloc::sync::Arc;
-use arc_swap::ArcSwap;
 use core::{
     fmt,
     sync::atomic::{AtomicU64, Ordering},

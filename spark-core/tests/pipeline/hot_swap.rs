@@ -22,7 +22,7 @@ use spark_core::{
     },
     runtime::{
         AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
-        TaskExecutor, TaskHandle, TaskResult, TimeDriver,
+        TaskError, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
     },
 };
 

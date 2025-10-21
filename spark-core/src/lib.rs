@@ -33,6 +33,7 @@ pub mod spark {
 
 mod sealed;
 
+pub mod arc_swap;
 pub mod audit;
 pub mod buffer;
 pub mod cluster;
