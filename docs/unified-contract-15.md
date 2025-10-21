@@ -16,7 +16,7 @@
 
 ## 3. 背压语义统一
 - **落地位置**：`spark-core/src/status/ready.rs` 提供唯一的 `ReadyState/ReadyCheck/PollReady` 语义出口，并通过 `BusyReason` 抽象繁忙原因。
-- **CI 约束**：`cargo clippy -- -D warnings` 确保所有调用方显式处理统一状态，避免忽略背压信号；`tools/ci/check_consistency.sh` 负责阻止旧的 `BackpressureReason` 再次出现。
+- **CI 约束**：`cargo clippy -- -D warnings` 确保所有调用方显式处理统一状态，避免忽略背压信号；`tools/ci/check_consistency.sh` 负责阻止旧的 `Backpressure` 与 `Reason` 拼接关键词再次出现。
 
 ## 4. 优雅关闭契约
 - **落地位置**：`contract::CloseReason`、`pipeline::channel::Channel::close_graceful/closed`、`Context::close_graceful/closed`、`DynService::graceful_close/closed`。

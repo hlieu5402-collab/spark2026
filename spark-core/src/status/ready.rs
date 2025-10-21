@@ -30,7 +30,7 @@ use core::time::Duration;
 /// 服务就绪检查的核心状态枚举。
 ///
 /// # 设计初衷（Why）
-/// - **统一语义**：过往实现分别返回 `Ready/NotReady/Backpressure` 等别名，
+/// - **统一语义**：过往实现分别返回 `Ready/Not Ready/Backpressure` 等别名，
 ///   使调用方难以编写跨域兼容的退避逻辑。本枚举统一抽象为四种语义：
 ///   - `Ready`：可立即受理请求；
 ///   - `Busy`：繁忙但仍保持健康；
