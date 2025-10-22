@@ -7,6 +7,8 @@
 //! ## 契约说明（What）
 //! - 当新增热更新测试时，可在此文件中追加 `mod` 声明即可生效。
 //! - 本文件自身不包含测试逻辑，仅负责模块装配，不引入共享状态。
+#[path = "hotreload/consistency.rs"]
+mod consistency;
 #[path = "hotreload/limits_timeout.rs"]
 mod limits_timeout;
 
@@ -22,6 +24,16 @@ pub mod tests {
         #[test]
         fn hot_reload_limits_and_timeouts_is_atomic() {
             hot_reload_limits_and_timeouts_is_atomic_case();
+        }
+
+        pub mod consistency {
+            pub use super::super::super::consistency::hot_reload_config_consistency_case;
+
+            /// 高并发环境下验证配置热更新的无撕裂与指标打点。
+            #[test]
+            fn hot_reload_configuration_is_consistent() {
+                hot_reload_config_consistency_case();
+            }
         }
     }
 }

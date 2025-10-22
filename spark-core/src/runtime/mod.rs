@@ -20,6 +20,7 @@
 //! - 若使用 `spawn_local` 运行 `!Send` 任务，请确保宿主线程生命周期覆盖任务执行窗口（该能力需运行时自行扩展）。
 
 mod executor;
+mod hotreload;
 mod services;
 mod slo;
 mod task;
@@ -27,6 +28,8 @@ mod timeouts;
 mod timer;
 
 pub use executor::TaskExecutor;
+pub(crate) use hotreload::HotReloadObservability;
+pub use hotreload::{HotReloadApplyTimer, HotReloadFence, HotReloadReadGuard, HotReloadWriteGuard};
 pub use services::CoreServices;
 pub use slo::{
     SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,

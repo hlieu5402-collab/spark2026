@@ -558,4 +558,28 @@ pub mod contract {
         /// 标签：策略类型。
         pub const ATTR_ACTION: &str = "limit.action";
     }
+
+    /// 热更新域指标契约定义。
+    ///
+    /// # 设计意图（Why）
+    /// - 统一暴露运行时热更新过程中的纪元与延迟，便于 SRE 在 Grafana/Prometheus 中排查配置是否落地；
+    /// - 与运行时文档 `docs/runbook/pipeline-epoch.md` 保持一致的命名规范，方便联动分析。
+    pub mod hot_reload {
+        use super::InstrumentDescriptor;
+
+        /// 运行时配置纪元，单调递增。
+        pub const CONFIG_EPOCH: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.hot_reload.config_epoch")
+                .with_description("运行时已应用配置的纪元号，单调递增")
+                .with_unit("epoch");
+
+        /// 热更新应用耗时直方图，单位毫秒。
+        pub const APPLY_LATENCY_MS: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.hot_reload.apply_latency_ms")
+                .with_description("从收到配置更新到完成应用的耗时分布，单位毫秒")
+                .with_unit("ms");
+
+        /// 标签：区分具体的配置组件（如 limits/timeouts）。
+        pub const ATTR_COMPONENT: &str = "hot_reload.component";
+    }
 }
