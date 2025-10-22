@@ -19,7 +19,7 @@ use crate::{
 use super::{
     ChangeEvent, ChangeNotification, ChangeSet, ConfigDelta, ConfigKey, ConfigValue,
     ConfigurationError, ConfigurationErrorKind, ConfigurationLayer, ConfigurationSnapshot,
-    ConfigurationSource, ProfileDescriptor, ProfileId, ProfileLayering, SourceRegistrationError,
+    DynConfigurationSource, ProfileDescriptor, ProfileId, ProfileLayering, SourceRegistrationError,
 };
 
 /// 已解析的配置结果。
@@ -638,7 +638,7 @@ impl fmt::Debug for BuildOutcome {
 #[derive(Default)]
 pub struct ConfigurationBuilder {
     profile: Option<ProfileDescriptor>,
-    sources: Vec<Box<dyn ConfigurationSource>>, // 采用 trait object 以兼容多种实现
+    sources: Vec<Box<dyn DynConfigurationSource>>, // 采用 trait object 以兼容多种实现
     capacity: Option<usize>,
     audit: Option<AuditPipeline>,
 }
@@ -711,7 +711,7 @@ impl ConfigurationBuilder {
     /// - 允许调用者按需组合本地文件、集中式配置中心等多种来源，实现分层治理。
     ///
     /// ### 契约说明（What）
-    /// - **输入**：实现了 [`ConfigurationSource`] 的对象。
+    /// - **输入**：实现了 [`ConfigurationSource`](crate::configuration::ConfigurationSource) 的对象，并通过 [`DynConfigurationSource`] 装箱。
     /// - **前置条件**：若设置了 `capacity`，需保证未超过上限；Builder 会检测重复实例。
     /// - **后置条件**：成功注册后，数据源被保存供 `build` 阶段调用。
     ///
@@ -723,7 +723,7 @@ impl ConfigurationBuilder {
     /// - 指针比较不会检测“逻辑重复”，若两个不同实例访问同一远程配置中心，上层需自行治理。
     pub fn register_source(
         &mut self,
-        source: Box<dyn ConfigurationSource>,
+        source: Box<dyn DynConfigurationSource>,
     ) -> Result<(), SourceRegistrationError> {
         if self
             .capacity
@@ -733,9 +733,9 @@ impl ConfigurationBuilder {
         }
 
         // 这里只进行简单的指针比较，调用方需自行保证不会注册重复实例。
-        let new_ptr: *const dyn ConfigurationSource = &*source;
+        let new_ptr: *const dyn DynConfigurationSource = &*source;
         if self.sources.iter().any(|existing| {
-            let existing_ptr: *const dyn ConfigurationSource = &**existing;
+            let existing_ptr: *const dyn DynConfigurationSource = &**existing;
             core::ptr::addr_eq(existing_ptr, new_ptr)
         }) {
             return Err(SourceRegistrationError::Duplicate);
@@ -757,7 +757,7 @@ impl ConfigurationBuilder {
     /// - **后置条件**：Builder 仅持有对单例的引用包装，不负责析构。
     pub fn register_source_static(
         &mut self,
-        source: &'static (dyn ConfigurationSource),
+        source: &'static (dyn DynConfigurationSource),
     ) -> Result<(), SourceRegistrationError> {
         self.register_source(super::source::boxed_static_source(source))
     }
@@ -779,7 +779,7 @@ impl ConfigurationBuilder {
     ///
     /// ### 执行流程（How）
     /// 1. 执行参数校验，生成 [`ValidationReport`]。
-    /// 2. 依次调用每个数据源的 [`ConfigurationSource::load`]，收集所有 Layer。
+    /// 2. 依次调用每个数据源的 [`DynConfigurationSource::load_dyn`], 收集所有 Layer。
     /// 3. 按优先级排序 Layer，写入 [`LayeredConfiguration`] 并计算初始版本。
     /// 4. 基于最终结果生成脱敏快照，打包成 [`BuildOutcome`] 返回。
     ///
@@ -865,7 +865,7 @@ impl ConfigurationBuilder {
 
         let mut layers = Vec::new();
         for (index, source) in sources.iter().enumerate() {
-            match source.load(&descriptor.identifier) {
+            match source.load_dyn(&descriptor.identifier) {
                 Ok(mut fetched) => {
                     report.record_pass(
                         format!("source.load[{index}]"),
@@ -939,7 +939,7 @@ impl ConfigurationBuilder {
 pub struct ConfigurationHandle {
     pub(crate) layered: LayeredConfiguration,
     pub(crate) descriptor: ProfileDescriptor,
-    pub(crate) sources: Vec<Box<dyn ConfigurationSource>>,
+    pub(crate) sources: Vec<Box<dyn DynConfigurationSource>>,
 }
 
 impl ConfigurationHandle {
@@ -980,7 +980,7 @@ impl ConfigurationHandle {
     pub fn watch(&mut self) -> Result<ConfigurationWatch<'_>, ConfigurationError> {
         let mut streams = Vec::with_capacity(self.sources.len());
         for source in &self.sources {
-            let stream = source.watch(&self.descriptor.identifier)?;
+            let stream = source.watch_dyn(&self.descriptor.identifier)?;
             streams.push(stream);
         }
         Ok(ConfigurationWatch::new(&mut self.layered, streams))
@@ -1189,10 +1189,12 @@ impl LayeredConfiguration {
 
 #[cfg(test)]
 mod tests {
+    use super::super::source::NoopConfigStream;
     use super::*;
     #[cfg(feature = "std")]
     use crate::audit::InMemoryAuditRecorder;
     use crate::audit::{AuditActor, AuditContext, AuditError, AuditPipeline, AuditRecorder};
+    use crate::configuration::ConfigurationSource;
     use crate::configuration::error::ConfigurationErrorKind;
     use crate::configuration::{
         ConfigKey, ConfigMetadata, ConfigScope, ConfigValue, ProfileId, SourceMetadata,
@@ -1222,6 +1224,11 @@ mod tests {
     }
 
     impl ConfigurationSource for ControlledSource {
+        type Stream<'a>
+            = NoopConfigStream
+        where
+            Self: 'a;
+
         fn load(
             &self,
             _profile: &ProfileId,
@@ -1234,6 +1241,13 @@ mod tests {
             } else {
                 Ok(self.layers.clone())
             }
+        }
+
+        fn watch<'a>(
+            &'a self,
+            _profile: &ProfileId,
+        ) -> Result<Self::Stream<'a>, ConfigurationError> {
+            Ok(NoopConfigStream::new())
         }
     }
 

@@ -21,6 +21,11 @@ fn bench_build_static_layer(c: &mut Criterion) {
 
             struct StaticSource;
             impl spark_core::configuration::ConfigurationSource for StaticSource {
+                type Stream<'a>
+                    = spark_core::configuration::NoopConfigStream
+                where
+                    Self: 'a;
+
                 fn load(
                     &self,
                     _profile: &ProfileId,
@@ -33,6 +38,14 @@ fn bench_build_static_layer(c: &mut Criterion) {
                             ConfigValue::Boolean(true, ConfigMetadata::default()),
                         )],
                     }])
+                }
+
+                fn watch<'a>(
+                    &'a self,
+                    _profile: &ProfileId,
+                ) -> Result<Self::Stream<'a>, spark_core::configuration::ConfigurationError>
+                {
+                    Ok(spark_core::configuration::NoopConfigStream::new())
                 }
             }
 
