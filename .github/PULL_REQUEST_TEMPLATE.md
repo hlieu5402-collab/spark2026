@@ -42,13 +42,15 @@
 - [ ] 构建 / DevOps
 - [ ] 其他（请注明）：
 
-## ReadyState / PollReady / ExecutionContext 变更治理
+## ReadyState / RetryAfter / ErrorCategory / Controller 文档与演练治理
 
-- [ ] 已更新相关 ReadyState / PollReady / ExecutionContext 合约测试，并在 PR 中附带变更说明
-- [ ] 已更新对应指标与 Runbook，确保运维手册同步覆盖新行为
-- [ ] 已生成并附上最新的 `semver-checks` 报告链接或关键信息
+- [ ] 已更新 `docs/state_machines.md`，同步状态机图谱与分支语义
+- [ ] 已更新 `docs/retry-policy.md`，阐明新的重试窗口或退避策略
+- [ ] 已更新 `docs/observability/` 下的指标或仪表盘配置（可附链接说明具体文件）
+- [ ] 已更新 `docs/runbook/` 中对应条目，覆盖运维排障路径
+- [ ] 已在 PR 中附带关键回归/演练测试链接，证明新语义经过验证
 
-> ⚠️ CI 会校验 PR 描述中是否包含上述材料的关键信息；如判定“不适用”，请在对应复选框后标注 `N/A` 并说明原因。
+> ⚠️ 若判定“不适用”，请在条目后标注 `N/A` 并补充理由；CI 会校验相关材料的缺失情况。
 
 ## CEP 关联（公共 API 必填）
 
