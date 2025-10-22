@@ -183,11 +183,42 @@ jobs:
           shared-key: nightly-miri
           cache-on-failure: true
 
-      - name: Prepare Miri
-        run: cargo +nightly-2024-12-31 miri setup
+      - name: Run workspace Miri tests
+        env:
+          MIRI_TOOLCHAIN: nightly-2024-12-31
+        run: tools/ci/miri-test.sh
 
-      - name: Run Miri tests
-        run: cargo +nightly-2024-12-31 miri test --manifest-path spark-core/Cargo.toml --features std
+  sanitizers:
+    name: LLVM sanitizers
+    runs-on: ubuntu-latest
+    needs: lint-and-docs
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-12-31
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: nightly-sanitizer-${{ matrix.sanitizer }}
+          cache-on-failure: true
+
+      - name: Install sanitizer dependencies
+        run: sudo apt-get update && sudo apt-get install -y llvm
+
+      - name: Run ${{ matrix.sanitizer }} sanitizer tests
+        env:
+          SANITIZER_TOOLCHAIN: nightly-2024-12-31
+          SANITIZER: ${{ matrix.sanitizer }}
+        run: tools/ci/sanitizers.sh
 
   loom:
     name: Loom model checks (MSRV)
