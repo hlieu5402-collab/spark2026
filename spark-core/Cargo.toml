@@ -82,6 +82,10 @@ path = "tests/observability/mod.rs"
 name = "time"
 path = "tests/time/mod.rs"
 
+[[test]]
+name = "retry"
+path = "tests/retry/mod.rs"
+
 [[bin]]
 name = "audit_replay"
 path = "src/bin/audit_replay.rs"
