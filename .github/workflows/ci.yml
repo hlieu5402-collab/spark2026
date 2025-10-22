@@ -60,6 +60,14 @@ jobs:
           RUSTDOCFLAGS: -Dwarnings
         run: cargo doc --workspace --no-deps
 
+      - name: Install lychee
+        uses: taiki-e/install-action@v2
+        with:
+          tool: lychee@0.15.1
+
+      - name: Check documentation links
+        run: lychee --no-progress docs/**/*.md
+
   builds-and-benches:
     name: Builds & benches (MSRV)
     runs-on: ubuntu-latest
@@ -132,6 +140,10 @@ jobs:
         env:
           SEMVER_BASELINE_DIR: ${{ steps.semver_baseline.outputs.dir }}
         run: cargo semver-checks --manifest-path spark-core/Cargo.toml --baseline-root "$SEMVER_BASELINE_DIR/spark-core"
+
+      - name: Run cargo-semver-checks check-release
+        working-directory: spark-core
+        run: cargo semver-checks check-release
 
       - name: Cleanup SemVer baseline worktree
         if: always()
