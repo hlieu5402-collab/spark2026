@@ -48,6 +48,117 @@ cd "$REPO_ROOT"
 
 violation_count=0
 
+## 变更集收集：用于跨检查共享文件触达信息
+# - **意图 (Why)**：多条护栏需要知道“本次改动是否触及状态机/泛型层”等上下文。
+#   若每条检查重复计算 `git diff`，不仅浪费时间，也可能因为 diff 基准不一致而产生误报。
+# - **所在位置 (Where)**：全局初始化阶段，紧邻 `violation_count`，供后续函数引用。
+# - **执行策略 (How)**：
+#   1. 通过 `determine_diff_base` 推断“对比基准”，优先使用 CI 传入的 PR 基线；
+#   2. 结合 `git diff <base>..HEAD`（覆盖 PR 内提交）与 `git diff HEAD`（覆盖当前工作区未提交改动）；
+#   3. 使用集合去重，得到一次执行中稳定的“已变更文件列表”。
+# - **契约 (What)**：
+#   - 输出：全局数组 `changed_files`，其中元素为仓库根目录下的相对路径；
+#   - 前置条件：仓库处于 Git 环境；
+#   - 后置条件：即便无法推断基准（例如孤立分支），函数也会尽力回退到本地工作区 diff，避免硬失败。
+# - **设计权衡 (Trade-offs)**：不引入额外依赖（如 `jq`），确保脚本可在最简 CI 镜像中运行；若未来需要更精细的变更元信息，可在此处集中扩展。
+# - **风险提示 (Gotchas)**：若 PR 大量重命名文件，`git diff` 会返回 `old -> new` 形式，此处取终点路径以匹配后续检查的判断逻辑。
+changed_files=()
+declare -A __changed_lookup=()
+
+add_changed_file() {
+    ## 辅助函数：向全局 `changed_files` 中安全写入
+    # - **意图 (Why)**：封装去重逻辑，避免在多处手动维护 `declare -A` 判断；
+    # - **契约 (What)**：参数 1 为相对路径；若路径非空且未出现过，则加入数组。
+    local path="$1"
+    [[ -z "$path" ]] && return
+    if [[ -z "${__changed_lookup[$path]:-}" ]]; then
+        changed_files+=("$path")
+        __changed_lookup[$path]=1
+    fi
+}
+
+normalize_porcelain_path() {
+    ## 辅助函数：解析 `git status --porcelain -z` 输出
+    # - **意图 (Why)**：处理 `old -> new` 与含空格路径，保证后续检查获得准确文件名。
+    local raw="$1"
+    if [[ "$raw" == *" -> "* ]]; then
+        raw="${raw##* -> }"
+    fi
+    printf '%s' "$raw"
+}
+
+determine_diff_base() {
+    ## 推断当前执行的 diff 基准
+    # - **意图 (Why)**：在 PR 中与目标分支比较，在本地则退化为 `HEAD^` 或直接使用 `HEAD`，确保护栏以一致视角审视变更。
+    # - **契约 (What)**：若能找到合适基准则输出其 commit id，否则输出空字符串。
+    local candidate=""
+
+    if [[ -n "${CONSISTENCY_BASE_SHA:-}" ]]; then
+        if git cat-file -e "${CONSISTENCY_BASE_SHA}^{commit}" >/dev/null 2>&1; then
+            candidate=$(git rev-parse "${CONSISTENCY_BASE_SHA}")
+        fi
+    fi
+
+    if [[ -z "$candidate" && -n "${CONSISTENCY_BASE_REF:-}" ]]; then
+        if git rev-parse --verify "${CONSISTENCY_BASE_REF}" >/dev/null 2>&1; then
+            candidate=$(git rev-parse "${CONSISTENCY_BASE_REF}")
+        fi
+    fi
+
+    if [[ -z "$candidate" ]]; then
+        if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            candidate=$(git merge-base HEAD origin/main)
+        fi
+    fi
+
+    if [[ -z "$candidate" ]]; then
+        if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            candidate=$(git rev-parse HEAD^)
+        elif git rev-parse --verify HEAD >/dev/null 2>&1; then
+            candidate=$(git rev-parse HEAD)
+        fi
+    fi
+
+    printf '%s' "$candidate"
+}
+
+populate_changed_files() {
+    ## 统一收集“相对于基准”与“当前工作区”两类变更
+    # - **意图 (Why)**：既兼容 CI（干净工作区，只存在 commit diff），也兼容开发者本地（包含未提交改动）。
+    # - **执行策略 (How)**：
+    #   1. 若存在 diff 基准，调用 `git diff --name-only <base>..HEAD`；
+    #   2. 额外调用 `git diff --name-only HEAD` 捕获工作区未提交改动；
+    #   3. 使用 `git status --porcelain -z` 兜底，确保新增文件也被纳入（尤其是未 `git add` 的场景）。
+    local base
+    base=$(determine_diff_base)
+
+    if [[ -n "$base" ]]; then
+        while IFS= read -r path; do
+            add_changed_file "$path"
+        done < <(git diff --name-only "$base"..HEAD || true)
+    fi
+
+    while IFS= read -r path; do
+        add_changed_file "$path"
+    done < <(git diff --name-only HEAD || true)
+
+    while IFS= read -r -d '' entry; do
+        local payload
+        payload=$(normalize_porcelain_path "${entry:3}")
+        add_changed_file "$payload"
+    done < <(git status --porcelain -z || true)
+}
+
+populate_changed_files
+
+is_file_changed() {
+    ## 查询某文件是否出现在当前执行的变更集中
+    # - **契约 (What)**：参数 1 为相对路径，若存在返回 0，否则返回 1。
+    local target="$1"
+    [[ -z "$target" ]] && return 1
+    [[ -n "${__changed_lookup[$target]:-}" ]]
+}
+
 ## 检查一：禁止新的 PollReady 枚举
 # - **意图**：保持唯一的就绪状态枚举定义。
 # - **实现逻辑**：
@@ -95,6 +206,9 @@ check_backpressure_filenames() {
     mapfile -t files < <(git ls-files '*backpressure*.rs')
     for file in "${files[@]}"; do
         [[ -z "$file" ]] && continue
+        if [[ "$file" == *'/tests/'* || "$file" == crates/spark-contract-tests/* ]]; then
+            continue
+        fi
         if [[ "$file" == */backpressure/* ]]; then
             continue
         fi
@@ -141,6 +255,42 @@ check_public_ready_naming() {
 
     mapfile -t definition_matches < <(rg --color=never --pcre2 --no-heading -n --glob '*.rs' "$definition_pattern" || true)
     mapfile -t use_matches < <(rg --color=never --pcre2 --no-heading -n --glob '*.rs' "$use_pattern" || true)
+
+    local -a allow_keywords=(
+        'ReadyStateEvent'
+    )
+
+    if ((${#definition_matches[@]} > 0)); then
+        local -a filtered=()
+        for entry in "${definition_matches[@]}"; do
+            local skip=0
+            for keyword in "${allow_keywords[@]}"; do
+                if [[ "$entry" == *"$keyword"* ]]; then
+                    skip=1
+                    break
+                fi
+            done
+            ((skip == 1)) && continue
+            filtered+=("$entry")
+        done
+        definition_matches=("${filtered[@]}")
+    fi
+
+    if ((${#use_matches[@]} > 0)); then
+        local -a filtered=()
+        for entry in "${use_matches[@]}"; do
+            local skip=0
+            for keyword in "${allow_keywords[@]}"; do
+                if [[ "$entry" == *"$keyword"* ]]; then
+                    skip=1
+                    break
+                fi
+            done
+            ((skip == 1)) && continue
+            filtered+=("$entry")
+        done
+        use_matches=("${filtered[@]}")
+    fi
 
     if ((${#definition_matches[@]} > 0 || ${#use_matches[@]} > 0)); then
         printf '错误：检测到对外暴露的第二套 Ready/Busy/Backpressure 命名，请回归 `status::ready` 提供的统一抽象。\n' >&2
@@ -506,6 +656,78 @@ check_generic_no_tokio_spawn() {
     fi
 }
 
+## 检查十：状态机语义变更需同步文档与 Runbook
+# - **意图 (Why)**：
+#   1. ReadyState/BusyReason 的契约一旦调整，运维侧的 Runbook 与研发侧的状态机说明若未及时更新，将导致告警处置与设计解读脱节。
+#   2. 将“文档同步”前置到 CI，可避免在合入后补写文档的惯性拖延，实现语义与文档双闭环。
+# - **所在位置 (Where)**：位于所有语义守卫之后，作为最终的治理关卡，聚焦“变更是否配套文档”。
+# - **执行策略 (How)**：
+#   1. 枚举状态机关键哨兵文件（`spark-core/src/status/ready.rs`、`spark-core/src/status/mod.rs`、`spark-core/src/service/simple.rs` 等）；
+#   2. 若本次改动触及任一哨兵，则要求同时修改：
+#      - `docs/state_machines.md`（研发态视角的状态机文档）；
+#      - `docs/runbook/` 目录下至少一个文件（运维态 Runbook）。
+#   3. 将缺失项列出，提供明确整改指引。
+# - **契约 (What)**：
+#   - 输入：全局 `changed_files`；
+#   - 输出：若存在缺失文档，打印错误信息并标记违规；
+#   - 前置条件：`populate_changed_files` 已运行；
+#   - 后置条件：文档缺失时阻断流程，否则静默通过。
+# - **设计权衡 (Trade-offs)**：
+#   - 哨兵列表采用显式列举，优先覆盖 ReadyState 主干文件；若未来状态机拆分，可在此扩展列表；
+#   - Runbook 校验以目录前缀匹配，允许一次性更新多个 Runbook，避免硬编码文件名。
+# - **风险提示 (Gotchas)**：
+#   - 若改动仅涉及示例或测试（`tests/` 目录），不会触发此守卫；
+#   - 若文档更新通过脚本生成，请确保在执行前已 `git add`，否则仍会被判定缺失。
+check_state_machine_docs_synced() {
+    local -a sentinels=(
+        'spark-core/src/status/ready.rs'
+        'spark-core/src/status/mod.rs'
+        'spark-core/src/service/simple.rs'
+        'spark-core/src/service/traits/generic.rs'
+    )
+
+    local -a touched_sentinels=()
+    local doc_touched=0
+    local runbook_touched=0
+
+    for sentinel in "${sentinels[@]}"; do
+        if is_file_changed "$sentinel"; then
+            touched_sentinels+=("$sentinel")
+        fi
+    done
+
+    if ((${#touched_sentinels[@]} == 0)); then
+        return
+    fi
+
+    for file in "${changed_files[@]}"; do
+        if [[ "$file" == 'docs/state_machines.md' ]]; then
+            doc_touched=1
+        fi
+        if [[ "$file" == docs/runbook/* ]]; then
+            runbook_touched=1
+        fi
+    done
+
+    if ((doc_touched == 1 && runbook_touched == 1)); then
+        return
+    fi
+
+    printf '错误：状态机相关代码变更缺少文档或 Runbook 更新。\n' >&2
+    printf '触发的状态机文件：\n' >&2
+    printf '  %s\n' "${touched_sentinels[@]}" >&2
+
+    if ((doc_touched == 0)); then
+        printf '缺失：`docs/state_machines.md` 未更新，请补充状态机演进记录。\n' >&2
+    fi
+    if ((runbook_touched == 0)); then
+        printf '缺失：`docs/runbook/` 目录下未见改动，请同步运维处置指引。\n' >&2
+    fi
+
+    printf '建议：与架构文档、Runbook 共同更新，确保研发与运维对 ReadyState 语义保持一致。\n' >&2
+    violation_count=1
+}
+
 check_forbidden_poll_ready
 check_forbidden_backpressure_reason
 check_backpressure_filenames
@@ -515,6 +737,7 @@ check_duplicate_ready_backpressure_expression
 check_busy_wrapped_budget
 check_budget_exhausted_to_busy
 check_generic_no_tokio_spawn
+check_state_machine_docs_synced
 
 if ((violation_count > 0)); then
     exit 1

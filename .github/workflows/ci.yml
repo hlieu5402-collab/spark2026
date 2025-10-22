@@ -29,6 +29,9 @@ jobs:
         run: tools/ci/check_readystate_governance.sh
 
       - name: Consistency guardrails
+        env:
+          CONSISTENCY_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          CONSISTENCY_BASE_REF: ${{ github.base_ref || '' }}
         run: bash tools/ci/check_consistency.sh
 
       - name: Unified protocol governance gate
