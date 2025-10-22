@@ -1,13 +1,13 @@
 # Runbook：SparkServiceRetryAfterBurst（RetryAfter 短期爆发）
 
 - **告警来源**：Prometheus 规则 [`SparkServiceRetryAfterBurst`](../observability/prometheus-rules.yml)
-- **对应仪表盘**：`ready-state-retry-after.json`（UID: `spark-ready-state-retry-after`）
+- **对应仪表盘**：`observability/grafana/ready-state.json`（UID: `spark-ready-state-overview`）
 - **目标恢复时间**：告警触发后 10 分钟内将 RetryAfter 的出现频率压回基线（≤1 次/分钟）
 - **升级联系人**：平台服务 Owner (@spark-platform-oncall)
 
 ## 1. 快速确认（T+0 ~ 5 分钟）
 
-1. 打开 Grafana 仪表盘「RetryAfter 退避热力图」面板，确认告警对应的服务/路由在最近 15 分钟内出现多次 RetryAfter。
+1. 打开 Grafana 仪表盘「ReadyState 占比（5m increase）」与「ReadyState 事件次数（5m increase）」面板，确认告警对应的服务/路由在最近 15 分钟内出现多次 RetryAfter，并观察 Ready 占比是否同步下滑（若 `SparkServiceReadyBaselineDrop` 告警亦触发，应优先处理背压根因）。
 2. 在 Prometheus 中执行 `sum by (service_name, route_id) (increase(spark_request_retry_after_total{service_name="$service",route_id="$route"}[5m]))` 复核次数趋势。
 3. 检查是否为计划内运维变更（发布、限流演练、数据库维护等），若是，请及时更新告警静默窗口。
 
