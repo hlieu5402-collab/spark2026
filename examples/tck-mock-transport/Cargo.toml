@@ -1,0 +1,13 @@
+[package]
+name = "tck-mock-transport"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "演示项目：如何在第三方传输层实现中集成 spark-contract-tests TCK"
+
+[dependencies]
+spark-core = { version = "0.1.0" }
+
+[dev-dependencies]
+spark-contract-tests = { version = "0.1.0" }

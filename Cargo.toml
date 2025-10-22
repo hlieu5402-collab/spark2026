@@ -15,3 +15,8 @@ edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
+
+[patch.crates-io]
+spark-core = { path = "spark-core" }
+spark-contract-tests = { path = "crates/spark-contract-tests" }
+spark-contract-tests-macros = { path = "crates/spark-contract-tests-macros" }

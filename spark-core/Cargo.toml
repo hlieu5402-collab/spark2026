@@ -37,7 +37,7 @@ criterion = "0.5"
 proptest = "1.5"
 thiserror = "1.0"
 spark-otel = { path = "../crates/spark-otel", features = ["test-util"] }
-spark-contract-tests = { path = "../crates/spark-contract-tests" }
+spark-contract-tests = { version = "0.1.0" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }

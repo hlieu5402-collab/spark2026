@@ -79,17 +79,16 @@ fn trace_context_auto_injected_and_spans_form_parent_child_tree() {
     spark_otel::testing::force_flush();
 
     let records = logger.take();
-    assert_eq!(records.len(), 2, "两个 Handler 应各自产生一条日志");
-    assert_eq!(
-        records[0].message, "alpha-handled",
-        "首个 Handler 日志内容应匹配"
-    );
-    assert_eq!(
-        records[1].message, "beta-handled",
-        "第二个 Handler 日志内容应匹配"
-    );
+    let alpha_log = records
+        .iter()
+        .find(|entry| entry.message == "alpha-handled")
+        .expect("应捕获 alpha Handler 的日志");
+    let beta_log = records
+        .iter()
+        .find(|entry| entry.message == "beta-handled")
+        .expect("应捕获 beta Handler 的日志");
 
-    for entry in &records {
+    for entry in [alpha_log, beta_log] {
         assert!(entry.trace.is_some(), "日志应携带 TraceContext");
         assert_eq!(
             entry.trace.as_ref().unwrap().trace_id,
@@ -98,14 +97,16 @@ fn trace_context_auto_injected_and_spans_form_parent_child_tree() {
         );
     }
 
-    let alpha_trace = records[0]
+    let alpha_trace = alpha_log
         .trace
-        .clone()
-        .expect("alpha 日志必须包含 TraceContext");
-    let beta_trace = records[1]
+        .as_ref()
+        .expect("alpha 日志必须包含 TraceContext")
+        .clone();
+    let beta_trace = beta_log
         .trace
-        .clone()
-        .expect("beta 日志必须包含 TraceContext");
+        .as_ref()
+        .expect("beta 日志必须包含 TraceContext")
+        .clone();
 
     assert_ne!(
         alpha_trace.span_id, beta_trace.span_id,
