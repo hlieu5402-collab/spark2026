@@ -37,6 +37,7 @@ pub use snapshot::{
     SnapshotValue,
 };
 pub use source::{
-    ConfigDelta, ConfigurationLayer, ConfigurationSource, NoopConfigStream, SourceMetadata,
+    ConfigDelta, ConfigurationLayer, ConfigurationSource, DynConfigurationSource, NoopConfigStream,
+    SourceMetadata,
 };
 pub use value::{ConfigMetadata, ConfigValue};

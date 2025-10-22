@@ -131,35 +131,82 @@ impl Stream for NoopConfigStream {
 /// - Trait 仅要求 `Send + Sync`，刻意**不**附加 `'static`：配置源通常与底层连接句柄或缓存绑定，其生命周期可能短于进程；
 /// - 若需要跨进程级全局共享，可配合 `boxed_static_source` 借用适配器在 Builder 侧托管 `'static` 引用。
 pub trait ConfigurationSource: Send + Sync + Sealed {
+    /// 热更新流的具体类型。
+    ///
+    /// ### 设计动机（Why）
+    /// - 允许实现者暴露最贴近底层的流类型（如 `ReceiverStream`、`WatchStream`），在高频变更场景降低装箱与虚调用开销；
+    /// - 与 [`watch`](ConfigurationSource::watch) 的生命周期绑定，支持在流中安全捕获对 `self` 的借用。
+    type Stream<'a>: Stream<Item = ConfigDelta> + Send + 'a
+    where
+        Self: 'a;
+
     /// 返回指定 Profile 的配置层集合。
     fn load(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError>;
 
     /// 订阅增量通知。
-    fn watch(
-        &self,
-        _profile: &ProfileId,
-    ) -> Result<BoxStream<'_, ConfigDelta>, ConfigurationError> {
-        Ok(Box::pin(NoopConfigStream::new()) as BoxStream<'_, ConfigDelta>)
+    fn watch<'a>(&'a self, profile: &ProfileId) -> Result<Self::Stream<'a>, ConfigurationError>;
+
+    /// 将实现者返回的流装箱为统一的 [`BoxStream`]，供多路聚合使用。
+    fn watch_boxed<'a>(
+        &'a self,
+        profile: &ProfileId,
+    ) -> Result<BoxStream<'a, ConfigDelta>, ConfigurationError>
+    where
+        Self::Stream<'a>: Sized,
+    {
+        Ok(Box::pin(self.watch(profile)?))
+    }
+}
+
+/// 对象安全的配置源包装，供 Builder 储存与调度。
+pub trait DynConfigurationSource: Send + Sync + Sealed {
+    /// 对应 [`ConfigurationSource::load`] 的对象安全版本。
+    fn load_dyn(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError>;
+
+    /// 对应 [`ConfigurationSource::watch_boxed`] 的对象安全版本。
+    fn watch_dyn<'a>(
+        &'a self,
+        profile: &ProfileId,
+    ) -> Result<BoxStream<'a, ConfigDelta>, ConfigurationError>;
+}
+
+impl<T> DynConfigurationSource for T
+where
+    T: ConfigurationSource,
+    for<'a> T::Stream<'a>: Sized,
+{
+    fn load_dyn(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError> {
+        ConfigurationSource::load(self, profile)
+    }
+
+    fn watch_dyn<'a>(
+        &'a self,
+        profile: &ProfileId,
+    ) -> Result<BoxStream<'a, ConfigDelta>, ConfigurationError> {
+        ConfigurationSource::watch_boxed(self, profile)
     }
 }
 
 /// 将 `'static` 配置源引用转换为拥有型 `Box`，用于桥接借用/拥有双入口。
 pub(crate) fn boxed_static_source(
-    source: &'static (dyn ConfigurationSource),
-) -> Box<dyn ConfigurationSource> {
+    source: &'static (dyn DynConfigurationSource),
+) -> Box<dyn DynConfigurationSource> {
     Box::new(BorrowedConfigurationSource { inner: source })
 }
 
 struct BorrowedConfigurationSource {
-    inner: &'static (dyn ConfigurationSource),
+    inner: &'static (dyn DynConfigurationSource),
 }
 
-impl ConfigurationSource for BorrowedConfigurationSource {
-    fn load(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError> {
-        self.inner.load(profile)
+impl DynConfigurationSource for BorrowedConfigurationSource {
+    fn load_dyn(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError> {
+        self.inner.load_dyn(profile)
     }
 
-    fn watch(&self, profile: &ProfileId) -> Result<BoxStream<'_, ConfigDelta>, ConfigurationError> {
-        self.inner.watch(profile)
+    fn watch_dyn<'a>(
+        &'a self,
+        profile: &ProfileId,
+    ) -> Result<BoxStream<'a, ConfigDelta>, ConfigurationError> {
+        self.inner.watch_dyn(profile)
     }
 }

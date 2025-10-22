@@ -89,10 +89,10 @@ pub use configuration::{
     ChangeNotification, ChangeSet, ConfigDelta, ConfigKey, ConfigMetadata, ConfigScope,
     ConfigValue, ConfigurationBuilder, ConfigurationError, ConfigurationHandle, ConfigurationLayer,
     ConfigurationSnapshot, ConfigurationSource, ConfigurationUpdate, ConfigurationUpdateKind,
-    ConfigurationWatch, LayeredConfiguration, NoopConfigStream, ProfileDescriptor, ProfileId,
-    ProfileLayering, ResolvedConfiguration, SnapshotEntry, SnapshotLayer, SnapshotMetadata,
-    SnapshotProfile, SnapshotValue, SourceMetadata, ValidationFinding, ValidationReport,
-    ValidationState,
+    ConfigurationWatch, DynConfigurationSource, LayeredConfiguration, NoopConfigStream,
+    ProfileDescriptor, ProfileId, ProfileLayering, ResolvedConfiguration, SnapshotEntry,
+    SnapshotLayer, SnapshotMetadata, SnapshotProfile, SnapshotValue, SourceMetadata,
+    ValidationFinding, ValidationReport, ValidationState,
 };
 pub use context::ExecutionContext;
 pub use contract::{

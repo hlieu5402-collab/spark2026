@@ -202,17 +202,19 @@ impl TestSource {
 }
 
 impl ConfigurationSource for TestSource {
+    type Stream<'a>
+        = TestStream
+    where
+        Self: 'a;
+
     fn load(&self, _profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError> {
         Ok(self.layers.clone())
     }
 
-    fn watch(
-        &self,
-        _profile: &ProfileId,
-    ) -> Result<spark_core::future::BoxStream<'_, ConfigDelta>, ConfigurationError> {
-        Ok(Box::pin(TestStream {
+    fn watch<'a>(&'a self, _profile: &ProfileId) -> Result<Self::Stream<'a>, ConfigurationError> {
+        Ok(TestStream {
             events: Arc::clone(&self.events),
-        }))
+        })
     }
 }
 
