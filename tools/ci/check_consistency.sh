@@ -63,6 +63,8 @@ violation_count=0
 # - **设计权衡 (Trade-offs)**：不引入额外依赖（如 `jq`），确保脚本可在最简 CI 镜像中运行；若未来需要更精细的变更元信息，可在此处集中扩展。
 # - **风险提示 (Gotchas)**：若 PR 大量重命名文件，`git diff` 会返回 `old -> new` 形式，此处取终点路径以匹配后续检查的判断逻辑。
 changed_files=()
+diff_base=""
+diff_base_mode="absent"
 declare -A __changed_lookup=()
 
 add_changed_file() {
@@ -131,6 +133,23 @@ populate_changed_files() {
     #   3. 使用 `git status --porcelain -z` 兜底，确保新增文件也被纳入（尤其是未 `git add` 的场景）。
     local base
     base=$(determine_diff_base)
+    diff_base="$base"
+    diff_base_mode="absent"
+
+    # - **延伸契约补充**：额外记录基线来源，供后续守卫判断“是否需要对比提交历史”
+    #   - 若 `diff_base` 来自上游分支（CI 正常场景），则需要扫描整个提交差异；
+    #   - 若仅能回退到 `HEAD` 或 `HEAD^`（本地孤立分支场景），则仅针对工作区变更触发守卫，避免对历史提交重复执法。
+    if [[ -n "$base" ]]; then
+        local head_rev
+        head_rev=$(git rev-parse HEAD)
+        if [[ "$base" == "$head_rev" ]]; then
+            diff_base_mode="self"
+        elif git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$base" == "$(git rev-parse HEAD^ 2>/dev/null)" ]]; then
+            diff_base_mode="parent"
+        else
+            diff_base_mode="upstream"
+        fi
+    fi
 
     if [[ -n "$base" ]]; then
         while IFS= read -r path; do
@@ -638,6 +657,191 @@ PY
     fi
 }
 
+## 检查九：关键状态语义改动需同步跨职能文档
+# - **意图 (Why)**：
+#   1. 当 PR 改动 `ReadyState` / `RetryAfter` / `ErrorCategory` / `Controller` 等核心治理语义时，若缺少配套的状态机手册、重试策略文档、观测仪表以及 Runbook，
+#      运维与值班人员将无法快速理解新行为，导致恢复流程断层。
+#   2. 历史上出现过“代码先行，Runbook 滞后”的案例，本检查通过自动化方式要求一次提交内补齐各侧文档，形成端到端可追溯链路。
+# - **所在位置与作用 (Where)**：位于语义守卫尾部，紧随运行时语义一致性检查之后，专门处理“跨团队知识同步”这一治理维度。
+# - **执行策略 (How)**：
+#   1. 使用 `git diff --unified=0` 获取相对基线与当前工作区的增量，结合 Python 解析 hunk 行号，定位新增/删除的关键字行；
+#   2. 过滤掉 `docs/` 目录，使得纯文档修改不会误触；
+#   3. 一旦侦测到目标关键字变更，即要求同时存在以下改动：
+#      - `docs/state_machines.md`：记录状态机拓扑与分支语义；
+#      - `docs/retry-policy.md`：对外声明重试/退避契约；
+#      - `docs/observability/` 目录：更新指标、仪表盘或告警规则；
+#      - `docs/runbook/` 下至少一个文件：确保排障脚本与操作指引同步；
+#      若缺失任何一项，将输出违规清单并提示补充。
+# - **契约 (What)**：
+#   - **输入**：`changed_files`（已由前序步骤填充）以及可选的 `diff_base`；
+#   - **输出**：当文档缺失时打印触发的关键字行与缺失项，退出码设为非 0；
+#   - **前置条件**：仓库可执行 `git diff` 与 `python3`；
+#   - **后置条件**：成功时静默通过，失败时阻断 CI；
+# - **设计权衡 (Trade-offs)**：
+#   - 采用轻量的 diff 解析而非构建 AST，可在不依赖额外第三方库的前提下运行于最小 CI 镜像；
+#   - 通过“关键字 + 文档清单”策略覆盖 ReadyState/RP/ErrorCategory/Controller 四类典型改动，若未来需要扩展可在关键字数组中追加；
+# - **风险提示 (Gotchas)**：
+#   - 若贡献者仅在工具脚本中引入关键字字符串（例如生成器参数），也会触发守卫，请在 PR 中说明原因并补齐文档；
+#   - 若文档更新通过自动生成脚本完成，需确保最终文件已被 `git add`，否则仍会被视为缺失；
+#   - 当前实现仅校验“是否更新”，不验证内容质量，仍需 code review 辅助把关。
+check_keyword_semantic_docs() {
+    local python_output
+
+    python_output=$(DIFF_BASE="$diff_base" DIFF_BASE_MODE="$diff_base_mode" python3 - <<'PY'
+import os
+import re
+import subprocess
+import sys
+
+KEYWORDS = re.compile(r"\b(ReadyState|RetryAfter|ErrorCategory|Controller)\b")
+HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+def run_diff(args, scope, sink):
+    try:
+        diff = subprocess.check_output(args, text=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"运行 {' '.join(args)} 失败：{exc}") from exc
+
+    current_file = None
+    old_line = None
+    new_line = None
+
+    for raw in diff.splitlines():
+        if raw.startswith('diff --git'):
+            continue
+        if raw.startswith('index '):
+            continue
+        if raw.startswith('--- '):
+            continue
+        if raw.startswith('+++ '):
+            candidate = raw[4:]
+            if candidate == '/dev/null':
+                current_file = None
+            else:
+                if candidate.startswith('b/'):
+                    candidate = candidate[2:]
+                current_file = candidate
+            continue
+        if current_file is None:
+            continue
+        if current_file.startswith(('docs/', '.github/', 'tools/')):
+            continue
+
+        if raw.startswith('@@ '):
+            match = HUNK_RE.match(raw)
+            if not match:
+                old_line = None
+                new_line = None
+                continue
+            old_line = int(match.group(1))
+            new_line = int(match.group(2))
+            continue
+
+        if raw.startswith('+') and not raw.startswith('+++'):
+            if new_line is None:
+                continue
+            content = raw[1:]
+            if KEYWORDS.search(content):
+                sink.add((scope, current_file, new_line, 'add', content.strip()))
+            new_line += 1
+            continue
+
+        if raw.startswith('-') and not raw.startswith('---'):
+            if old_line is None:
+                continue
+            content = raw[1:]
+            if KEYWORDS.search(content):
+                sink.add((scope, current_file, old_line, 'del', content.strip()))
+            old_line += 1
+            continue
+
+        if not raw.startswith('\\'):
+            if old_line is not None:
+                old_line += 1
+            if new_line is not None:
+                new_line += 1
+
+
+class OrderedSet:
+    def __init__(self):
+        self._items = []
+        self._seen = set()
+
+    def add(self, item):
+        if item in self._seen:
+            return
+        self._seen.add(item)
+        self._items.append(item)
+
+    def __iter__(self):
+        return iter(self._items)
+
+
+records = OrderedSet()
+
+base = os.environ.get('DIFF_BASE', '').strip()
+base_mode = os.environ.get('DIFF_BASE_MODE', '').strip()
+if base and base_mode == 'upstream':
+    run_diff(['git', 'diff', '--no-color', '--unified=0', f'{base}..HEAD', '--', '.', ':(exclude)docs/**'], 'committed', records)
+
+run_diff(['git', 'diff', '--no-color', '--unified=0', 'HEAD', '--', '.', ':(exclude)docs/**'], 'worktree', records)
+
+for scope, path, line, kind, content in records:
+    print(f"{scope}|{path}|{line}|{kind}|{content}")
+PY
+) || true
+
+    if [[ -z "$python_output" ]]; then
+        return
+    fi
+
+    local state_doc=0
+    local retry_doc=0
+    local observability_doc=0
+    local runbook_doc=0
+
+    for file in "${changed_files[@]}"; do
+        case "$file" in
+            'docs/state_machines.md')
+                state_doc=1
+                ;;
+            'docs/retry-policy.md')
+                retry_doc=1
+                ;;
+            docs/observability/*)
+                observability_doc=1
+                ;;
+            docs/runbook/*)
+                runbook_doc=1
+                ;;
+        esac
+    done
+
+    if ((state_doc == 1 && retry_doc == 1 && observability_doc == 1 && runbook_doc == 1)); then
+        return
+    fi
+
+    printf '错误：检测到涉及 ReadyState/RetryAfter/ErrorCategory/Controller 的代码变更，但缺少文档/仪表/Runbook 配套更新。\n' >&2
+    printf '触发的关键字行：\n' >&2
+    printf '  %s\n' "$python_output" >&2
+
+    if ((state_doc == 0)); then
+        printf '缺失：请更新 `docs/state_machines.md`，保持状态机语义与实现一致。\n' >&2
+    fi
+    if ((retry_doc == 0)); then
+        printf '缺失：请更新 `docs/retry-policy.md`，同步重试/退避契约。\n' >&2
+    fi
+    if ((observability_doc == 0)); then
+        printf '缺失：请更新 `docs/observability/` 下的指标或仪表盘，确保告警与采集覆盖新语义。\n' >&2
+    fi
+    if ((runbook_doc == 0)); then
+        printf '缺失：请更新 `docs/runbook/` 目录，指导一线排障操作。\n' >&2
+    fi
+
+    printf '建议：在 PR 描述中附带关键测试/演练链接，证明新语义已通过验证。\n' >&2
+    violation_count=1
+}
+
 ## 检查六：generic 层禁止直接调用 `tokio::spawn`
 # - **意图 (Why)**：`TaskExecutor::spawn` 已强制绑定 `CallContext`，若在泛型 Handler 层直接调用
 #   `tokio::spawn` 会绕过上下文传播，导致取消/截止信号丢失。
@@ -737,6 +941,7 @@ check_duplicate_ready_backpressure_expression
 check_busy_wrapped_budget
 check_budget_exhausted_to_busy
 check_generic_no_tokio_spawn
+check_keyword_semantic_docs
 check_state_machine_docs_synced
 
 if ((violation_count > 0)); then
