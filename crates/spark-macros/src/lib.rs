@@ -104,8 +104,12 @@ fn expand_service(func: ItemFn) -> Result<proc_macro2::TokenStream, Error> {
         #logic_fn
 
         #(#attrs)*
-        #vis fn #fn_ident() -> impl spark::service::Service<#request_ty, Response = #response_ty, Error = #error_ty> {
-            spark::service::simple::SimpleServiceFn::new(#logic_ident)
+        #vis fn #fn_ident() -> impl spark::service::Service<#request_ty, Response = #response_ty, Error = #error_ty>
+            + spark::service::AutoDynBridge<DynOut = spark::service::BoxService>
+        {
+            spark::service::DynBridge::<_, #request_ty>::new(
+                spark::service::simple::SimpleServiceFn::new(#logic_ident),
+            )
         }
     };
 
