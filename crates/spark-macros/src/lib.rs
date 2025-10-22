@@ -92,6 +92,7 @@ fn expand_service(func: ItemFn) -> Result<proc_macro2::TokenStream, Error> {
 
     let fn_ident = func.sig.ident.clone();
     let logic_ident = format_ident!("__spark_service_logic_{}", fn_ident);
+    let audit_ident = format_ident!("__spark_service_audit_{}", fn_ident);
     let attrs = func.attrs.clone();
     let vis = func.vis.clone();
 
@@ -110,6 +111,47 @@ fn expand_service(func: ItemFn) -> Result<proc_macro2::TokenStream, Error> {
             spark::service::DynBridge::<_, #request_ty>::new(
                 spark::service::simple::SimpleServiceFn::new(#logic_ident),
             )
+        }
+
+        #[cfg(test)]
+        #[allow(dead_code)]
+        fn #audit_ident() {
+            /// 检查宏展开生成的逻辑函数是否满足 `Send + Sync + 'static` 约束，并返回符合契约的 Future。
+            fn assert_logic_contract<F, Fut>(_: &F)
+            where
+                F: FnMut(spark::CallContext, #request_ty) -> Fut + Send + Sync + 'static,
+                Fut: core::future::Future<Output = core::result::Result<#response_ty, #error_ty>> + Send + 'static,
+            {
+            }
+
+            /// 检查最终 Service 是否实现合约指定的所有 Trait 约束，同时验证 `call` 返回的 Future 类型。
+            fn assert_service_contract<S>(service: &S)
+            where
+                S: spark::service::Service<#request_ty, Response = #response_ty, Error = #error_ty>
+                    + spark::service::AutoDynBridge<DynOut = spark::service::BoxService>
+                    + Send
+                    + Sync
+                    + 'static,
+            {
+                fn assert_future<Fut>()
+                where
+                    Fut: core::future::Future<Output = core::result::Result<#response_ty, #error_ty>>
+                        + Send
+                        + 'static,
+                {
+                }
+
+                assert_future::<
+                    <S as spark::service::Service<#request_ty>>::Future,
+                >();
+                let _ = service;
+            }
+
+            let logic = #logic_ident;
+            assert_logic_contract(&logic);
+
+            let service = #fn_ident();
+            assert_service_contract(&service);
         }
     };
 

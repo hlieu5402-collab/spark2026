@@ -1,93 +1,34 @@
 use std::{
-    alloc::{GlobalAlloc, Layout, System},
     future::Future,
     pin::Pin,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
     task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-/// 统计当前测试二进制中的堆分配次数。
-///
-/// # 设计动机（Why）
-/// - `T21` 验收要求“宏展开零堆分配”，因此通过自定义全局分配器计数所有 `alloc/realloc` 调用；
-/// - 结合互斥锁保证测试串行执行，避免并发测试对计数造成噪声。
-///
-/// # 实现概览（How）
-/// - 使用原子计数器承载分配次数，所有分配 API 在成功返回时自增一次；
-/// - 回收操作无需统计，因此直接委托给系统分配器。
-static ALLOC_COUNTER: AtomicUsize = AtomicUsize::new(0);
+#[path = "../../../tools/bench/alloc_check.rs"]
+mod alloc_check;
 
-/// 单测专用的计数分配器，实现 `GlobalAlloc` 并委托给系统分配器。
+use alloc_check::{AllocationScope, AllocationScopeGuard, CountingAllocator};
+use spark::service::Service;
+use spark_core as spark;
+
+/// 在每个测试开始前创建独占作用域，并清零历史分配计数。
 ///
-/// # 设计动机（Why）
-/// - 通过自定义分配器捕获所有堆操作，从而验证服务调用路径不会隐式触发分配；
-/// - 保持实现最小化，仅在成功分配时更新计数器，避免破坏分配器原有语义。
-///
-/// # 行为细节（How）
-/// - `alloc`/`alloc_zeroed`/`realloc`：若底层分配成功即递增计数；
-/// - `dealloc`：完全交由系统分配器处理，不参与计数。
-///
-/// # 契约说明（What）
-/// - **线程安全**：原子操作保证多线程场景下的计数准确；
-/// - **适用范围**：仅用于测试二进制，生产构建仍沿用默认分配器。
-struct CountingAllocator;
-
-unsafe impl GlobalAlloc for CountingAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = unsafe { System.alloc(layout) };
-        if !ptr.is_null() {
-            ALLOC_COUNTER.fetch_add(1, Ordering::SeqCst);
-        }
-        ptr
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        let ptr = unsafe { System.alloc_zeroed(layout) };
-        if !ptr.is_null() {
-            ALLOC_COUNTER.fetch_add(1, Ordering::SeqCst);
-        }
-        ptr
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        unsafe {
-            System.dealloc(ptr, layout);
-        }
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
-        if !new_ptr.is_null() {
-            ALLOC_COUNTER.fetch_add(1, Ordering::SeqCst);
-        }
-        new_ptr
-    }
+/// # 作用域说明（Why & How）
+/// - 通过 [`AllocationScope::lock`] 串行化测试，防止多线程用例互相污染计数结果；
+/// - 获取守卫后立即调用 [`AllocationScopeGuard::reset`]，圈定新的统计窗口；
+/// - 返回的守卫在 Drop 时自动释放互斥锁，维持测试间的独立性。
+fn allocation_scope() -> AllocationScopeGuard {
+    let guard = AllocationScope::lock();
+    guard.reset();
+    guard
 }
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
-
-/// 控制测试串行执行的互斥锁，避免分配计数在测试之间互相干扰。
-static ALLOC_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-/// 将全局分配计数重置为 0，便于在测试中圈定测量窗口。
-fn reset_alloc_counter() {
-    ALLOC_COUNTER.store(0, Ordering::SeqCst);
-}
-
-/// 读取当前观测到的分配次数。
-///
-/// - **用途**：在测试断言中核对“零分配”目标；
-/// - **语义**：返回值为自调用 [`reset_alloc_counter`] 以来成功分配的次数。
-fn observed_allocations() -> usize {
-    ALLOC_COUNTER.load(Ordering::SeqCst)
-}
-
-use spark::service::Service;
-use spark_core as spark;
 
 /// 可手动驱动的 Future，配合测试验证宏生成 Service 的就绪语义。
 struct ManualFutureTask {
@@ -164,7 +105,7 @@ async fn wait_for_manual(
 
 #[test]
 fn poll_ready_pending_then_wake() {
-    let _guard = ALLOC_TEST_LOCK.lock().expect("lock poisoned");
+    let _scope = allocation_scope();
     let mut service = wait_for_manual();
     let call_ctx = spark::CallContext::builder().build();
     let (task, handle) = ManualFutureTask::new();
@@ -218,7 +159,7 @@ fn poll_ready_pending_then_wake() {
 
 #[test]
 fn double_poll_no_ub() {
-    let _guard = ALLOC_TEST_LOCK.lock().expect("lock poisoned");
+    let _scope = allocation_scope();
     let mut service = wait_for_manual();
     let call_ctx = spark::CallContext::builder().build();
     let (task, handle) = ManualFutureTask::new();
@@ -266,16 +207,17 @@ fn double_poll_no_ub() {
 /// 验证宏展开后的顺序 Service 在完整调用生命周期内保持零堆分配。
 ///
 /// # 流程说明（How）
-/// - 在重置分配计数后依次执行 `call`、初次 `poll`（Pending）与再次 `poll_ready`（Pending）；
+/// - 通过 [`allocation_scope`] 获取独占守卫并调用 [`AllocationScopeGuard::reset`]
+///   清理历史数据后，依次执行 `call`、初次 `poll`（Pending）与再次 `poll_ready`（Pending）；
 /// - 手动唤醒业务 Future，驱动完成并确认 waker 被触发；
 /// - 最终断言分配计数保持为 0，证明调用路径未触发堆分配。
 ///
 /// # 成功准则（What）
-/// - `observed_allocations()` 返回 0；
+/// - [`AllocationScopeGuard::snapshot`] 返回的总计为 0；
 /// - Pending→Ready 过程中的唤醒语义与其他测试保持一致。
 #[test]
 fn alloc_eq_zero() {
-    let _guard = ALLOC_TEST_LOCK.lock().expect("lock poisoned");
+    let scope = allocation_scope();
     let mut service = wait_for_manual();
     let call_ctx = spark::CallContext::builder().build();
     let call_ctx_clone = call_ctx.clone();
@@ -295,7 +237,7 @@ fn alloc_eq_zero() {
     let ready_waker = flag_waker(wake_flag.clone());
     let mut ready_cx = Context::from_waker(&ready_waker);
 
-    reset_alloc_counter();
+    scope.reset();
 
     let future = service.call(call_ctx_clone, task);
     let mut future = std::pin::pin!(future);
@@ -311,7 +253,10 @@ fn alloc_eq_zero() {
         Poll::Ready(Ok(()))
     ));
     assert!(wake_flag.load(Ordering::SeqCst));
-    assert_eq!(observed_allocations(), 0, "调用路径存在额外堆分配");
+
+    let snapshot = scope.snapshot();
+    assert_eq!(snapshot.total(), 0, "调用路径存在额外堆分配");
+    assert_eq!(alloc_check::total_allocations(), snapshot.total());
 }
 
 /// 构造一个恒定静默的 [`Waker`]，用于在测试中占位而不触发唤醒副作用。
