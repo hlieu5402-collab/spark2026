@@ -22,13 +22,14 @@
 | C | 验证配置存储 | 若使用外部配置中心（如 Etcd、Consul），检查对应 Key 是否存在最新版本，并确认 watch 连接正常。 |
 | D | 检测网络与负载 | 查看实例与控制面之间的网络延迟/丢包、CPU 利用率，判断是否因资源不足导致热更新延迟。 |
 | E | 核对 Pipeline 拓扑 | 若仅部分 Pipeline 落后，使用 `spark_pipeline_registry_snapshot` 指标确认 Handler 是否缺失，排除拓扑差异。 |
+| F | 检查数据面日志 | 在落后实例上检索 `INFO pipeline.mutation applied` 日志，确认最近一次热插拔纪元与 `spark_pipeline_epoch` 一致；若日志缺失，优先排查变更是否未提交。 |
 
 ## 3. 恢复动作（T+15 ~ 30 分钟）
 
-1. **重试配置下发**：在控制面重新触发发布或对落后实例执行单点刷新，确保最新配置重新广播。
-2. **清理滞后实例**：若个别副本持续无法更新，考虑逐个摘除并重启，期间需关注流量迁移与容量冗余。
-3. **回滚故障变更**：若确认新配置存在语法/兼容问题导致加载失败，应立即回滚至上一纪元，并记录失败原因。
-4. **加固监控**：为复现案例补充 `spark_pipeline_epoch` / `config_epoch` 的发布事件日志，便于未来快速定位。
+1. **重试配置下发**：在控制面重新触发发布或对落后实例执行单点刷新，确保最新配置重新广播；刷新后应看到 `spark_pipeline_mutation_total{op="add"}` 累加一次。
+2. **清理滞后实例**：若个别副本持续无法更新，考虑逐个摘除并重启，期间需关注流量迁移与容量冗余。重启完成后，`spark_pipeline_epoch` 应重新与控制面对齐。
+3. **回滚故障变更**：若确认新配置存在语法/兼容问题导致加载失败，应立即回滚至上一纪元，并记录失败原因。回滚后，观察数据面是否出现 `pipeline.mutation applied epoch=<旧值>` 日志，以及 `spark_pipeline_mutation_total{op="replace"}`、`{op="remove"}` 的对应跳变。
+4. **加固监控**：为复现案例补充 `spark_pipeline_epoch` / `config_epoch` 的发布事件日志，并订阅 `pipeline.mutation applied` 事件，便于未来快速定位。
 
 ## 4. 恢复验证
 

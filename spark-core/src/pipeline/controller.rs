@@ -28,7 +28,10 @@ use crate::{
     buffer::PipelineMessage,
     contract::{CallContext, CloseReason, Deadline},
     error::{CoreError, SparkError},
-    observability::{CoreUserEvent, TraceContext},
+    observability::{
+        CoreUserEvent, OwnedAttributeSet, TraceContext,
+        metrics::contract::pipeline as pipeline_metrics,
+    },
     runtime::CoreServices,
     sealed::Sealed,
 };
@@ -500,6 +503,32 @@ impl HandlerEntry {
     }
 }
 
+/// 描述 HotSwapController 内部触发的变更操作类型。
+///
+/// # 教案式说明
+/// - **意图（Why）**：集中管理 add/remove/replace 三种变更语义，
+///   防止在观测路径散落裸字符串导致命名漂移或拼写错误。
+/// - **逻辑（How）**：枚举值通过 [`Self::as_label`] 映射为
+///   [`pipeline_metrics::OP_ADD`] 等稳定标签，供指标与日志复用。
+/// - **契约（What）**：若未来扩展新的变更类型，应同步在此枚举中新增分支并更新相关告警/Runbook。
+#[derive(Clone, Copy, Debug)]
+enum PipelineMutationKind {
+    Add,
+    Remove,
+    Replace,
+}
+
+impl PipelineMutationKind {
+    /// 将枚举值映射为观测标签。
+    fn as_label(self) -> &'static str {
+        match self {
+            PipelineMutationKind::Add => pipeline_metrics::OP_ADD,
+            PipelineMutationKind::Remove => pipeline_metrics::OP_REMOVE,
+            PipelineMutationKind::Replace => pipeline_metrics::OP_REPLACE,
+        }
+    }
+}
+
 /// 支持运行期热插拔的默认控制器实现。
 ///
 /// # 教案式说明
@@ -521,6 +550,9 @@ pub struct HotSwapController {
     sequence: AtomicU64,
     mutation: Mutex<()>,
 }
+
+/// HotSwap 控制器在观测指标中的控制器标签取值。
+const HOT_SWAP_CONTROLLER_LABEL: &str = "hot_swap";
 
 impl HotSwapController {
     /// 构造新的热插拔控制器。
@@ -562,7 +594,7 @@ impl HotSwapController {
             insert_index,
             Arc::new(HandlerEntry::new(id, label, handler)),
         );
-        self.commit_chain(chain);
+        self.commit_chain(chain, PipelineMutationKind::Add);
         id
     }
 
@@ -571,12 +603,71 @@ impl HotSwapController {
         ControllerHandleId::new(direction, sequence)
     }
 
-    fn commit_chain(&self, chain: Vec<Arc<HandlerEntry>>) {
+    fn commit_chain(&self, chain: Vec<Arc<HandlerEntry>>, mutation: PipelineMutationKind) {
         let arc_chain = Arc::new(chain);
         let registrations = self.rebuild_registry(&arc_chain);
         self.handlers.store(Arc::clone(&arc_chain));
         self.registry.update(registrations);
-        self.handlers.bump_epoch();
+        let epoch = self.handlers.bump_epoch();
+        self.record_pipeline_observability(mutation, epoch);
+    }
+
+    /// 构造 Pipeline 指标与日志共用的基础标签集合。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：统一控制器、Pipeline ID 等稳定维度，保证指标/日志/Runbook 均可使用相同键值。
+    /// - **逻辑（How）**：以 [`OwnedAttributeSet`] 收集 `pipeline.controller`、`pipeline.id` 两个核心标签，
+    ///   调用方在此基础上追加操作类型、纪元等上下文信息。
+    /// - **契约（What）**：返回集合的生命周期绑定于当前调用；调用方不得缓存引用超出函数作用域。
+    fn base_pipeline_attributes(&self) -> OwnedAttributeSet {
+        let mut attributes = OwnedAttributeSet::new();
+        attributes.push_owned(pipeline_metrics::ATTR_CONTROLLER, HOT_SWAP_CONTROLLER_LABEL);
+        attributes.push_owned(
+            pipeline_metrics::ATTR_PIPELINE_ID,
+            self.channel.id().to_string(),
+        );
+        attributes
+    }
+
+    /// 在 Pipeline 变更提交后记录指标与日志。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：每次 Handler 变更都需要伴随可观测信号，SRE 才能通过 `spark.pipeline.epoch`
+    ///   与 `spark.pipeline.mutation.total` 判断变更是否对等生效，并结合事件日志定位回滚路径。
+    /// - **逻辑（How）**：
+    ///   1. 构建基础标签，写入最新纪元到 Gauge；
+    ///   2. 追加操作类型标签，累加变更计数；
+    ///   3. 再次追加纪元字段并输出 INFO 日志 `pipeline.mutation applied epoch={n}`；
+    ///      日志携带 TraceContext，便于与调用链关联。
+    /// - **契约（What）**：调用方需确保仅在变更成功提交后调用；`epoch` 为逻辑时钟，单调递增。
+    /// - **风险提示（Trade-offs）**：Gauge 使用 `f64` 存储纪元，若长时间运行导致值超出 2^53 需评估是否
+    ///   改用高精度表示；日志字段遵循低基数要求，禁止注入请求级标识。
+    fn record_pipeline_observability(&self, mutation: PipelineMutationKind, epoch: u64) {
+        let gauge_attributes = self.base_pipeline_attributes();
+        self.services.metrics.record_gauge_set(
+            &pipeline_metrics::EPOCH,
+            epoch as f64,
+            gauge_attributes.as_slice(),
+        );
+
+        let mut counter_attributes = gauge_attributes.clone();
+        counter_attributes.push_owned(pipeline_metrics::ATTR_MUTATION_OP, mutation.as_label());
+        counter_attributes.push_owned(pipeline_metrics::ATTR_EPOCH, epoch);
+        self.services.metrics.record_counter_add(
+            &pipeline_metrics::MUTATION_TOTAL,
+            1,
+            counter_attributes.as_slice(),
+        );
+
+        let mut log_attributes = gauge_attributes;
+        log_attributes.push_owned(pipeline_metrics::ATTR_MUTATION_OP, mutation.as_label());
+        log_attributes.push_owned(pipeline_metrics::ATTR_EPOCH, epoch);
+        let message = format!("pipeline.mutation applied epoch={epoch}");
+        self.services.logger.info_with_fields(
+            &message,
+            log_attributes.as_slice(),
+            Some(self.call_context.trace_context()),
+        );
     }
 
     fn rebuild_registry(
@@ -684,7 +775,7 @@ impl HotSwapController {
         let mut chain: Vec<_> = current.iter().cloned().collect();
         if let Some(pos) = chain.iter().position(|entry| entry.handle_id() == handle) {
             chain.remove(pos);
-            self.commit_chain(chain);
+            self.commit_chain(chain, PipelineMutationKind::Remove);
             true
         } else {
             false
@@ -708,7 +799,7 @@ impl HotSwapController {
                 existing.label().to_string(),
                 handler,
             ));
-            self.commit_chain(chain);
+            self.commit_chain(chain, PipelineMutationKind::Replace);
             true
         } else {
             false
@@ -800,7 +891,7 @@ impl Controller for HotSwapController {
             insert_index,
             Arc::new(HandlerEntry::new(id, label, handler)),
         );
-        self.commit_chain(chain);
+        self.commit_chain(chain, PipelineMutationKind::Add);
         id
     }
 

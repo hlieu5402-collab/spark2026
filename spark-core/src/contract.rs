@@ -500,6 +500,8 @@ pub const DEFAULT_OBSERVABILITY_CONTRACT: ObservabilityContract = ObservabilityC
         "spark.limits.drop",
         "spark.limits.degrade",
         "spark.limits.queue.depth",
+        "spark.pipeline.epoch",
+        "spark.pipeline.mutation.total",
     ],
     &[
         "request.id",

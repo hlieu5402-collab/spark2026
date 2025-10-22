@@ -187,14 +187,14 @@ mod loom_tests {
 }
 
 /// 测试通道，为控制器提供固定上下文。
-struct TestChannel {
+pub(crate) struct TestChannel {
     id: String,
     controller: OnceLock<Arc<dyn Controller<HandleId = ControllerHandleId>>>,
     extensions: TestExtensions,
 }
 
 impl TestChannel {
-    fn new(id: &str) -> Self {
+    pub(crate) fn new(id: &str) -> Self {
         Self {
             id: id.to_string(),
             controller: OnceLock::new(),
@@ -202,7 +202,10 @@ impl TestChannel {
         }
     }
 
-    fn bind_controller(&self, controller: Arc<dyn Controller<HandleId = ControllerHandleId>>) {
+    pub(crate) fn bind_controller(
+        &self,
+        controller: Arc<dyn Controller<HandleId = ControllerHandleId>>,
+    ) {
         let _ = self.controller.set(controller);
     }
 }
@@ -263,7 +266,7 @@ impl Channel for TestChannel {
 /// - **契约（What）**：调用方不可依赖此实现存储数据；若未来测试需要验证扩展传播，应替换为真正的 map。
 /// - **权衡（Trade-offs）**：舍弃真实存储换取实现简洁，牺牲了对扩展读写的验证能力。
 #[derive(Default)]
-struct TestExtensions;
+pub(crate) struct TestExtensions;
 
 impl ExtensionsMap for TestExtensions {
     fn insert(&self, _key: std::any::TypeId, _value: Box<dyn std::any::Any + Send + Sync>) {}
@@ -336,7 +339,7 @@ struct TestMessage {
 }
 
 #[derive(Default)]
-struct NoopOpsBus {
+pub(crate) struct NoopOpsBus {
     events: Mutex<Vec<OpsEvent>>,
     policies: Mutex<Vec<(OpsEventKind, EventPolicy)>>,
 }
@@ -414,13 +417,13 @@ impl Histogram for NoopHistogram {
     fn record(&self, _value: f64, _attributes: AttributeSet<'_>) {}
 }
 
-struct NoopLogger;
+pub(crate) struct NoopLogger;
 
 impl Logger for NoopLogger {
     fn log(&self, _record: &LogRecord<'_>) {}
 }
 
-struct NoopBufferPool;
+pub(crate) struct NoopBufferPool;
 
 impl BufferPool for NoopBufferPool {
     fn acquire(&self, _min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
@@ -437,12 +440,12 @@ impl BufferPool for NoopBufferPool {
 }
 
 #[derive(Default)]
-struct NoopRuntime {
+pub(crate) struct NoopRuntime {
     now: Mutex<Duration>,
 }
 
 impl NoopRuntime {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 }

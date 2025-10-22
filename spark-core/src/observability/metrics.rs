@@ -464,6 +464,52 @@ pub mod contract {
         pub const ROLE_SERVER: &str = "server";
     }
 
+    /// Pipeline 域指标契约定义。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：为运行时热插拔与配置热更新提供统一的纪元与变更事件基线，
+    ///   方便 SRE 将数据面观测与控制面发布流程对齐。
+    /// - **逻辑（How）**：通过 `spark.pipeline.epoch` Gauge 暴露当前逻辑纪元，
+    ///   并以 `spark.pipeline.mutation.total` Counter 按操作类型记录 add/remove/replace 事件，
+    ///   同时定义稳定标签（控制器、Pipeline 标识、操作类型、纪元数值）以支撑指标与日志的联动查询。
+    /// - **契约（What）**：
+    ///   - 纪元 Gauge 必须在变更提交后写入，以保证“观察到跳变即可判断新拓扑可见”；
+    ///   - `pipeline.mutation.op` 仅允许使用下方定义的常量，便于 PromQL 模板（如 `sum by (op)`）复用；
+    ///   - `pipeline.id` 需保持低基数，通常对应 Channel ID 或逻辑管线标识。
+    /// - **风险提示（Trade-offs）**：若未来引入多种控制器实现，务必在变更评审中同步更新控制器标签取值，
+    ///   否则 Grafana/告警规则会因枚举漂移产生盲点；当 Pipeline 数量巨大时，可考虑引入按租户分片的聚合策略。
+    pub mod pipeline {
+        use super::InstrumentDescriptor;
+
+        /// Pipeline 最新运行纪元。
+        pub const EPOCH: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.pipeline.epoch")
+                .with_description("Pipeline 运行时逻辑纪元，用于验证热插拔后的拓扑是否已经对等生效")
+                .with_unit("epoch");
+
+        /// Pipeline 变更事件计数。
+        pub const MUTATION_TOTAL: InstrumentDescriptor<'static> =
+            InstrumentDescriptor::new("spark.pipeline.mutation.total")
+                .with_description("Pipeline Handler 变更事件（add/remove/replace）的累计次数")
+                .with_unit("events");
+
+        /// 标签：控制器实现标识。
+        pub const ATTR_CONTROLLER: &str = "pipeline.controller";
+        /// 标签：Pipeline 唯一标识。
+        pub const ATTR_PIPELINE_ID: &str = "pipeline.id";
+        /// 标签：变更操作类型。
+        pub const ATTR_MUTATION_OP: &str = "pipeline.mutation.op";
+        /// 标签：最新纪元，便于日志、事件联动。
+        pub const ATTR_EPOCH: &str = "pipeline.epoch";
+
+        /// 变更操作：新增 Handler。
+        pub const OP_ADD: &str = "add";
+        /// 变更操作：移除 Handler。
+        pub const OP_REMOVE: &str = "remove";
+        /// 变更操作：替换 Handler。
+        pub const OP_REPLACE: &str = "replace";
+    }
+
     /// Limits 域指标契约定义。
     ///
     /// # 内容说明
