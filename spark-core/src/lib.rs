@@ -52,6 +52,7 @@ pub mod host;
 pub mod limits;
 pub mod observability;
 pub mod pipeline;
+pub mod retry;
 pub mod router;
 pub mod runtime;
 pub mod security;
