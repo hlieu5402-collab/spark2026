@@ -25,8 +25,9 @@
 
 ## 3. 性能注记
 
-- 基于 `make ci-bench-smoke` 的 `async_contract_overhead` 样本，`ServiceObject` 与 `TypedCodecAdapter` 在 20 万次仿真调用中平均
-  增加 0.6% 左右的 CPU 时间，满足 P99 ≤ 1% 的目标。【F:spark-core/src/service/traits/object.rs†L124-L150】【F:spark-core/src/codec/traits/object.rs†L94-L130】
+- `async_contract_overhead` 基准注入 2048 轮模拟业务逻辑（旋转 + 混合），在 10 万次调用中测得泛型 `Service<T>` P99 ≈ 6.6 μs、
+  对象层 `BoxService` P99 ≈ 6.3 μs，差值绝对值稳定在 5% 以内；同时对象层每次调用会比泛型层多一次 `BoxFuture` 装箱（3 次/调用
+  vs 2 次/调用），仍落在堆分配预算内。【F:spark-core/benches/async_contract_overhead.rs†L1-L452】【F:docs/reports/benchmarks/dyn_service_overhead.full.json†L1-L41】
 - `RouterObject` 仅在返回路径多一次 `BoxService` 克隆，保持在 0.8% 以内的附加延迟；后续可结合缓存策略进一步下降。【F:spark-core/src/router/traits/object.rs†L149-L167】
 - `TransportFactoryObject` 通过 `BoxFuture` 进行对象层调度，`async_contract_overhead` 样本显示 CPU 增量约 0.9%，落在 T05 延迟约束内。【F:spark-core/src/transport/traits/object.rs†L78-L170】
 
