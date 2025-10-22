@@ -9,7 +9,9 @@ use spark_core::SparkError;
 use spark_core::buffer::PipelineMessage;
 use spark_core::context::ExecutionContext;
 use spark_core::contract::CallContext;
-use spark_core::service::{AutoDynBridge, Decode, Encode, Service, type_mismatch_error};
+use spark_core::service::{
+    AutoDynBridge, Decode, Encode, Service, bridge_to_box_service, type_mismatch_error,
+};
 use spark_core::status::{PollReady, ReadyCheck, ReadyState};
 
 use std::sync::Arc;
@@ -28,6 +30,19 @@ struct MyResponse {
 
 /// 业务 Service：收到请求后追加 `"-ack"` 返回。
 struct MyService;
+
+impl AutoDynBridge for MyService {
+    type DynOut = spark_core::service::BoxService;
+
+    fn into_dyn<Request>(self) -> Self::DynOut
+    where
+        Self: Service<Request, Error = SparkError>,
+        Request: Decode + Send + Sync + 'static,
+        <Self as Service<Request>>::Response: Encode + Send + Sync + 'static,
+    {
+        bridge_to_box_service::<Self, Request>(self)
+    }
+}
 
 impl Decode for MyRequest {
     fn decode(message: PipelineMessage) -> Result<Self, SparkError> {
@@ -111,7 +126,7 @@ fn into_dyn_bridge_roundtrip() {
         payload: "ping".to_string(),
     });
 
-    let boxed = service.into_dyn();
+    let boxed = service.into_dyn::<MyRequest>();
     let mut arc = boxed.into_arc();
     let dyn_service = Arc::get_mut(&mut arc).expect("bridge should hand out unique Arc");
 

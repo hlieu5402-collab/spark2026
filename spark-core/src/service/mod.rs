@@ -13,7 +13,9 @@ pub mod metrics;
 pub mod simple;
 pub mod traits;
 
-pub use auto_dyn::{AutoDynBridge, Decode, Encode, type_mismatch_error};
+pub use auto_dyn::{
+    AutoDynBridge, Decode, DynBridge, Encode, bridge_to_box_service, type_mismatch_error,
+};
 pub use metrics::{PayloadDirection, ServiceMetricsHook, ServiceOutcome};
 pub use simple::SimpleServiceFn;
 pub use traits::generic::{Layer, Service};

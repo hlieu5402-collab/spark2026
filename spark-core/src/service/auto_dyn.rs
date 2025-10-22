@@ -28,13 +28,16 @@
 //! - 若请求/响应类型本身就是 [`PipelineMessage`]，可以使用模块提供的 blanket 实现直接桥接。
 
 use alloc::{format, sync::Arc};
-use core::convert::TryFrom;
+use core::{convert::TryFrom, marker::PhantomData, task::Context as TaskContext};
 
 use crate::SparkError;
 use crate::buffer::PipelineMessage;
+use crate::context::ExecutionContext;
+use crate::contract::CallContext;
 use crate::error::codes;
 use crate::service::traits::object::ServiceObject;
 use crate::service::{BoxService, Service};
+use crate::status::PollReady;
 
 /// 描述“从 [`PipelineMessage`] 解码为具体业务类型”的契约。
 ///
@@ -62,42 +65,156 @@ pub trait Encode {
     fn encode(self) -> PipelineMessage;
 }
 
-/// `AutoDynBridge` 为实现泛型 [`Service`] 的类型提供一键转换到 [`BoxService`] 的能力。
+/// `AutoDynBridge` 为实现泛型 [`Service`] 的类型提供一键转换到对象层的能力。
 ///
 /// # 教案式注释
 /// - **意图 (Why)**：消除在每个 Service 实现旁手写 `ServiceObject::new` 的重复劳动；
 /// - **位置 (Where)**：`spark-core::service::auto_dyn` 模块，由宏 `#[spark::service]` 与手写实现共用；
 /// - **执行逻辑 (How)**：
-///   1. 复用 [`ServiceObject`] 构造对象层实现，解码/编码闭包分别调用 [`Decode::decode`] 与 [`Encode::encode`]；
-///   2. 将生成的对象层服务放入 `Arc` 中，交由 [`BoxService`] 封装，以满足 `Send + Sync + 'static`；
-/// - **契约 (What)**：`into_dyn` 返回值即为对象层句柄，可直接参与路由或 Pipeline 组合；
-/// - **前置条件**：服务错误类型为 [`SparkError`]；`Request`/`Response` 满足 `Decode`/`Encode`；
-/// - **后置条件**：桥接后仍保持 `Service` 语义一致，错误会通过 `SparkError` 向上传递；
-/// - **风险与权衡**：若解码失败会直接返回 `protocol.type_mismatch` 等结构化错误，调用方需做好观测与告警。
+///   1. 调用方需在实现中委托给 [`bridge_to_box_service`] 或等价逻辑，完成泛型层到对象层的桥接；
+///   2. 利用泛型 `Request` 参数约束 [`Decode`] 与 [`Encode`]，在调用 `into_dyn` 时确保契约满足；
+/// - **契约 (What)**：关联类型 [`AutoDynBridge::DynOut`] 指定桥接后的对象层句柄形态；
+/// - **前置条件**：仅当请求实现 [`Decode`]、响应实现 [`Encode`]、错误类型等于 [`SparkError`] 时，桥接才可执行；
+/// - **后置条件**：成功桥接后获得的 `DynOut` 可直接复用在对象层路由与 Pipeline；
+/// - **风险与权衡**：若类型未实现编解码契约，调用 `into_dyn` 将在编译期报错，提醒开发者补齐实现。
 pub trait AutoDynBridge: Sized + Send + Sync + 'static {
+    /// 桥接后对象层服务的具体类型（常见为 [`BoxService`]）。
+    type DynOut;
+
     /// 将泛型 Service 转换为对象层句柄。
-    fn into_dyn<Request>(self) -> BoxService
+    fn into_dyn<Request>(self) -> Self::DynOut
+    where
+        Self: Service<Request, Error = SparkError>,
+        Request: Decode + Send + Sync + 'static,
+        <Self as Service<Request>>::Response: Encode + Send + Sync + 'static;
+}
+
+/// DynBridge：为任意泛型 [`Service`] 提供“保持原语义 + 自动桥接”的轻量包装。
+///
+/// # 教案式注释
+/// - **意图 (Why)**：通过包装器集中封装对象层桥接逻辑，使过程宏与手写 Service 可复用同一实现；
+/// - **位置 (Where)**：`service::auto_dyn` 模块内部，仅在需要显式声明请求类型时使用；
+/// - **执行逻辑 (How)**：
+///   1. `DynBridge::new` 以值语义保存原始服务，实现 [`Service`] 时直接转发 `poll_ready` 与 `call`；
+///   2. `AutoDynBridge` 实现于 `DynBridge` 上，在 `into_dyn` 调用时复用 [`bridge_to_box_service`]；
+/// - **契约 (What)**：包装后仍实现 [`Service`]，关联类型沿用内部服务；
+/// - **前置条件**：内部服务需满足 `Send + Sync + 'static`，并在 `into_dyn` 时额外要求 `Decode`/`Encode`；
+/// - **后置条件**：调用 `into_dyn` 后获得的 [`BoxService`] 可安全用于对象层 API；
+/// - **风险与权衡**：包装器本身不复制内部状态，若需多次消费需在调用方显式克隆或重新构造服务。
+pub struct DynBridge<S, Request> {
+    /// 实际的泛型层 Service 实现。
+    ///
+    /// - **职责**：承载真实业务逻辑，`DynBridge` 在 `Service` 实现中直接委托给它；
+    /// - **约束**：必须满足 `Send + Sync + 'static`，以便包装器也能安全跨线程移动。
+    inner: S,
+    /// 编译期标记：记录泛型服务所处理的请求类型。
+    ///
+    /// - **作用**：使 `DynBridge` 在类型层面携带 `Request` 信息，便于 [`AutoDynBridge`] 实现绑定解码器；
+    /// - **实现**：使用零尺寸的 [`PhantomData`]，不会在运行时产生额外存储成本。
+    _marker: PhantomData<fn() -> Request>,
+}
+
+impl<S, Request> DynBridge<S, Request>
+where
+    S: Service<Request>,
+    Request: Send + Sync + 'static,
+{
+    /// 创建新的桥接包装器。
+    ///
+    /// - **输入参数**：`inner` 为原始泛型服务；
+    /// - **行为说明**：纯值语义封装，不触发额外分配或初始化逻辑；
+    /// - **后置条件**：返回的 `DynBridge` 可立即参与 `Service` 调度或对象层桥接。
+    pub fn new(inner: S) -> Self {
+        Self {
+            inner,
+            _marker: PhantomData,
+        }
+    }
+
+    /// 取回内部服务。
+    ///
+    /// - **使用场景**：当调用方希望在桥接前执行额外装饰，或在单元测试中直接断言内部状态。
+    pub fn into_inner(self) -> S {
+        self.inner
+    }
+}
+
+impl<S, Request> Service<Request> for DynBridge<S, Request>
+where
+    S: Service<Request>,
+    Request: Send + Sync + 'static,
+{
+    type Response = <S as Service<Request>>::Response;
+    type Error = <S as Service<Request>>::Error;
+    type Future = <S as Service<Request>>::Future;
+
+    fn poll_ready(
+        &mut self,
+        ctx: &ExecutionContext<'_>,
+        cx: &mut TaskContext<'_>,
+    ) -> PollReady<Self::Error> {
+        self.inner.poll_ready(ctx, cx)
+    }
+
+    fn call(&mut self, ctx: CallContext, req: Request) -> Self::Future {
+        self.inner.call(ctx, req)
+    }
+}
+
+impl<S, Request> AutoDynBridge for DynBridge<S, Request>
+where
+    S: Service<Request> + Send + Sync + 'static,
+    Request: Send + Sync + 'static,
+    <S as Service<Request>>::Response: Send + Sync + 'static,
+{
+    type DynOut = BoxService;
+
+    fn into_dyn<R>(self) -> Self::DynOut
+    where
+        Self: Service<R, Error = SparkError>,
+        R: Decode + Send + Sync + 'static,
+        <Self as Service<R>>::Response: Encode + Send + Sync + 'static,
+    {
+        bridge_to_box_service::<Self, R>(self)
+    }
+}
+
+impl AutoDynBridge for BoxService {
+    type DynOut = BoxService;
+
+    fn into_dyn<Request>(self) -> Self::DynOut
     where
         Self: Service<Request, Error = SparkError>,
         Request: Decode + Send + Sync + 'static,
         <Self as Service<Request>>::Response: Encode + Send + Sync + 'static,
     {
-        // 教案式说明：
-        // Why: 通过复用类型实现的 `Decode`/`Encode`，保证桥接逻辑与业务语义解耦。
-        // How: 将函数指针 `Request::decode` / `<Self as Service<Request>>::Response::encode` 直接传入
-        //      `ServiceObject::new`，避免捕获额外环境，确保闭包为零尺寸类型。
-        // What: 得到的 `ServiceObject` 实现 `DynService`，再封装进 `Arc` 与 `BoxService`。
-        let object = ServiceObject::new(
-            self,
-            Request::decode,
-            <<Self as Service<Request>>::Response as Encode>::encode,
-        );
-        BoxService::new(Arc::new(object))
+        self
     }
 }
 
-/// Blanket 实现：`impl AutoDynBridge for _`（用于满足验收脚本 `rg -n 'impl AutoDynBridge for'`）。
-impl<T> AutoDynBridge for T where T: Send + Sync + 'static {}
+/// 公共桥接函数：复用在默认实现与宏生成代码中，集中封装类型擦除逻辑。
+///
+/// # 教案式注释
+/// - **意图 (Why)**：为手写 Service 提供低样板的桥接入口，避免重复实现 `AutoDynBridge`；
+/// - **位置 (Where)**：`service::auto_dyn` 模块对外公开的辅助函数；
+/// - **执行逻辑 (How)**：构造 [`ServiceObject`] 并用 [`BoxService::new`] 包装，保持线程安全；
+/// - **契约 (What)**：输入泛型 Service，输出对象层 `BoxService`；
+/// - **前置条件**：满足 `Decode`/`Encode`/`SparkError` 契约；
+/// - **后置条件**：返回的 `BoxService` 可直接注入路由或 Pipeline；
+/// - **风险与权衡**：若解码闭包 panic，将导致整个调用栈终止，应在实现中优先返回结构化错误。
+pub fn bridge_to_box_service<S, Request>(service: S) -> BoxService
+where
+    S: Service<Request, Error = SparkError> + Send + Sync + 'static,
+    Request: Decode + Send + Sync + 'static,
+    <S as Service<Request>>::Response: Encode + Send + Sync + 'static,
+{
+    let object = ServiceObject::new(
+        service,
+        Request::decode,
+        <<S as Service<Request>>::Response as Encode>::encode,
+    );
+    BoxService::new(Arc::new(object))
+}
 
 impl Decode for PipelineMessage {
     fn decode(message: PipelineMessage) -> Result<Self, SparkError> {
