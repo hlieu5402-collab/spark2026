@@ -1,0 +1,50 @@
+{
+  "benchmark": "async_contract_overhead",
+  "quick_mode": true,
+  "iterations": 20000,
+  "scenarios": [
+    {
+      "name": "generic_service",
+      "samples": 20000,
+      "latency_ns": {
+        "p50": 4228.0,
+        "p95": 5457.999999999998,
+        "p99": 7068.319999999998,
+        "mean": 4703.648562300319,
+        "min": 4142,
+        "max": 63928
+      },
+      "allocations": {
+        "allocations": 40001,
+        "allocation_bytes": 320048,
+        "reallocations": 0,
+        "reallocation_bytes": 0,
+        "allocations_per_iter": 2.00005,
+        "allocation_bytes_per_iter": 16.0024
+      }
+    },
+    {
+      "name": "boxed_service",
+      "samples": 20000,
+      "latency_ns": {
+        "p50": 4338.0,
+        "p95": 5515.799999999999,
+        "p99": 6846.679999999997,
+        "mean": 4606.319488817891,
+        "min": 4272,
+        "max": 18296
+      },
+      "allocations": {
+        "allocations": 60005,
+        "allocation_bytes": 2560152,
+        "reallocations": 0,
+        "reallocation_bytes": 0,
+        "allocations_per_iter": 3.00025,
+        "allocation_bytes_per_iter": 128.0076
+      }
+    }
+  ],
+  "p99_overhead_ratio": 0.9686431853679515,
+  "p99_overhead_percent": -3.1356814632048535,
+  "allocation_overhead_percent": 50.00874978125547
+}
