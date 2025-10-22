@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![deny(unsafe_code)]
 #![allow(clippy::result_large_err)]
 #![allow(private_bounds)]
 #![doc = "spark-core: 高性能、协议无关、分布式原生的异步通信框架核心契约。"]

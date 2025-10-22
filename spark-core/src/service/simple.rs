@@ -1,3 +1,18 @@
+#![allow(unsafe_code)]
+// SAFETY: 顺序服务协调器需在 `Future` poll 路径上执行细粒度的 Pin 操作，
+// ## 意图（Why）
+// - `GuardedFuture` 以零拷贝的方式包装业务 Future，保持过程宏展开后的性能；
+// - Rust 当前尚无稳定的 `Pin` 安全 API 可直接获取 `&mut Fut`，因而需要在受控环境下使用 `unsafe`。
+// ## 解析逻辑（How）
+// 1. `GuardedFuture::poll` 手动解 `Pin<&mut Self>`，再将内部 Future 重新 Pin，以遵循 `Pin` 合约；
+// 2. 所有 `unsafe` 块前都确保 `Self` 未被移动，且字段仅在本方法内借用，避免双可变引用。
+// ## 契约（What）
+// - `GuardedFuture` 只会通过标准的 `Future` 驱动流程调用 `poll`；
+// - 调用方不得在 `poll` 过程中移动 `GuardedFuture`，这一约束由 `Pin` API 强制；
+// - Drop 保证守卫最终释放，即使 Future 被提前丢弃。
+// ## 风险与权衡（Trade-offs）
+// - 我们接受局部 `unsafe` 以换取过程宏兼容性，若未来标准库提供安全 API，应优先替换；
+// - 如需在不同执行器之间转移该 Future，必须重新评估 `Pin` 合约与守卫生命周期。
 //! Service 快速原型工具箱：提供闭包转 Service 的胶水类型，以及过程宏可复用的就绪协调器。
 //!
 //! # 模块定位（Why）
@@ -235,7 +250,11 @@ where
     type Output = Result<Response, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
+        // SAFETY: `self` 已被 Pin 固定，`GuardedFuture` 不会实现 `Unpin`，因此 `get_unchecked_mut`
+        // 仅在当前栈帧内获取可变引用，不会造成移动；
         let this = unsafe { self.get_unchecked_mut() };
+        // SAFETY: `this.future` 在整个 `GuardedFuture` 生命周期内保持稳定地址，且未同时被借用，
+        // 手动创建 `Pin<&mut Fut>` 与 `Pin` 的不变式一致。
         let future = unsafe { Pin::new_unchecked(&mut this.future) };
         match future.poll(cx) {
             Poll::Ready(output) => {

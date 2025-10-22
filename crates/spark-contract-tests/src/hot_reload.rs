@@ -276,6 +276,26 @@ fn poll_stream<S: Stream>(mut stream: Pin<&mut S>) -> Poll<Option<S::Item>> {
 }
 
 /// 构造永远不唤醒的 waker，用于自旋轮询配置流。
+///
+/// ## 意图（Why）
+/// - 在热更新合约测试中，我们需要一个不会触发真实调度的 `Waker`，以便在单线程环境中自旋轮询配置流而不依赖运行时。
+/// - 该函数位于 `spark-contract-tests` 内，用于验证 `spark-core` 的配置增量应用逻辑，是契约稳定性的守护用例之一。
+///
+/// ## 解析逻辑（How）
+/// 1. 通过手工构造 `RawWakerVTable`，为 `clone`、`wake`、`wake_by_ref` 与 `drop` 提供最小实现，全部为 no-op，确保不会唤醒执行器；
+/// 2. 使用 `RawWaker::new` 将空指针与上述 vtable 绑定，再交由 `Waker::from_raw` 包装成安全的 `Waker`；
+/// 3. 调用方在 `poll_stream` 中借助该 waker 创建 `Context`，实现可控的轮询流程。
+///
+/// ## 契约定义（What）
+/// - 输入：无显式参数，仅依赖内部静态 vtable，不触达外部状态；
+/// - 返回：返回一个满足 `Waker` 契约的值，保证所有 vtable 操作均为幂等且不触发调度；
+/// - 前置条件：调用环境必须确保无共享状态需要唤醒，否则该 waker 会导致任务饿死；
+/// - 后置条件：返回的 waker 在 `RawWaker` 层面不会泄漏或重复释放资源，符合 `Waker` 安全约束。
+///
+/// ## 设计考量与风险（Trade-offs）
+/// - 选择手工实现 vtable 而非依赖现成库，是为了避免额外依赖并精确掌控行为；
+/// - 风险点在于 `unsafe` 构造 `RawWaker`，若指针或 vtable 配置错误将触发未定义行为，因此需通过审计保证实现与规范一致；
+/// - 该实现只适合静态自旋场景，若未来引入真实调度器需改写为可唤醒版本。
 fn noop_waker() -> Waker {
     unsafe fn clone(_: *const ()) -> RawWaker {
         RawWaker::new(std::ptr::null(), &VTABLE)
@@ -285,6 +305,10 @@ fn noop_waker() -> Waker {
     unsafe fn drop(_: *const ()) {}
 
     static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
+    // SAFETY: 1) `clone`/`wake`/`wake_by_ref`/`drop` 均遵守 `RawWakerVTable` 合约，
+    //         使用空指针且不读取/写入内存，确保不会解引用无效地址；
+    //         2) vtable 函数之间保持一致的指针语义（均忽略输入），满足 `RawWaker` 的 clone/drop 安全前提；
+    //         3) 该 waker 仅在自旋测试中使用，不会泄漏到需要真实唤醒的执行器，避免违反调度假设。
     unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) }
 }
 
