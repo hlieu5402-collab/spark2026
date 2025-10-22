@@ -26,6 +26,7 @@ pub mod extensions;
 pub mod factory;
 pub mod handler;
 pub mod instrument;
+mod internal;
 pub mod middleware;
 pub mod traits;
 
