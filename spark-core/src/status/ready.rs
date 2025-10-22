@@ -22,10 +22,18 @@
 //! - 扩展状态时须评估对序列化、兼容层的影响，避免新分支破坏旧版本调用方的匹配逻辑。
 use crate::contract::{BudgetDecision, BudgetSnapshot};
 use crate::runtime::MonotonicTimePoint;
+#[cfg(feature = "std")]
+use crate::time::clock::{Clock, Sleep};
+#[cfg(feature = "std")]
+use alloc::sync::Arc;
 use alloc::{borrow::Cow, fmt};
 use core::convert::TryFrom;
-use core::task::Poll;
+#[cfg(feature = "std")]
+use core::pin::Pin;
+use core::task::{Context as TaskContext, Poll};
 use core::time::Duration;
+#[cfg(feature = "std")]
+use std::time::Instant;
 
 /// 服务就绪检查的核心状态枚举。
 ///
@@ -354,6 +362,121 @@ impl RetryRhythm {
     /// 判断当前是否已到最早可重试时间。
     pub fn is_ready(&self, now: MonotonicTimePoint) -> bool {
         self.remaining_delay(now).is_zero()
+    }
+}
+
+#[cfg(feature = "std")]
+/// `RetryAfterThrottle` 将节律追踪与可注入时钟结合，负责在 `RetryAfter` 信号出现后协调异步唤醒。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：确保在连续收到 `RetryAfter` 时，`poll_ready` 的等待与唤醒完全遵循建议时间，并可在测试中通过虚拟时钟复现；
+/// - **位置 (Where)**：位于 `status::ready`，与 [`RetryRhythm`] 共用内部节律逻辑；
+/// - **实现逻辑 (How)**：
+///   1. `observe` 将新的 [`RetryAdvice`] 注入节律追踪器，并重新计算最早可重试时间；
+///   2. `poll` 检查当前是否已到允许重试的时间，若未到期则创建/轮询时钟提供的 `Sleep` Future；
+///   3. `sleep` Future 完成后重新检查节律状态，如仍存在剩余延迟则继续排队，保证多次 `RetryAfter` 串联时的累计窗口；
+/// - **契约 (What)**：
+///   - 构造函数接受 `Arc<dyn Clock>`，调用方负责在生产/测试环境分别注入
+///     [`SystemClock`](crate::time::clock::SystemClock) 或 [`MockClock`](crate::time::clock::MockClock)；
+///   - `poll` 必须与异步运行时的 waker 协作，遵循 Future 契约：`Pending` 时记录 waker，状态改变时唤醒；
+///   - `is_waiting`/`remaining_delay` 提供只读快照，便于监控或调试。
+/// - **风险提示 (Trade-offs & Gotchas)**：
+///   - 若在 `poll` 之后立即再次调用 `observe`，内部会丢弃旧的 `Sleep`，以防止旧 waker 在延长窗口后提前触发；
+///   - 该结构不主动处理取消/截止时间，调用方应结合 [`CallContext::cancellation`](crate::contract::CallContext::cancellation)
+///     等接口在必要时提前终止等待。
+pub struct RetryAfterThrottle {
+    clock: Arc<dyn Clock>,
+    origin: Instant,
+    rhythm: RetryRhythm,
+    pending: Option<Sleep>,
+}
+
+#[cfg(feature = "std")]
+impl RetryAfterThrottle {
+    /// 构造节律节流器。
+    ///
+    /// # 参数
+    /// - `clock`：实现 [`Clock`] 的时间源，通常为
+    ///   [`SystemClock`](crate::time::clock::SystemClock) 或 [`MockClock`](crate::time::clock::MockClock);
+    pub fn new(clock: Arc<dyn Clock>) -> Self {
+        let origin = clock.now();
+        Self {
+            clock,
+            origin,
+            rhythm: RetryRhythm::new(),
+            pending: None,
+        }
+    }
+
+    /// 记录一次 RetryAfter 建议并返回最新的可重试时间点。
+    pub fn observe(&mut self, advice: &RetryAdvice) -> MonotonicTimePoint {
+        let now = self.monotonic_now();
+        let next = self.rhythm.observe(now, advice);
+        self.schedule_sleep(now);
+        next
+    }
+
+    /// 在 `poll_ready` 中轮询节律状态，未到期时返回 `Pending` 并登记 waker。
+    pub fn poll(&mut self, cx: &mut TaskContext<'_>) -> Poll<()> {
+        let snapshot = self.monotonic_now();
+        if self.rhythm.is_ready(snapshot) {
+            self.pending = None;
+            return Poll::Ready(());
+        }
+
+        if self.pending.is_none() {
+            self.schedule_sleep(snapshot);
+        }
+
+        if let Some(sleep) = self.pending.as_mut() {
+            match Pin::new(sleep).poll(cx) {
+                Poll::Ready(()) => {
+                    self.pending = None;
+                    let refreshed = self.monotonic_now();
+                    if self.rhythm.is_ready(refreshed) {
+                        Poll::Ready(())
+                    } else {
+                        self.schedule_sleep(refreshed);
+                        Poll::Pending
+                    }
+                }
+                Poll::Pending => Poll::Pending,
+            }
+        } else {
+            Poll::Pending
+        }
+    }
+
+    /// 判断当前是否仍在等待 RetryAfter 窗口结束。
+    pub fn is_waiting(&self) -> bool {
+        if let Some(next) = self.rhythm.next_ready_at() {
+            let now = self.monotonic_now();
+            !next.saturating_duration_since(now).is_zero()
+        } else {
+            false
+        }
+    }
+
+    /// 返回距离允许重试的剩余持续时间。
+    pub fn remaining_delay(&self) -> Duration {
+        self.rhythm.remaining_delay(self.monotonic_now())
+    }
+
+    fn schedule_sleep(&mut self, snapshot: MonotonicTimePoint) {
+        let remaining = self.rhythm.remaining_delay(snapshot);
+        if remaining.is_zero() {
+            self.pending = None;
+        } else {
+            self.pending = Some(self.clock.sleep(remaining));
+        }
+    }
+
+    fn monotonic_now(&self) -> MonotonicTimePoint {
+        let now = self.clock.now();
+        let offset = now
+            .checked_duration_since(self.origin)
+            .unwrap_or_else(|| Duration::from_secs(0));
+        MonotonicTimePoint::from_offset(offset)
     }
 }
 

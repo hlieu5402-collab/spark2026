@@ -27,3 +27,5 @@ pub use ready::{
     RetryRhythm,
     SubscriptionBudget,
 };
+#[cfg(feature = "std")]
+pub use ready::RetryAfterThrottle;

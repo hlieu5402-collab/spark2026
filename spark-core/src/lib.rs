@@ -56,6 +56,8 @@ pub mod runtime;
 pub mod security;
 pub mod service;
 pub mod status;
+#[cfg(feature = "std")]
+pub mod time;
 pub mod transport;
 
 pub use audit::{
@@ -165,6 +167,8 @@ pub use status::{
     RetryRhythm,
     SubscriptionBudget,
 };
+#[cfg(feature = "std")]
+pub use status::RetryAfterThrottle;
 pub use transport::{
     AvailabilityRequirement, Capability, CapabilityBitmap, ConnectionIntent, DowngradeReport,
     DynServerTransport, DynTransportFactory, Endpoint, EndpointKind, HandshakeError,
