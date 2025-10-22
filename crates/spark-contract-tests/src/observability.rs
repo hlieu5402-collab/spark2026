@@ -31,15 +31,21 @@ pub const fn suite() -> &'static TckSuite {
 ///
 /// # 教案式说明
 /// - **意图 (Why)**：防止在未同步文档的情况下更改关键字段，导致观测系统失配。
-/// - **逻辑 (How)**：检查集合非空，并验证首尾元素是否保持约定值。
+/// - **逻辑 (How)**：检查集合非空，验证首个元素仍为请求总量指标，同时确认队列深度指标依旧存在，末尾指标对应最新的管道变更计数。
 /// - **契约 (What)**：若断言失败说明契约被破坏，需要同步更新文档及依赖。
 fn observability_default_contract_fields_are_stable() {
     let contract = &DEFAULT_OBSERVABILITY_CONTRACT;
     assert!(!contract.metric_names().is_empty());
     assert_eq!(contract.metric_names()[0], "spark.request.total");
+    assert!(
+        contract
+            .metric_names()
+            .contains(&"spark.limits.queue.depth"),
+        "默认契约应包含队列深度指标"
+    );
     assert_eq!(
         contract.metric_names()[contract.metric_names().len() - 1],
-        "spark.limits.queue.depth"
+        "spark.pipeline.mutation.total"
     );
 
     assert_eq!(contract.log_fields()[0], "request.id");

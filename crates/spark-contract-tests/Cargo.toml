@@ -5,6 +5,8 @@ edition = "2024"
 license = "Apache-2.0"
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
 description = "Spark 契约测试套件（TCK），为第三方实现提供一键回归能力"
+repository = "https://github.com/gemini/spark2026"
+documentation = "https://docs.rs/spark-contract-tests"
 
 [lib]
 name = "spark_contract_tests"
@@ -17,6 +19,6 @@ std = []
 alloc = ["std"]
 
 [dependencies]
-spark-core = { path = "../../spark-core" }
-spark-contract-tests-macros = { path = "../spark-contract-tests-macros" }
+spark-core = { version = "0.1.0" }
+spark-contract-tests-macros = { version = "0.1.0" }
 parking_lot = "0.12"
