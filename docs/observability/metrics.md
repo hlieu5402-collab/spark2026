@@ -41,6 +41,8 @@
 | Limits | `spark.limits.hit` | Counter (`events`) | 资源达到限额的触发次数 | `limit.resource` `limit.action` |
 | Limits | `spark.limits.drop` / `spark.limits.degrade` | Counter (`events`) | 超限后的拒绝 / 降级次数 | `limit.resource` `limit.action` |
 | Limits | `spark.limits.queue.depth` | Gauge (`entries`) | 排队策略下的即时队列长度 | `limit.resource` `limit.action` |
+| Pipeline | `spark.pipeline.epoch` | Gauge (`epoch`) | 数据面 Pipeline 当前的逻辑纪元，热插拔完成后写入 | `pipeline.controller` `pipeline.id` |
+| Pipeline | `spark.pipeline.mutation.total` | Counter (`events`) | Pipeline Handler 变更事件次数，按 `pipeline.mutation.op` 区分 add/remove/replace | `pipeline.controller` `pipeline.id` `pipeline.mutation.op` `pipeline.epoch` |
 
 ## 3. 代码挂钩与最佳实践
 
@@ -49,6 +51,8 @@
 - `service::metrics::ServiceMetricsHook`
 - `codec::metrics::CodecMetricsHook`
 - `transport::metrics::TransportMetricsHook`
+- Pipeline 热插拔：`pipeline::controller::HotSwapController` 在执行 `add_handler_after`/`remove_handler`/`replace_handler`
+  时自动写入 `spark.pipeline.epoch` 与 `spark.pipeline.mutation.total`，并输出带 `pipeline.*` 标签的 INFO 日志。
 
 ### ReadyState → 指标/标签映射
 
