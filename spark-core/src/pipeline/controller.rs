@@ -1,7 +1,6 @@
 use alloc::string::ToString;
 use alloc::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
 
-use crate::arc_swap::ArcSwap;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use spin::Mutex;
 
@@ -19,6 +18,7 @@ use super::{
     context::Context as PipelineContext,
     handler::{self, InboundHandler, OutboundHandler},
     instrument::{InstrumentedLogger, start_inbound_span},
+    internal::{HandlerEpochBuffer, HotSwapRegistry},
     middleware::{ChainBuilder, Middleware},
 };
 
@@ -480,47 +480,24 @@ impl HandlerEntry {
     }
 }
 
-/// 内建注册表实现，基于 `ArcSwap` 提供锁自由快照。
-struct HotSwapRegistry {
-    entries: ArcSwap<Vec<HandlerRegistration>>,
-}
-
-impl HotSwapRegistry {
-    fn new() -> Self {
-        Self {
-            entries: ArcSwap::from_pointee(Vec::new()),
-        }
-    }
-
-    fn update(&self, snapshot: Arc<Vec<HandlerRegistration>>) {
-        self.entries.store(snapshot);
-    }
-}
-
-impl HandlerRegistry for HotSwapRegistry {
-    fn snapshot(&self) -> Vec<HandlerRegistration> {
-        (*self.entries.load_full()).clone()
-    }
-}
-
 /// 支持运行期热插拔的默认控制器实现。
 ///
 /// # 教案式说明
 /// - **意图（Why）**：为满足“不中断流量的链路变更”需求，控制器需在读写热路径上提供锁自由的 Handler
 ///   快照，并在变更时以 epoch 栅栏协调并发访问。
 /// - **逻辑（How）**：
-///   1. Handler 链以 `ArcSwap<Vec<Arc<HandlerEntry>>>` 保存，事件分发前先读取快照；
-///   2. 热更新操作在 `Mutex` 保护下复制向量，插入/替换节点并原子更新 `ArcSwap`；
-///   3. 每次变更自增 `epoch`，外部可据此判断新快照是否已对所有线程可见。
+///   1. Handler 链由内部的 `HandlerEpochBuffer` 管理，内部通过
+///      `ArcSwap<Vec<Arc<HandlerEntry>>>` 暴露无锁快照；
+///   2. 热更新操作在 `Mutex` 保护下复制向量，插入/替换节点并调用 `HandlerEpochBuffer::store` 原子替换；
+///   3. 每次变更完成后执行 `HandlerEpochBuffer::bump_epoch`，外部可据此判断新快照是否已对所有线程可见。
 /// - **契约（What）**：构造时需注入通道、核心服务、调用上下文与追踪上下文；调用者必须通过 `Arc`
 ///   持有控制器，以保证在事件回调期间对象存活。
 pub struct HotSwapController {
     channel: Arc<dyn Channel>,
     services: CoreServices,
     call_context: CallContext,
-    handlers: ArcSwap<Vec<Arc<HandlerEntry>>>,
+    handlers: HandlerEpochBuffer<HandlerEntry>,
     registry: HotSwapRegistry,
-    epoch: AtomicU64,
     sequence: AtomicU64,
     mutation: Mutex<()>,
 }
@@ -530,8 +507,8 @@ impl HotSwapController {
     ///
     /// # 教案式说明
     /// - **意图**：初始化时将运行时依赖、通道以及初始上下文固定，后续热更新仅需关注 Handler 链。
-    /// - **逻辑**：`ArcSwap` 初始为空向量；`sequence` 从 1 开始保证句柄不与哨兵值冲突；`epoch`
-    ///   自 0 计数，便于观察第一个变更。
+    /// - **逻辑**：`HandlerEpochBuffer` 初始为空向量且 epoch 为 0；`sequence` 从 1 开始保证句柄不与
+    ///   哨兵值冲突。
     /// - **契约**：`channel` 必须在控制器生命周期内保持有效；`services`、`call_context`、`trace_context`
     ///   会被克隆存储，调用方可在构造后继续使用原值。
     pub fn new(
@@ -543,9 +520,8 @@ impl HotSwapController {
             channel,
             services,
             call_context,
-            handlers: ArcSwap::from_pointee(Vec::new()),
+            handlers: HandlerEpochBuffer::new(),
             registry: HotSwapRegistry::new(),
-            epoch: AtomicU64::new(0),
             sequence: AtomicU64::new(1),
             mutation: Mutex::new(()),
         }
@@ -553,7 +529,7 @@ impl HotSwapController {
 
     fn append_handler(&self, label: &str, handler: Arc<dyn Handler>) -> ControllerHandleId {
         let _guard = self.mutation.lock();
-        let current = self.handlers.load_full();
+        let current = self.handlers.load();
         let mut chain: Vec<_> = current.iter().cloned().collect();
         let direction = handler.direction();
         let insert_index = chain
@@ -580,7 +556,7 @@ impl HotSwapController {
         let registrations = self.rebuild_registry(&arc_chain);
         self.handlers.store(Arc::clone(&arc_chain));
         self.registry.update(registrations);
-        self.bump_epoch();
+        self.handlers.bump_epoch();
     }
 
     fn rebuild_registry(
@@ -614,10 +590,6 @@ impl HotSwapController {
         } else {
             chain.len()
         }
-    }
-
-    fn bump_epoch(&self) {
-        self.epoch.fetch_add(1, Ordering::SeqCst);
     }
 
     fn build_context(
@@ -673,7 +645,7 @@ impl HotSwapController {
     where
         F: FnMut(&dyn InboundHandler, HotSwapContext),
     {
-        let snapshot = self.handlers.load_full();
+        let snapshot = self.handlers.load();
         let root_trace = self.call_context.trace_context().clone();
         for (index, entry) in snapshot.iter().enumerate() {
             if let Some(handler) = entry.inbound() {
@@ -688,7 +660,7 @@ impl HotSwapController {
             return false;
         }
         let _guard = self.mutation.lock();
-        let current = self.handlers.load_full();
+        let current = self.handlers.load();
         let mut chain: Vec<_> = current.iter().cloned().collect();
         if let Some(pos) = chain.iter().position(|entry| entry.handle_id() == handle) {
             chain.remove(pos);
@@ -704,7 +676,7 @@ impl HotSwapController {
             return false;
         }
         let _guard = self.mutation.lock();
-        let current = self.handlers.load_full();
+        let current = self.handlers.load();
         let mut chain: Vec<_> = current.iter().cloned().collect();
         if let Some(pos) = chain.iter().position(|entry| entry.handle_id() == handle) {
             let existing = chain[pos].clone();
@@ -753,7 +725,7 @@ impl Controller for HotSwapController {
     }
 
     fn emit_read(&self, msg: PipelineMessage) {
-        let snapshot = self.handlers.load_full();
+        let snapshot = self.handlers.load();
         let root_trace = self.call_context.trace_context().clone();
         self.dispatch_inbound_from(snapshot, 0, msg, root_trace);
     }
@@ -771,7 +743,7 @@ impl Controller for HotSwapController {
     }
 
     fn emit_exception(&self, error: CoreError) {
-        let snapshot = self.handlers.load_full();
+        let snapshot = self.handlers.load();
         if let Some(index) = Self::find_next_inbound(&snapshot, 0)
             && let Some(handler) = snapshot[index].inbound()
         {
@@ -799,7 +771,7 @@ impl Controller for HotSwapController {
         handler: Arc<dyn Handler>,
     ) -> Self::HandleId {
         let _guard = self.mutation.lock();
-        let current = self.handlers.load_full();
+        let current = self.handlers.load();
         let mut chain: Vec<_> = current.iter().cloned().collect();
         let direction = handler.direction();
         let insert_index = Self::locate_insertion_index(&chain, anchor, direction);
@@ -821,7 +793,7 @@ impl Controller for HotSwapController {
     }
 
     fn epoch(&self) -> u64 {
-        self.epoch.load(Ordering::SeqCst)
+        self.handlers.epoch()
     }
 }
 
