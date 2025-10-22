@@ -1,3 +1,23 @@
+#![allow(unsafe_code)]
+// SAFETY: HotSwap 管道上下文需要短暂脱离借用检查器来向 Handler 传递控制器引用，
+// ## 意图（Why）
+// - `HotSwapContext` 在遍历 Handler 时必须实现 `PipelineContext`，其生命周期需跨越 `&self`
+//   的借用边界，以便在回调期间继续访问控制器；
+// - 控制器需要对 Handler 链执行再次调度，因此上下文必须保留对原控制器的访问能力。
+// ## 解析逻辑（How）
+// 1. 构造上下文时记录 `HotSwapController` 的裸指针，确保 Handler 回调期间仍可调用原控制器；
+// 2. 指针仅在受控的同步路径下解引用：调用发生在 `dispatch_inbound_from` 或通知遍历中，
+//    而这些逻辑都在控制器持有 `Arc` 的生命周期内执行；
+// 3. `Send`/`Sync` 的实现仅传播底层控制器的线程安全语义，其他字段均为 `Arc` 或 `Clone`，
+//    不会产生额外的数据竞争。
+// ## 契约（What）
+// - 指针来源：始终由活跃的 `HotSwapController` 实例提供，且控制器以 `Arc` 持有，
+//   确保不会在 Handler 回调期间被释放；
+// - 使用前提：仅允许在 Handler 链调度时同步访问，禁止跨线程持久保存该上下文。
+// ## 风险与权衡（Trade-offs）
+// - 为避免在 API 层暴露生命周期参数并保持 Handler 接口简洁，我们接受受控的 `unsafe`，
+//   以换取零拷贝地传递控制器引用；
+// - 若未来引入跨线程异步执行器，需要重新审视该策略并可能改为 `Arc<HotSwapController>`。
 use alloc::string::ToString;
 use alloc::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
 
@@ -833,6 +853,13 @@ impl HotSwapContext {
     }
 }
 
+// SAFETY: HotSwapContext 内的字段满足以下条件：
+// - ## Why：为了让 Handler 在任意调度线程上复用上下文，该类型需实现 `Send`/`Sync`；
+// - ## How：除 `controller` 外，其余字段均为 `Arc`、`Clone` 或原子类型，天然线程安全。
+//   `controller` 指向 `HotSwapController`，其内部由 `Arc`、原子与 `Mutex` 组成，满足 Send/Sync
+//   的要求；外层通过 `Arc` 持有控制器实例，确保跨线程访问不会悬垂；
+// - ## What：调用者必须遵循“上下文仅在事件分发期间即时使用”的约定，不得缓存到异步任务中；
+// - ## Trade-offs：保留裸指针可避免额外 `Arc` 克隆，保持调度路径轻量，代价是需要人工证明其线程安全性。
 unsafe impl Send for HotSwapContext {}
 unsafe impl Sync for HotSwapContext {}
 
@@ -842,6 +869,10 @@ impl PipelineContext for HotSwapContext {
     }
 
     fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+        // SAFETY: `controller` 源自 `HotSwapContext::new` 中的活跃引用，
+        // - ## 前提：上下文只在控制器持有 `Arc` 的生命周期内创建，指针不会被提前释放；
+        // - ## 逻辑：该方法仅在 Handler 调度时同步调用，无并发写入同一控制器指针；
+        // - ## 结果：返回的引用与 `HotSwapController` 原始借用等价，可安全作为只读接口使用。
         unsafe { &*self.controller }
     }
 
@@ -884,6 +915,12 @@ impl PipelineContext for HotSwapContext {
     fn forward_read(&self, msg: PipelineMessage) {
         let index = self.next_index.fetch_add(1, Ordering::SeqCst);
         let trace = self.trace_context.clone();
+        // SAFETY: 此处复用与 `controller()` 相同的裸指针：
+        // - ## Why：需要将当前上下文传递给后续 Handler，实现 HotSwap 链继续前进；
+        // - ## How：指针操作仅在当前线程内执行，不与其他写操作并发；
+        // - ## What：`dispatch_inbound_from` 期望长期存活的控制器引用，且上下文保证 `snapshot`
+        //   与 `trace` 均为 `Arc`/clone，不会悬垂；
+        // - ## 风险：若未来允许异步延迟调用，需改为持有 `Arc<HotSwapController>`，当前同步模型下安全。
         unsafe {
             (*self.controller).dispatch_inbound_from(self.snapshot.clone(), index, msg, trace);
         }
