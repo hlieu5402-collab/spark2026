@@ -276,6 +276,23 @@ fn otel_span_kind(direction: HandlerDirection) -> SpanKind {
     }
 }
 
+/// 将 `spark-core` 的 [`TraceContext`] 转换为 OpenTelemetry 的远程 [`Context`]。
+///
+/// # 教案式说明
+/// - **意图（Why）**：`spark-core` 采用自有的轻量结构存储 Trace/Span 信息，而 `tracing-opentelemetry`
+///   在创建子 Span 时需要 W3C 语义的 `Context`；该函数承担两种表示之间的桥梁角色，保障跨组件的一致性。
+/// - **逻辑（How）**：
+///   1. 将 `TraceState` 键值对拷贝到 OpenTelemetry 的 [`otel_trace::TraceState`]；
+///   2. 依据传入的 Trace/Span/Flags 构造 [`OtelSpanContext`]，并标记为“远程父级”；
+///   3. 将 SpanContext 嵌入新的 [`Context`]，供 `tracing-opentelemetry` 在创建 Span 时作为父上下文。
+/// - **契约（What）**：
+///   - **输入参数**：`parent` 为当前 Handler 的父级 [`TraceContext`]，必须来源于可信的上游；
+///   - **返回值**：成功时得到承载远程 Span 的 [`Context`]；失败时返回 [`Error::TraceStateConversion`]。
+/// - **前置条件**：`parent.trace_state` 内的键值需满足 W3C 校验规则；
+/// - **后置条件**：返回的 `Context` 与 `parent` 语义等价，可安全地传递到 OpenTelemetry 生态。
+/// - **风险与取舍（Trade-offs）**：
+///   - 直接重建 `TraceState` 会执行一次分配，但可确保与 W3C 规范对齐；
+///   - 若未来需要零分配，可考虑预先缓存字符串，但需权衡内存占用与实现复杂度。
 fn trace_context_to_otel(parent: &TraceContext) -> Result<Context, Error> {
     let otel_state = otel_trace::TraceState::from_key_value(
         parent
@@ -296,6 +313,23 @@ fn trace_context_to_otel(parent: &TraceContext) -> Result<Context, Error> {
     Ok(Context::new().with_remote_span_context(span_context))
 }
 
+/// 将 OpenTelemetry 的 [`OtelSpanContext`] 回转为 `spark-core` 的 [`TraceContext`]。
+///
+/// # 教案式说明
+/// - **意图（Why）**：`spark-core` Pipeline 以 `TraceContext` 作为日志与上下文传递的统一媒介，Span 创建后需立即
+///   将 OpenTelemetry 产生的新 SpanContext 映射回内部结构，才能继续向 Handler 传播。
+/// - **逻辑（How）**：
+///   1. 读取 `TraceState` 字符串表示，按 `key=value` 拆分并重建 [`TraceStateEntry`]；
+///   2. 将 Trace/Span ID 以字节数组形式写入新的 [`TraceContext`]；
+///   3. 将 [`otel_trace::TraceFlags`] 转换为 `spark-core` 的 [`TraceFlags`]。
+/// - **契约（What）**：
+///   - **输入参数**：`ctx` 必须来自可信的 OpenTelemetry Span；
+///   - **返回值**：成功时返回新的 `TraceContext`，失败时给出 [`Error::TraceStateConversion`]。
+/// - **前置条件**：`ctx.trace_state()` 的字符串需符合 `key=value` 且逗号分隔的格式；
+/// - **后置条件**：返回的结构保证与 `ctx` 表达的 Trace/Span 信息一致，可直接注入日志或继续派生子 Span。
+/// - **风险与取舍（Trade-offs）**：
+///   - 字符串拆分会产生暂存分配，但换取了实现清晰度；
+///   - 若未来存在大量 TraceState 条目，可引入自定义解析器以提升性能。
 fn trace_context_from_otel(ctx: &OtelSpanContext) -> Result<TraceContext, Error> {
     let state = ctx.trace_state().header();
     let trace_state = if state.is_empty() {
@@ -319,6 +353,21 @@ fn trace_context_from_otel(ctx: &OtelSpanContext) -> Result<TraceContext, Error>
     })
 }
 
+/// 回退逻辑：在追踪安装缺失或出错时，本地生成子 [`TraceContext`]。
+///
+/// # 教案式说明
+/// - **意图（Why）**：保持 Pipeline 的 Trace 结构完整，即便未成功对接 OpenTelemetry，也能保障日志继续携带合理的
+///   `trace_id`/`span_id` 并维持父子关系。
+/// - **逻辑（How）**：
+///   1. 调用 [`TraceContext::generate_span_id`] 生成新的子 Span 标识；
+///   2. 复用父级 `trace_id` 与状态，通过 [`TraceContext::child_context`] 派生子上下文；
+///   3. 构造不携带 Guard 的 [`HandlerSpan`]，以零成本结束生命周期。
+/// - **契约（What）**：输入为父级 TraceContext；输出的 HandlerSpan 仅用于内部传播，不会触发外部导出。
+/// - **前置条件**：`parent` 必须来自合法调用链；
+/// - **后置条件**：返回的 TraceContext 与父级共享同一 Trace ID，Span ID 为新生成值。
+/// - **风险与取舍（Trade-offs）**：
+///   - 放弃真实 Span 导出可确保 Pipeline 不中断，但失去可观测性后端的链路展示；
+///   - 若频繁触发该逻辑，应在监控中及时告警以提醒安装流程可能异常。
 fn fallback_span(parent: &TraceContext) -> HandlerSpan {
     let span_id = TraceContext::generate().span_id;
     let trace_context = parent.child_context(span_id);
