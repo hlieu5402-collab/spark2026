@@ -1,5 +1,6 @@
 use crate::arc_swap::ArcSwap;
 use alloc::{
+    borrow::Cow,
     format,
     string::{String, ToString},
     sync::Arc,
@@ -13,6 +14,10 @@ use crate::configuration::{ConfigKey, ConfigScope, ConfigValue, ResolvedConfigur
 use crate::error::SparkError;
 use crate::observability::{
     AttributeSet, MetricsProvider, OwnedAttributeSet, metrics::contract::limits as metrics_contract,
+};
+use crate::runtime::{
+    HotReloadApplyTimer, HotReloadFence, HotReloadObservability, HotReloadReadGuard,
+    HotReloadWriteGuard,
 };
 use crate::status::ready::QueueDepth;
 
@@ -436,19 +441,57 @@ impl Default for LimitSettings {
 pub struct LimitRuntimeConfig {
     epoch: AtomicU64,
     settings: ArcSwap<LimitSettings>,
+    fence: HotReloadFence,
+    observability: HotReloadObservability,
 }
 
 impl LimitRuntimeConfig {
-    /// 构造运行时配置容器。
+    /// 构造运行时配置容器，使用独立的热更新栅栏。
     pub fn new(initial: LimitSettings) -> Self {
+        Self::with_shared_fence(initial, HotReloadFence::new())
+    }
+
+    /// 使用外部提供的栅栏构造运行时配置，便于多组件统一切换。
+    pub fn with_shared_fence(initial: LimitSettings, fence: HotReloadFence) -> Self {
         Self {
             epoch: AtomicU64::new(0),
             settings: ArcSwap::new(Arc::new(initial)),
+            fence,
+            observability: HotReloadObservability::new(),
         }
     }
 
-    /// 返回当前配置快照。
+    /// 构造带有指标上报能力的运行时配置容器。
+    pub fn with_observability(
+        initial: LimitSettings,
+        fence: HotReloadFence,
+        metrics: Arc<dyn MetricsProvider>,
+        component: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        let observability = HotReloadObservability::with_component(metrics, component.into());
+        // 记录初始纪元（0），帮助监控面确认指标正常上报。
+        observability.record(0, None);
+        Self {
+            epoch: AtomicU64::new(0),
+            settings: ArcSwap::new(Arc::new(initial)),
+            fence,
+            observability,
+        }
+    }
+
+    /// 返回当前配置所使用的热更新栅栏，供外部批量加锁。
+    pub fn fence(&self) -> HotReloadFence {
+        self.fence.clone()
+    }
+
+    /// 返回当前配置快照，内部自动加读锁以保证读取与写入互斥。
     pub fn snapshot(&self) -> Arc<LimitSettings> {
+        let guard = self.fence.read();
+        self.snapshot_with_fence(&guard)
+    }
+
+    /// 在调用方已持有读锁的情况下返回快照，避免重复加锁。
+    pub fn snapshot_with_fence(&self, _guard: &HotReloadReadGuard<'_>) -> Arc<LimitSettings> {
         self.settings.load_full()
     }
 
@@ -459,8 +502,21 @@ impl LimitRuntimeConfig {
 
     /// 将新的配置直接写入，适用于调用方已经解析好的场景。
     pub fn replace(&self, next: LimitSettings) {
-        self.settings.store(Arc::new(next));
-        self.epoch.fetch_add(1, Ordering::SeqCst);
+        let timer = HotReloadApplyTimer::start();
+        let guard = self.fence.write();
+        let epoch = self.commit_with_guard(&guard, next);
+        self.observability.record(epoch, timer.elapsed());
+    }
+
+    /// 在共享写锁的上下文中直接替换配置。
+    pub fn replace_with_fence(
+        &self,
+        guard: &HotReloadWriteGuard<'_>,
+        next: LimitSettings,
+        timer: HotReloadApplyTimer,
+    ) {
+        let epoch = self.commit_with_guard(guard, next);
+        self.observability.record(epoch, timer.elapsed());
     }
 
     /// 从 [`ResolvedConfiguration`] 解析并更新限额。
@@ -468,9 +524,30 @@ impl LimitRuntimeConfig {
         &self,
         config: &ResolvedConfiguration,
     ) -> Result<(), LimitConfigError> {
+        let timer = HotReloadApplyTimer::start();
         let parsed = LimitSettings::from_configuration(config)?;
-        self.replace(parsed);
+        let guard = self.fence.write();
+        let epoch = self.commit_with_guard(&guard, parsed);
+        self.observability.record(epoch, timer.elapsed());
         Ok(())
+    }
+
+    /// 在共享写锁的上下文中解析并更新配置。
+    pub fn update_from_configuration_with_fence(
+        &self,
+        guard: &HotReloadWriteGuard<'_>,
+        config: &ResolvedConfiguration,
+        timer: HotReloadApplyTimer,
+    ) -> Result<(), LimitConfigError> {
+        let parsed = LimitSettings::from_configuration(config)?;
+        let epoch = self.commit_with_guard(guard, parsed);
+        self.observability.record(epoch, timer.elapsed());
+        Ok(())
+    }
+
+    fn commit_with_guard(&self, _guard: &HotReloadWriteGuard<'_>, next: LimitSettings) -> u64 {
+        self.settings.store(Arc::new(next));
+        self.epoch.fetch_add(1, Ordering::SeqCst) + 1
     }
 }
 

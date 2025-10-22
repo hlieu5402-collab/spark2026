@@ -1,5 +1,5 @@
 use crate::arc_swap::ArcSwap;
-use alloc::sync::Arc;
+use alloc::{borrow::Cow, sync::Arc};
 use core::{
     fmt,
     sync::atomic::{AtomicU64, Ordering},
@@ -7,6 +7,11 @@ use core::{
 };
 
 use crate::configuration::{ConfigKey, ConfigScope, ConfigValue, ResolvedConfiguration};
+use crate::observability::MetricsProvider;
+use crate::runtime::{
+    HotReloadApplyTimer, HotReloadFence, HotReloadObservability, HotReloadReadGuard,
+    HotReloadWriteGuard,
+};
 
 /// 描述运行时关键超时阈值。
 ///
@@ -83,19 +88,56 @@ impl Default for TimeoutSettings {
 pub struct TimeoutRuntimeConfig {
     epoch: AtomicU64,
     settings: ArcSwap<TimeoutSettings>,
+    fence: HotReloadFence,
+    observability: HotReloadObservability,
 }
 
 impl TimeoutRuntimeConfig {
     /// 创建新的运行时配置容器。
     pub fn new(initial: TimeoutSettings) -> Self {
+        Self::with_shared_fence(initial, HotReloadFence::new())
+    }
+
+    /// 使用共享栅栏构造运行时配置，支持跨组件同步切换。
+    pub fn with_shared_fence(initial: TimeoutSettings, fence: HotReloadFence) -> Self {
         Self {
             epoch: AtomicU64::new(0),
             settings: ArcSwap::new(Arc::new(initial)),
+            fence,
+            observability: HotReloadObservability::new(),
         }
     }
 
-    /// 返回当前配置快照。
+    /// 构造具备指标上报能力的运行时配置容器。
+    pub fn with_observability(
+        initial: TimeoutSettings,
+        fence: HotReloadFence,
+        metrics: Arc<dyn MetricsProvider>,
+        component: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        let observability = HotReloadObservability::with_component(metrics, component.into());
+        observability.record(0, None);
+        Self {
+            epoch: AtomicU64::new(0),
+            settings: ArcSwap::new(Arc::new(initial)),
+            fence,
+            observability,
+        }
+    }
+
+    /// 返回当前使用的热更新栅栏。
+    pub fn fence(&self) -> HotReloadFence {
+        self.fence.clone()
+    }
+
+    /// 返回当前配置快照，并在内部获取读锁以保证一致性。
     pub fn snapshot(&self) -> Arc<TimeoutSettings> {
+        let guard = self.fence.read();
+        self.snapshot_with_fence(&guard)
+    }
+
+    /// 在调用方已持有读锁的情况下返回快照，避免重复加锁。
+    pub fn snapshot_with_fence(&self, _guard: &HotReloadReadGuard<'_>) -> Arc<TimeoutSettings> {
         self.settings.load_full()
     }
 
@@ -106,8 +148,21 @@ impl TimeoutRuntimeConfig {
 
     /// 直接替换为新的设置。
     pub fn replace(&self, settings: TimeoutSettings) {
-        self.settings.store(Arc::new(settings));
-        self.epoch.fetch_add(1, Ordering::SeqCst);
+        let timer = HotReloadApplyTimer::start();
+        let guard = self.fence.write();
+        let epoch = self.commit_with_guard(&guard, settings);
+        self.observability.record(epoch, timer.elapsed());
+    }
+
+    /// 在共享写锁的上下文中替换配置。
+    pub fn replace_with_fence(
+        &self,
+        guard: &HotReloadWriteGuard<'_>,
+        settings: TimeoutSettings,
+        timer: HotReloadApplyTimer,
+    ) {
+        let epoch = self.commit_with_guard(guard, settings);
+        self.observability.record(epoch, timer.elapsed());
     }
 
     /// 解析并更新配置。
@@ -115,9 +170,34 @@ impl TimeoutRuntimeConfig {
         &self,
         config: &ResolvedConfiguration,
     ) -> Result<(), TimeoutConfigError> {
+        let timer = HotReloadApplyTimer::start();
         let parsed = TimeoutSettings::from_configuration(config)?;
-        self.replace(parsed);
+        let guard = self.fence.write();
+        let epoch = self.commit_with_guard(&guard, parsed);
+        self.observability.record(epoch, timer.elapsed());
         Ok(())
+    }
+
+    /// 在共享写锁的上下文中解析并更新配置。
+    pub fn update_from_configuration_with_fence(
+        &self,
+        guard: &HotReloadWriteGuard<'_>,
+        config: &ResolvedConfiguration,
+        timer: HotReloadApplyTimer,
+    ) -> Result<(), TimeoutConfigError> {
+        let parsed = TimeoutSettings::from_configuration(config)?;
+        let epoch = self.commit_with_guard(guard, parsed);
+        self.observability.record(epoch, timer.elapsed());
+        Ok(())
+    }
+
+    fn commit_with_guard(
+        &self,
+        _guard: &HotReloadWriteGuard<'_>,
+        settings: TimeoutSettings,
+    ) -> u64 {
+        self.settings.store(Arc::new(settings));
+        self.epoch.fetch_add(1, Ordering::SeqCst) + 1
     }
 }
 
