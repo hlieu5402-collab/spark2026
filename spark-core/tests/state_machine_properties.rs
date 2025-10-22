@@ -264,6 +264,56 @@ enum ReadyNode {
     Pending,
 }
 
+impl ReadyNode {
+    /// 返回从当前节点允许进入的下一跳集合。
+    ///
+    /// ### 教案级说明
+    /// - **意图 (Why)**：在影子模型中显式锁定允许的转换，防止实现引入文档未授权的边。
+    /// - **逻辑 (How)**：根据状态机图返回静态切片，并在 `ReadyMachine::apply` 与序列生成器中复用，确保测试与文档一致。
+    /// - **契约 (What)**：返回值至少包含一个状态；若允许进入 `Pending`，切片中会显式包含 `ReadyNode::Pending`。
+    /// - **注意事项 (Trade-offs)**：为便于 `proptest` 复用，切片顺序与文档无关；调用方需自行决定如何使用返回结果。
+    fn allowed_successors(self) -> &'static [ReadyNode] {
+        match self {
+            ReadyNode::Ready => &[
+                ReadyNode::Ready,
+                ReadyNode::Busy,
+                ReadyNode::BudgetExhausted,
+                ReadyNode::RetryAfter,
+                ReadyNode::Pending,
+            ],
+            ReadyNode::Busy => &[
+                ReadyNode::Ready,
+                ReadyNode::Busy,
+                ReadyNode::BudgetExhausted,
+                ReadyNode::RetryAfter,
+                ReadyNode::Pending,
+            ],
+            ReadyNode::BudgetExhausted => &[
+                ReadyNode::Ready,
+                ReadyNode::Busy,
+                ReadyNode::RetryAfter,
+                ReadyNode::Pending,
+            ],
+            ReadyNode::RetryAfter => &[
+                ReadyNode::Ready,
+                ReadyNode::Busy,
+                ReadyNode::BudgetExhausted,
+                ReadyNode::Pending,
+            ],
+            ReadyNode::Pending => &[
+                ReadyNode::Ready,
+                ReadyNode::Busy,
+                ReadyNode::BudgetExhausted,
+                ReadyNode::RetryAfter,
+            ],
+        }
+    }
+
+    fn can_transition_to(self, next: ReadyNode) -> bool {
+        self.allowed_successors().contains(&next)
+    }
+}
+
 /// ReadyState 的非 Pending 分支。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ReadyLeafState {
@@ -351,6 +401,8 @@ enum MachineError {
     MissingWakeBeforeResolution,
     #[error("pending expectation must register at least one wake source")]
     EmptyWakeSet,
+    #[error("transition {from:?} -> {to:?} not allowed")]
+    InvalidTransition { from: ReadyNode, to: ReadyNode },
 }
 
 /// ReadyState 影子状态机。
@@ -378,7 +430,14 @@ impl ReadyMachine {
     fn apply(&mut self, event: &MachineEvent) -> Result<(), MachineError> {
         match event {
             MachineEvent::Poll(PollOutcome::State(state)) => {
+                let current = self.node;
                 let next_node = ReadyNode::from(*state);
+                if !current.can_transition_to(next_node) {
+                    return Err(MachineError::InvalidTransition {
+                        from: current,
+                        to: next_node,
+                    });
+                }
                 if let Some(pending) = self.pending.take() {
                     if !pending.wake_observed {
                         return Err(MachineError::MissingWakeBeforeResolution);
@@ -395,6 +454,14 @@ impl ReadyMachine {
             MachineEvent::Poll(PollOutcome::Pending { allowed_sources }) => {
                 if allowed_sources.is_empty() {
                     return Err(MachineError::EmptyWakeSet);
+                }
+                if self.node != ReadyNode::Pending
+                    && !self.node.can_transition_to(ReadyNode::Pending)
+                {
+                    return Err(MachineError::InvalidTransition {
+                        from: self.node,
+                        to: ReadyNode::Pending,
+                    });
                 }
                 self.visited.insert(ReadyNode::Pending);
                 match self.pending.as_mut() {
@@ -445,6 +512,27 @@ fn legal_sequences_with_pending() -> impl Strategy<Value = Vec<MachineEvent>> {
     })
 }
 
+#[test]
+fn invalid_budget_exhausted_loop_is_rejected() {
+    //
+    // 教案级说明：验证 `BudgetExhausted -> BudgetExhausted` 会触发 `InvalidTransition`。
+    // - **Why**：文档将该转换列为禁止项；测试确保影子模型正确报警。
+    // - **How**：先驱动一次合法的 `Ready -> BudgetExhausted`，再尝试重复返回同一状态。
+    // - **What**：期望第一次 `apply` 返回 `Ok(())`，第二次返回 `InvalidTransition`。
+    let mut machine = ReadyMachine::new();
+    let first = MachineEvent::Poll(PollOutcome::State(ReadyLeafState::BudgetExhausted));
+    let second = MachineEvent::Poll(PollOutcome::State(ReadyLeafState::BudgetExhausted));
+
+    assert_eq!(machine.apply(&first), Ok(()));
+    assert_eq!(
+        machine.apply(&second),
+        Err(MachineError::InvalidTransition {
+            from: ReadyNode::BudgetExhausted,
+            to: ReadyNode::BudgetExhausted,
+        })
+    );
+}
+
 /// 构造事件序列的辅助状态。
 struct SequenceBuilder {
     events: Vec<MachineEvent>,
@@ -475,34 +563,28 @@ impl SequenceBuilder {
                 self.events.push(MachineEvent::Wake(source));
                 pending.wake_observed = true;
             }
-            self.events.push(MachineEvent::Poll(PollOutcome::State(
-                ReadyLeafState::Ready,
-            )));
-            self.node = ReadyNode::Ready;
+            self.emit_leaf(ReadyLeafState::Ready);
         }
         self.events
     }
 
     fn drive_non_pending(&mut self, control: u8) {
-        let branch = control % 5;
-        let leaf = match branch {
-            0 => ReadyLeafState::Ready,
-            1 => ReadyLeafState::Busy,
-            2 => ReadyLeafState::BudgetExhausted,
-            3 => ReadyLeafState::RetryAfter,
-            _ => {
-                let allowed = Self::select_sources(control / 5);
+        let successors = self.node.allowed_successors();
+        let idx = (control as usize) % successors.len();
+        match successors[idx] {
+            ReadyNode::Ready => self.emit_leaf(ReadyLeafState::Ready),
+            ReadyNode::Busy => self.emit_leaf(ReadyLeafState::Busy),
+            ReadyNode::BudgetExhausted => self.emit_leaf(ReadyLeafState::BudgetExhausted),
+            ReadyNode::RetryAfter => self.emit_leaf(ReadyLeafState::RetryAfter),
+            ReadyNode::Pending => {
+                let allowed = Self::select_sources(control.wrapping_mul(31));
                 self.events.push(MachineEvent::Poll(PollOutcome::Pending {
                     allowed_sources: allowed.clone(),
                 }));
                 self.pending = Some(PendingExpectation::new(allowed));
                 self.node = ReadyNode::Pending;
-                return;
             }
-        };
-        self.events
-            .push(MachineEvent::Poll(PollOutcome::State(leaf)));
-        self.node = ReadyNode::from(leaf);
+        }
     }
 
     fn drive_pending(&mut self, control: u8) {
@@ -521,16 +603,16 @@ impl SequenceBuilder {
                 pending.allowed_sources = allowed;
             }
         } else {
-            let leaf_selector = (control % 4) as usize;
-            let leaf = [
-                ReadyLeafState::Ready,
-                ReadyLeafState::Busy,
-                ReadyLeafState::BudgetExhausted,
-                ReadyLeafState::RetryAfter,
-            ][leaf_selector];
-            self.events
-                .push(MachineEvent::Poll(PollOutcome::State(leaf)));
-            self.node = ReadyNode::from(leaf);
+            let successors = ReadyNode::Pending.allowed_successors();
+            let idx = (control as usize) % successors.len();
+            let leaf = match successors[idx] {
+                ReadyNode::Ready => ReadyLeafState::Ready,
+                ReadyNode::Busy => ReadyLeafState::Busy,
+                ReadyNode::BudgetExhausted => ReadyLeafState::BudgetExhausted,
+                ReadyNode::RetryAfter => ReadyLeafState::RetryAfter,
+                ReadyNode::Pending => unreachable!("Pending 不允许自循环"),
+            };
+            self.emit_leaf(leaf);
             self.pending = None;
         }
     }
@@ -547,6 +629,18 @@ impl SequenceBuilder {
             }
         }
         sources
+    }
+
+    /// 发射叶子节点事件，并维护内部状态指针。
+    ///
+    /// - **意图 (Why)**：统一封装“将叶子状态写入事件队列并更新当前节点”的重复样板，避免逻辑分散。
+    /// - **逻辑 (How)**：推入 `MachineEvent::Poll(PollOutcome::State(..))`，随后借由 `ReadyNode::from` 同步内部节点。
+    /// - **契约 (What)**：调用方需保证 `leaf` 不为 `Pending`，否则语义与 `ReadyNode::from` 不匹配。
+    /// - **注意事项 (Trade-offs)**：保持极简以降低生成器的噪音，若未来需要附加统计信息，可在此集中扩展。
+    fn emit_leaf(&mut self, leaf: ReadyLeafState) {
+        self.events
+            .push(MachineEvent::Poll(PollOutcome::State(leaf)));
+        self.node = ReadyNode::from(leaf);
     }
 }
 

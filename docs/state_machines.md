@@ -4,7 +4,7 @@
 
 ## 状态转换
 
-下图使用 Mermaid 描述 ReadyState 的核心转换与事件来源。图中的 `poll_ready()` 表示框架驱动就绪检查，`wake()` 表示下游通过 Waker 唤醒。
+下图使用 Mermaid 描述 ReadyState 的核心转换与事件来源。图中的 `poll_ready()` 表示框架驱动就绪检查，`wake()` 表示下游通过 Waker 唤醒。所有箭头都会被 1:1 映射到测试目录中的影子状态机，用于检测实现是否新增了未授权的转换。
 
 ```mermaid
 stateDiagram-v2
@@ -43,6 +43,20 @@ stateDiagram-v2
 > - 进入 `Pending` 后必须记录唤醒来源（下节）；
 > - 任何从 `Pending` 离开的转换都必须伴随一次可观测的唤醒事件，避免“静默就绪”。
 
+### 禁止转换清单
+
+为确保实现不会隐式引入额外边，以下组合被判定为**非法转换**，在影子模型中将触发 `InvalidTransition`：
+
+| 当前状态 | 禁止到达的下一状态 | 禁止理由 |
+| -------- | ------------------ | -------- |
+| `Ready` | _无_ | Ready 可以向所有其它节点过渡（含自循环与 Pending）。 |
+| `Busy` | _无_ | Busy 与 Ready 类似，可显式自循环或进入任意其它叶子节点与 Pending。 |
+| `BudgetExhausted` | `BudgetExhausted` | 二次返回 `BudgetExhausted` 会掩盖预算补充/降级过程，应改由 `Busy` 或 `RetryAfter` 表达。 |
+| `RetryAfter` | `RetryAfter` | 再次 `RetryAfter` 缺乏语义增量，应通过显式退避窗口结束后回到其它叶子状态。 |
+| `Pending` | `Pending` | Pending 不得静默自循环；若多次 `poll_ready()` 仍未唤醒，应使用同一个 Pending 契约并保留历史唤醒集合。 |
+
+> _说明_：表格仅列出禁止项。若未来文档需要新增边，务必同步更新本清单与测试中的 `allowed_successors()` 定义。
+
 ## 唤醒源定义
 
 为确保排障与调度行为稳定，每一次从 `Pending` 唤醒都必须附带明确的来源标签。
@@ -64,7 +78,7 @@ stateDiagram-v2
 > **目的**：确保“无灰区”——任何 Pending 都必须伴随可追踪的唤醒事件，且所有转换均为显式允许的边。
 
 - **性质一（无不可达状态）**：利用 `spark-core/tests/state_machine_properties.rs` 中的 proptest 影子模型，
-  生成任意合法事件序列并断言每一步转换都能被 ReadyState 接受，不会进入文档未定义的节点。
+  生成任意合法事件序列并断言每一步转换都能被 ReadyState 接受，不会进入文档未定义的节点；若序列尝试触发禁止转换，模型将返回 `InvalidTransition` 并定位边。
 - **性质二（Pending 必有唤醒）**：同一影子模型记录每个 Pending 区间的唤醒集合，验证任何 Pending 在返回前都观察到了合法唤醒源。
 - **性质三（唤醒有序可见）**：当启用 `--features loom-model` 时，Loom 场景会模拟 Pending 注册与唤醒的并发交错，
   检查唤醒标记在内存可见性层面不会丢失或超前，确保调度线程在恢复前一定看到至少一个唤醒标记。
