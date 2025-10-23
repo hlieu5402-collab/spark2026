@@ -16,6 +16,30 @@
    - 若等待超时，调用 `force_close` 执行硬关闭，同时输出 WARN 日志并在报告中标记 `ForcedTimeout`；
    - 汇总 [`GracefulShutdownReport`] 返回给调用方，内含每个目标的耗时与状态统计。
 
+### 状态机时序
+
+```mermaid
+stateDiagram-v2
+    [*] --> FinBroadcast: shutdown()
+    FinBroadcast --> AwaitHalfClose: trigger_graceful()
+    state AwaitHalfClose {
+        [*] --> Pending: await_closed() poll
+        Pending --> Pending: 半关闭读/写确认尚未全部完成
+        Pending --> Completed: await_closed() -> Ok
+        Pending --> Failed: await_closed() -> Err(SparkError)
+        Pending --> Forced: deadline reached / expired
+    }
+    Completed --> ResourceCleanup: drop await_closed future
+    Failed --> ResourceCleanup: drop await_closed future
+    Forced --> ResourceCleanup: force_close() + drop future
+    ResourceCleanup --> [*]
+```
+
+- **关键节点说明**：
+  - `Pending` 阶段允许业务在 FIN 后继续处理读/写半关闭确认；`channel_half_close_requires_dual_ack_steps` 用例验证只有在两个确认到齐后才会离开该状态；
+  - `Completed`/`Failed` 分支对 `await_closed` 的成功或异常作出区分，`channel_closed_future_error_reports_failure` 覆盖错误路径并确保资源会在 `ResourceCleanup` 中释放；
+  - `Forced` 分支覆盖超时与截止时间已过期的强制终止，`pending_channel_times_out_and_forces_close` 与 `expired_deadline_triggers_immediate_force_close` 均断言 `force_close()` 调用以及 Future 被丢弃释放资源。
+
 ## 契约说明（What）
 - **输入**：
   - `CloseReason` 使用稳定的 `namespace.code` 命名，与审计平台共享；
@@ -47,5 +71,6 @@
   - 截止时间到期触发硬关闭并记录 WARN 日志；
   - `await_closed` 返回 `SparkError` 时生成 `Failed` 记录。
 - 套件依赖 `make ci-*` 序列执行，确保在 `cargo fmt/clippy/build/doc/bench` 及自定义检查中稳定通过。
+- TCK：`crates/spark-contract-tests/src/graceful_shutdown.rs` 提供 FIN、半关闭读写、超时强制、错误回收等边界用例，覆盖所有状态转移。
 
 > 若未来扩展到并发等待或分级关闭策略，请同步更新本文档与相应教案级注释，确保契约可被审计与回归验证。

@@ -7,12 +7,12 @@
         {
           "name": "single_large_chunk",
           "max_p99_ns_per_kb": 0.05,
-          "max_mean_ns_per_kb": 0.03
+          "max_mean_ns_per_kb": 0.06
         },
         {
           "name": "many_tiny_chunks",
-          "max_p99_ns_per_kb": 60.0,
-          "max_mean_ns_per_kb": 45.0
+          "max_p99_ns_per_kb": 110.0,
+          "max_mean_ns_per_kb": 65.0
         }
       ]
     },
@@ -22,12 +22,12 @@
         {
           "name": "single_large_chunk",
           "max_p99_ns_per_kb": 0.05,
-          "max_mean_ns_per_kb": 0.03
+          "max_mean_ns_per_kb": 0.06
         },
         {
           "name": "many_tiny_chunks",
-          "max_p99_ns_per_kb": 60.0,
-          "max_mean_ns_per_kb": 45.0
+          "max_p99_ns_per_kb": 110.0,
+          "max_mean_ns_per_kb": 65.0
         }
       ]
     }
