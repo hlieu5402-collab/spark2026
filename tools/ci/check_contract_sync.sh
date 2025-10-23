@@ -88,6 +88,11 @@ readonly SCOPE_PATHSPEC=':(glob)spark-core/src/**/*.rs'
 readonly CONTRACT_REGEX='\b(ReadyState|ErrorCategory|ObservabilityContract|BufView)\b'
 readonly CATEGORY_MATRIX_SOURCE='spark-core/src/error/category_matrix.rs'
 readonly CATEGORY_MATRIX_DOC='docs/error-category-matrix.md'
+readonly CATEGORY_SURFACE_PATHS=(
+  'spark-core/src/error.rs'
+  'spark-core/src/error/category_matrix.rs'
+  'spark-core/src/pipeline/default_handlers.rs'
+)
 
 # 教案级注释：错误分类矩阵 SOT 守门（Why / How / What / Trade-offs）
 # - Why：`category_matrix.rs` 定义了错误分类与默认动作的唯一代码真相，而 `docs/error-category-matrix.md` 是运营/客服查阅的权威知识库。
@@ -115,6 +120,36 @@ fi
 if { $category_matrix_source_changed && ! $category_matrix_doc_changed; } || { $category_matrix_doc_changed && ! $category_matrix_source_changed; }; then
   echo "错误分类矩阵为 SOT 资源：代码 (${CATEGORY_MATRIX_SOURCE}) 与文档 (${CATEGORY_MATRIX_DOC}) 必须在同一 PR 中同时更新。" >&2
   echo "请同步修改另一侧文件后再触发 CI。" >&2
+  exit 1
+fi
+
+# 教案级注释：错误分类公共接口 → 矩阵文档强制同步守门
+# - Why：`ErrorCategory` 枚举与默认自动响应（`ExceptionAutoResponder`）是矩阵文档的“外部接口”；
+#   若仅改动这些入口而未更新矩阵说明，文档会与实际行为脱节，直接影响排障和运维决策。
+# - How：
+#   1. 扫描 `CATEGORY_SURFACE_PATHS` 中的关键文件是否在当前 PR 中发生改动；
+#   2. 若命中，则进一步确认 `docs/error-category-matrix.md` 是否伴随更新；
+#   3. 缺少文档更新时立即失败并提示具体文件，提示作者补齐知识库。
+# - What（契约）：
+#   * 输入：`CATEGORY_SURFACE_PATHS` 定义的文件列表；
+#   * 前置条件：脚本已定位到 PR 对比基线，Git 工作区干净；
+#   * 后置条件：若触发守门，将输出命中文件路径并以非零退出码终止。
+# - Trade-offs：
+#   * 采用文件级别守门而非语义 diff，可在极低成本下覆盖 90%+ 的漂移风险；
+#   * 若确实只对这些文件做无行为影响的注释修订，可同时在文档中补充说明，保持一致性。
+category_surface_hits=()
+for surface in "${CATEGORY_SURFACE_PATHS[@]}"; do
+  if git diff --name-only "$BASE_COMMIT"...HEAD -- "$surface" | grep -q .; then
+    category_surface_hits+=("$surface")
+  fi
+done
+
+if ((${#category_surface_hits[@]} > 0)) && ! $category_matrix_doc_changed; then
+  echo "检测到以下 ErrorCategory / 默认自动响应入口发生改动，但 docs/error-category-matrix.md 未同步更新：" >&2
+  for path in "${category_surface_hits[@]}"; do
+    echo "- ${path}" >&2
+  done
+  echo "请在同一 PR 中补充更新 ${CATEGORY_MATRIX_DOC}，确保文档描述与代码行为一致。" >&2
   exit 1
 fi
 
