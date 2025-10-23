@@ -30,7 +30,9 @@ use alloc::{borrow::Cow, fmt};
 use core::convert::TryFrom;
 #[cfg(feature = "std")]
 use core::pin::Pin;
-use core::task::{Context as TaskContext, Poll};
+#[cfg(feature = "std")]
+use core::task::Context as TaskContext;
+use core::task::Poll;
 use core::time::Duration;
 #[cfg(feature = "std")]
 use std::time::Instant;

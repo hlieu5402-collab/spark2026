@@ -2,12 +2,16 @@ use crate::{
     Error, TraceContext, cluster::NodeId, contract::BudgetKind, sealed::Sealed,
     security::SecurityClass, status::RetryAdvice, transport::TransportSocketAddr,
 };
+
+pub mod category_matrix;
+#[cfg(test)]
 use alloc::{
     borrow::{Cow, ToOwned},
     boxed::Box,
     string::String,
+    format，
 };
-use core::{fmt, time::Duration};
+use core::fmt;
 
 /// `CoreError` 表示 `spark-core` 跨层共享的稳定错误域，是所有可观察错误的最终形态。
 ///
@@ -144,7 +148,7 @@ impl CoreError {
         self.metadata
             .category
             .clone()
-            .or_else(|| lookup_default_category(self.code))
+            .or_else(|| category_matrix::matrix::lookup_default_category(self.code))
             .unwrap_or(ErrorCategory::NonRetryable)
     }
 
@@ -802,55 +806,6 @@ fn lookup_human_and_hint(code: &str) -> Option<(&'static str, Option<&'static st
             "应用鉴权失败：凭证失效或权限不足",
             Some("重新发放凭证或调整访问策略；记录审计日志并通知调用方更新凭证"),
         )),
-        _ => None,
-    }
-}
-
-/// 根据稳定错误码查找默认的错误分类。
-///
-/// # 设计动机（Why）
-/// - 让 `CoreError` 在未显式标记分类时仍具备机器可读的默认策略，降低调用方负担；
-/// - 保证分类逻辑集中维护：新增错误码时只需更新本函数与文档矩阵。
-///
-/// # 契约说明（What）
-/// - **输入**：`code` 必须是 `docs/error-category-matrix.md` 登记的稳定错误码；
-/// - **输出**：若存在默认分类则返回 `Some(ErrorCategory)`，否则 `None`，上层会回退到
-///   [`ErrorCategory::NonRetryable`]。
-///
-/// # 执行策略（How）
-/// - 通过 `match` 建立编译期跳表，避免运行期开销；
-/// - 对 `Retryable` 场景内置退避建议 [`RetryAdvice`]，统一等待时长与原因；
-/// - 对 `ResourceExhausted` 分支指定预算类型 [`BudgetKind`]，驱动自动背压。
-fn lookup_default_category(code: &str) -> Option<ErrorCategory> {
-    use crate::error::codes;
-    use crate::security::SecurityClass;
-
-    fn retry_after(wait_ms: u64, reason: &'static str) -> ErrorCategory {
-        let advice = RetryAdvice::after(Duration::from_millis(wait_ms)).with_reason(reason);
-        ErrorCategory::Retryable(advice)
-    }
-
-    match code {
-        codes::TRANSPORT_IO => Some(retry_after(150, "传输层 I/O 故障，等待链路恢复后重试")),
-        codes::TRANSPORT_TIMEOUT => Some(ErrorCategory::Timeout),
-        codes::PROTOCOL_DECODE | codes::PROTOCOL_NEGOTIATION | codes::PROTOCOL_TYPE_MISMATCH => {
-            Some(ErrorCategory::ProtocolViolation)
-        }
-        codes::PROTOCOL_BUDGET_EXCEEDED => {
-            Some(ErrorCategory::ResourceExhausted(BudgetKind::Decode))
-        }
-        codes::RUNTIME_SHUTDOWN => Some(ErrorCategory::Cancelled),
-        codes::CLUSTER_NODE_UNAVAILABLE
-        | codes::CLUSTER_NETWORK_PARTITION
-        | codes::CLUSTER_LEADER_LOST => Some(retry_after(250, "集群节点暂不可用，稍后重试")),
-        codes::CLUSTER_SERVICE_NOT_FOUND | codes::APP_ROUTING_FAILED => {
-            Some(ErrorCategory::NonRetryable)
-        }
-        codes::CLUSTER_QUEUE_OVERFLOW => Some(ErrorCategory::ResourceExhausted(BudgetKind::Flow)),
-        codes::DISCOVERY_STALE_READ => Some(retry_after(120, "服务发现数据陈旧，等待刷新")),
-        codes::ROUTER_VERSION_CONFLICT => Some(ErrorCategory::ProtocolViolation),
-        codes::APP_UNAUTHORIZED => Some(ErrorCategory::Security(SecurityClass::Authorization)),
-        codes::APP_BACKPRESSURE_APPLIED => Some(retry_after(180, "下游正在施加背压，遵循等待窗口")),
         _ => None,
     }
 }

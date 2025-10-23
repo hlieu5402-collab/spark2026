@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use alloc::vec::Vec;
@@ -44,16 +45,16 @@ pub trait Clock: Send + Sync + 'static {
     fn sleep(&self, duration: Duration) -> Sleep;
 }
 
-/// 基于 Tokio 实现的系统时钟。
+/// 基于标准库线程实现的系统时钟。
 ///
 /// # 设计动机（Why）
-/// - 在生产环境下复用 Tokio 时间驱动，避免重复造轮子；
-/// - 通过 trait 封装，隐藏 Tokio 依赖，保持框架 API 简洁。
+/// - 避免强依赖 Tokio 运行时，让 `std` 构建默认即可使用；
+/// - 通过线程睡眠实现异步 `Sleep`，在不引入额外运行时的情况下满足“等待后唤醒”的契约。
 ///
 /// # 契约说明（What）
 /// - `now` 直接返回 [`Instant::now`]；
-/// - `sleep` 使用 [`tokio::time::sleep`]，由 Tokio 调度；
-/// - 需要在 Tokio 运行时上下文中使用，否则 Future 将无法前进。
+/// - `sleep` 启动后台线程执行阻塞睡眠，完成后唤醒 Future；
+/// - 线程池数量取决于调用频率，调用方在高频场景下可注入自定义 [`Clock`] 以获得更高性能。
 #[derive(Clone, Debug, Default)]
 pub struct SystemClock;
 
@@ -63,8 +64,88 @@ impl Clock for SystemClock {
     }
 
     fn sleep(&self, duration: Duration) -> Sleep {
-        // Tokio `sleep` 返回 `!Unpin` Future，统一包裹为 `Sleep` 类型。
-        Box::pin(tokio::time::sleep(duration))
+        Box::pin(ThreadSleep::new(duration))
+    }
+}
+
+/// 线程驱动的睡眠 Future，实现最小可行的 “等待后唤醒” 契约。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：提供无需 Tokio 的默认实现，保证 `std` 构建即可使用 `Clock::sleep`。调用频率较低的控制面逻辑
+///   （如 RetryAfter 节律、管理面任务）可以容忍为每次等待启动一个辅助线程。
+/// - **实现逻辑 (How)**：构造时立即启动一个后台线程执行阻塞睡眠；线程醒来后将完成位标记为真并唤醒登记的 waker；
+///   Future 在 `poll` 时若尚未完成，则记录最新 waker 并返回 `Poll::Pending`。
+/// - **契约 (What)**：Future 在完成前保持 `Pending`，完成后返回 `Ready(())`；若 Future 在等待过程中被丢弃，后台线程最终会自
+///   行退出且不会尝试唤醒已释放的 waker。
+/// - **权衡 (Trade-offs)**：该实现为简化依赖而牺牲了一定性能；对于高频低延迟场景，建议注入自定义时钟（例如基于 Tokio 或专
+///   用定时轮）以减少线程创建开销。
+struct ThreadSleep {
+    state: Arc<ThreadSleepState>,
+}
+
+impl ThreadSleep {
+    fn new(duration: Duration) -> Self {
+        Self {
+            state: ThreadSleepState::spawn(duration),
+        }
+    }
+}
+
+impl Future for ThreadSleep {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.state.is_completed() {
+            Poll::Ready(())
+        } else {
+            self.state.register_waker(cx.waker());
+            if self.state.is_completed() {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        }
+    }
+}
+
+struct ThreadSleepState {
+    completed: AtomicBool,
+    waker: Mutex<Option<Waker>>,
+}
+
+impl ThreadSleepState {
+    fn spawn(duration: Duration) -> Arc<Self> {
+        let state = Arc::new(Self {
+            completed: AtomicBool::new(false),
+            waker: Mutex::new(None),
+        });
+        let thread_state = Arc::clone(&state);
+        thread::spawn(move || {
+            thread::sleep(duration);
+            thread_state.finish();
+        });
+        state
+    }
+
+    fn is_completed(&self) -> bool {
+        self.completed.load(Ordering::Acquire)
+    }
+
+    fn register_waker(&self, waker: &Waker) {
+        let mut slot = self.waker.lock().expect("thread-sleep waker lock poisoned");
+        *slot = Some(waker.clone());
+    }
+
+    fn finish(&self) {
+        self.completed.store(true, Ordering::Release);
+        let maybe_waker = self
+            .waker
+            .lock()
+            .expect("thread-sleep waker lock poisoned")
+            .take();
+        if let Some(waker) = maybe_waker {
+            waker.wake();
+        }
     }
 }
 

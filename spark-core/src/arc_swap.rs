@@ -1,13 +1,14 @@
 //! 条件性 `ArcSwap` 适配层。
 //!
 //! # 设计初衷（Why）
-//! - 在 `std` 特性可用时复用社区成熟的 [`arc-swap`](https://crates.io/crates/arc-swap) 实现，保证锁自由的读路径。
-//! - 在 `no_std + alloc` 场景下，该三方库需要 nightly 才能启用实验特性，不符合本仓库 Rust 1.89 稳定版的基线。
-//! - 因此提供一个轻量级回退实现，以相同接口保障编译通过，并在后续具备稳定支持时无缝切换到官方版本。
+//! - 过往在 `std` 特性可用时会复用社区成熟的 [`arc-swap`](https://crates.io/crates/arc-swap) 实现，以获得锁自由的读路径；
+//! - 然而该三方库在稳定通道上尚未提供 `no_std` 支持，导致 `--no-default-features` 构建无法通过；
+//! - 因此当前版本统一切换为轻量级回退实现，保持 API 兼容并在未来官方支持稳定 `no_std` 时再恢复外部依赖。
 //!
 //! # 使用方式（How）
-//! - 业务代码统一通过 `crate::arc_swap::ArcSwap` 导入类型。
-//! - 对于 `std` 构建，本模块直接 `pub use` 第三方实现；对于纯 `alloc` 构建，改为使用内部 `spin::RwLock` 封装的仿制结构。
+//! - 业务代码统一通过 `crate::arc_swap::ArcSwap` 导入类型；
+//! - 当前无论 `std` 是否启用，均使用内部 `spin::RwLock` 封装的仿制结构，避免跨特性差异导致二义性；
+//! - 若未来重新接入外部依赖，会通过新增 Cargo Feature 控制以保持向后兼容。
 //!
 //! # 契约说明（What）
 //! - API 保持与 `arc-swap` 最常用的四个方法兼容：`new`、`from_pointee`、`load_full`、`store`。
@@ -15,12 +16,9 @@
 //!
 //! # 权衡与注意事项（Trade-offs）
 //! - 回退实现使用自旋锁保持 `no_std` 可用性，会牺牲部分性能；但 `alloc` 构建通常用于受限环境，允许以正确性优先。
-//! - 一旦上游库提供稳定的 `no_std` 支持，可移除回退实现，恢复纯粹依赖第三方 crate。
+//! - 一旦上游库提供稳定的 `no_std` 支持，可移除回退实现并在 `std` 构建下重新启用锁自由版本；
+//! - 若业务在 `std` 环境下需要极致性能，可通过自定义 Feature 引入第三方实现，本模块的 API 仍保持兼容。
 
-#[cfg(feature = "std")]
-pub use ::arc_swap::ArcSwap;
-
-#[cfg(not(feature = "std"))]
 mod fallback {
     use alloc::sync::Arc;
     use core::fmt;
@@ -83,5 +81,4 @@ mod fallback {
     }
 }
 
-#[cfg(not(feature = "std"))]
 pub use fallback::ArcSwap;

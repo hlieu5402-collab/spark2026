@@ -18,19 +18,19 @@ default = ["std"]
 compat_v0 = []
 # 所有 API 契约均依赖 `alloc` 类型（Box/Arc/Vec）；禁用 `alloc` 无法构建对象安全 Future/Stream。
 alloc = []
-std = ["alloc", "serde_json", "dep:arc-swap", "dep:tokio"]
+std = []
 loom-model = ["dep:loom"]
+std_json = ["dep:serde_json"]
 
 [dependencies]
 async-trait = { version = "0.1", default-features = false }
 spark-macros = { path = "../crates/spark-macros" }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 sha2 = { version = "0.10", default-features = false }
-serde_json = { version = "1.0", optional = true }
 loom = { version = "0.7", default-features = false, optional = true }
 spin = { version = "0.9", default-features = false, features = ["rwlock", "mutex", "spin_mutex"] }
-arc-swap = { version = "1.7", optional = true }
-tokio = { version = "1", optional = true, features = ["time"] }
+libm = { version = "0.2" }
+serde_json = { version = "1.0", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -74,6 +74,10 @@ path = "tests/contracts/context_propagation_spawn.rs"
 [[test]]
 name = "concurrency_primitives"
 path = "tests/concurrency_primitives.rs"
+name = "contracts_error_category_autoresponse"
+path = "tests/contracts/error_category_autoresponse.rs"
+name = "contracts_ready_state_matrix"
+path = "tests/contracts/ready_state_matrix.rs"
 
 [[test]]
 name = "pipeline"
@@ -94,6 +98,6 @@ path = "tests/retry/mod.rs"
 [[bin]]
 name = "audit_replay"
 path = "src/bin/audit_replay.rs"
-required-features = ["std"]
+required-features = ["std", "std_json"]
 bench = false
 test = false
