@@ -52,6 +52,10 @@
 
 > ⚠️ 若判定“不适用”，请在条目后标注 `N/A` 并补充理由；CI 会校验相关材料的缺失情况。
 
+## 契约同步（ReadyState / ErrorCategory / ObservabilityContract / BufView）
+
+- [ ] 若本次 PR 涉及上述契约，请列出已更新的 `docs/*` 文档或面板文件；若判定 `N/A`，请说明原因
+
 ## CEP 关联（公共 API 必填）
 
 - CEP 编号：`CEP-xxxx`
