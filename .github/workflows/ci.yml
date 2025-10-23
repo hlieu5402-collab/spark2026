@@ -28,6 +28,13 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: tools/ci/check_readystate_governance.sh
 
+      - name: Contract sync governance gate
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: tools/ci/check_contract_sync.sh
+
       - name: Consistency guardrails
         env:
           CONSISTENCY_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
