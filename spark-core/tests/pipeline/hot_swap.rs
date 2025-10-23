@@ -109,7 +109,7 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
     );
 }
 
-#[cfg(all(feature = "std", loom))]
+#[cfg(all(feature = "std", any(loom, spark_loom)))]
 mod loom_tests {
     use super::*;
     use loom::thread;

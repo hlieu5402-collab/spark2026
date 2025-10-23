@@ -389,9 +389,9 @@ use alloc::sync::Arc;
 // 教案级说明：`loom` 运行时需要接管互斥锁以枚举调度交错，因此在模型检查配置下
 // 显式切换到 `loom::sync::Mutex`。在常规构建中仍保留 `std::sync::Mutex`，确保运行时
 // 行为与既有实现一致且无额外性能损耗。
-#[cfg(all(feature = "std", loom))]
+#[cfg(all(feature = "std", any(loom, spark_loom)))]
 use loom::sync::Mutex;
-#[cfg(all(feature = "std", not(loom)))]
+#[cfg(all(feature = "std", not(any(loom, spark_loom))))]
 use std::sync::Mutex;
 
 /// 基于内存的 Recorder，便于测试与演示回放。

@@ -38,9 +38,10 @@ proptest = "1.5"
 thiserror = "1.0"
 spark-otel = { path = "../crates/spark-otel", features = ["test-util"] }
 spark-contract-tests = { version = "0.1.0" }
+futures = { version = "0.3", features = ["executor"] }
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(spark_loom)'] }
 
 [[bench]]
 name = "codec"
@@ -71,6 +72,8 @@ name = "contracts_context_propagation_spawn"
 path = "tests/contracts/context_propagation_spawn.rs"
 
 [[test]]
+name = "concurrency_primitives"
+path = "tests/concurrency_primitives.rs"
 name = "contracts_error_category_autoresponse"
 path = "tests/contracts/error_category_autoresponse.rs"
 name = "contracts_ready_state_matrix"
