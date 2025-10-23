@@ -50,7 +50,7 @@ use std::collections::BTreeSet;
 
 use proptest::prelude::*;
 
-#[cfg(loom)]
+#[cfg(any(loom, spark_loom))]
 mod loom_scenarios {
     //! ReadyState Pending → 唤醒 → 恢复 的 Loom 并发模型。
     //!

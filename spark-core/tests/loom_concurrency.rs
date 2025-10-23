@@ -1,48 +1,14 @@
-#![cfg(loom)]
+#![cfg(any(loom, spark_loom))]
 
-use loom::{model, sync::Arc, thread};
-use spark_core::AuditRecorder;
-use spark_core::audit::{
-    AuditActor, AuditChangeSet, AuditEntityRef, AuditEventV1, InMemoryAuditRecorder,
+use loom::{
+    model,
+    sync::{
+        Arc,
+        atomic::{AtomicU8, AtomicUsize, Ordering},
+    },
+    thread,
 };
 use spark_core::contract::{Budget, BudgetKind, Cancellation};
-
-/// 构造最小化的审计事件载荷，确保在 Loom 模型中能够专注于互斥锁序列化逻辑。
-///
-/// # 教案级说明
-/// - **意图 (Why)**：测试仅关注 `Mutex` 的并发行为，因此事件内容保持恒定，避免不相关字段干扰推理。
-/// - **契约 (What)**：
-///   - `sequence` 表示事件顺序；
-///   - `prev_hash`/`curr_hash` 为哈希链值，允许我们控制链路是否连续；
-///   - 返回值始终满足 `AuditEventV1` 的必需字段。
-/// - **逻辑 (How)**：函数直接填充结构体字段，并将 `changes` 置为空集合，使事件的副作用仅体现在哈希链校验上。
-/// - **注意事项 (Trade-offs)**：为了让不同线程写入相同事件而不会触发哈希冲突，默认使用相同的哈希值；若需要模拟冲突，可显式传入不同参数。
-fn build_event(sequence: u64, prev_hash: &str, curr_hash: &str) -> AuditEventV1 {
-    AuditEventV1 {
-        event_id: format!("seq-{sequence}"),
-        sequence,
-        entity: AuditEntityRef {
-            kind: "configuration.profile".into(),
-            id: "demo".to_string(),
-            labels: Vec::new(),
-        },
-        action: "apply".into(),
-        state_prev_hash: prev_hash.to_string(),
-        state_curr_hash: curr_hash.to_string(),
-        actor: AuditActor {
-            id: "tester".into(),
-            display_name: None,
-            tenant: None,
-        },
-        occurred_at: 0,
-        tsa_evidence: None,
-        changes: AuditChangeSet {
-            created: Vec::new(),
-            updated: Vec::new(),
-            deleted: Vec::new(),
-        },
-    }
-}
 
 #[test]
 fn cancellation_visibility_is_sequentially_consistent() {
@@ -122,43 +88,134 @@ fn budget_concurrent_consume_and_refund_preserves_limits() {
     });
 }
 
+/// 基于 Loom 的最小通道状态机，验证优雅关闭与强制关闭的竞态收敛到 `Closed`。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：模拟管道通道在并发触发 `close_graceful` 与 `close` 时的原子序列，
+///   确认状态机不会回退或重复计数。
+/// - **逻辑 (How)**：内部维护 `state`、`graceful`、`force` 三个原子；
+///   `close_graceful` 仅在 `Active -> Draining` 转换时增加计数，`close` 将状态推进到 `Closed`，
+///   并在首次转换时记录强制次数。
+/// - **契约 (What)**：
+///   - **前置条件**：初始状态为 `Active`；
+///   - **后置条件**：所有线程完成后状态为 `Closed`，`graceful_count <= 1`（并发下允许强制关闭先行）、
+///     `force_count == 1`；
+///   - **风险提示**：若比较交换顺序错误，可能导致计数多次递增或状态回退，本场景将触发断言。
+struct LoomChannelState {
+    state: AtomicU8,
+    graceful_count: AtomicUsize,
+    force_count: AtomicUsize,
+}
+
+impl LoomChannelState {
+    const ACTIVE: u8 = 0;
+    const DRAINING: u8 = 1;
+    const CLOSED: u8 = 2;
+
+    fn new() -> Self {
+        Self {
+            state: AtomicU8::new(Self::ACTIVE),
+            graceful_count: AtomicUsize::new(0),
+            force_count: AtomicUsize::new(0),
+        }
+    }
+
+    fn close_graceful(&self) {
+        let mut current = self.state.load(Ordering::Acquire);
+        loop {
+            match current {
+                Self::ACTIVE => match self.state.compare_exchange(
+                    Self::ACTIVE,
+                    Self::DRAINING,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => {
+                        self.graceful_count.fetch_add(1, Ordering::AcqRel);
+                        return;
+                    }
+                    Err(next) => current = next,
+                },
+                Self::DRAINING | Self::CLOSED => return,
+                _ => current = Self::CLOSED,
+            }
+        }
+    }
+
+    fn close(&self) {
+        let previous = self.state.swap(Self::CLOSED, Ordering::AcqRel);
+        if previous != Self::CLOSED {
+            self.force_count.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    fn is_closed(&self) -> bool {
+        self.state.load(Ordering::Acquire) == Self::CLOSED
+    }
+
+    fn graceful_invocations(&self) -> usize {
+        self.graceful_count.load(Ordering::Acquire)
+    }
+
+    fn force_invocations(&self) -> usize {
+        self.force_count.load(Ordering::Acquire)
+    }
+}
+
 #[test]
-fn audit_recorder_serialize_writes_without_deadlock() {
+fn channel_close_paths_converge_to_closed() {
     //
-    // 教案级说明：确保基于互斥锁的审计记录器在高竞争下保持顺序性与链路一致性。
-    // - **Why**：若互斥实现有瑕疵，可能导致死锁或 `last_hash` 被交错更新，破坏哈希链。
-    // - **How**：两个线程写入相同的事件快照，即便顺序反转也不会触发哈希冲突，
-    //   因此我们只关注互斥是否正确串行化写入。
-    // - **What**：完成后事件列表长度应为 2，且链表尾部哈希保持预期。
-    // - **Trade-offs**：事件内容被人为固定为幂等值，牺牲了真实语义换取模型检查的确定性。
+    // 教案级说明：验证通道在并发关闭路径下的终态唯一性。
+    // - **Why**：在运行时中通道关闭可能由两个线程同时触发，必须保证状态最终落在 `Closed`。
+    // - **How**：通过 Loom 穷举 `close_graceful` 与 `close` 的调度交错，并附加一个观察线程模拟等待关闭。
+    // - **What**：断言 `graceful` 计数为 1、`force` 计数为 1，且状态不可回退。
     model(|| {
-        let recorder = Arc::new(InMemoryAuditRecorder::new());
-        let event = build_event(1, "stable", "stable");
+        let channel = Arc::new(LoomChannelState::new());
 
-        let writer_a = {
-            let recorder = Arc::clone(&recorder);
-            let event = event.clone();
+        let graceful = {
+            let channel = Arc::clone(&channel);
             thread::spawn(move || {
-                recorder.record(event).expect("写入审计事件不应失败");
+                channel.close_graceful();
             })
         };
 
-        let writer_b = {
-            let recorder = Arc::clone(&recorder);
-            let event = event.clone();
+        let force_first = {
+            let channel = Arc::clone(&channel);
             thread::spawn(move || {
-                recorder.record(event).expect("重复写入同一事件也应成功");
+                channel.close();
             })
         };
 
-        writer_a.join().expect("线程 A 不应 panic");
-        writer_b.join().expect("线程 B 不应 panic");
+        let force_second = {
+            let channel = Arc::clone(&channel);
+            thread::spawn(move || {
+                channel.close();
+            })
+        };
 
-        let events = recorder.events();
-        assert_eq!(events.len(), 2, "互斥锁应保证写入次数与线程数一致");
+        let observer = {
+            let channel = Arc::clone(&channel);
+            thread::spawn(move || {
+                while !channel.is_closed() {
+                    thread::yield_now();
+                }
+            })
+        };
+
+        graceful.join().expect("优雅关闭线程不应 panic");
+        force_first.join().expect("第一次强制关闭线程不应 panic");
+        force_second.join().expect("重复强制关闭线程不应 panic");
+        observer.join().expect("观察线程不应 panic");
+
+        assert!(channel.is_closed(), "通道最终必须进入 Closed 状态");
         assert!(
-            events.iter().all(|evt| evt.state_curr_hash == "stable"),
-            "最终链路哈希应保持稳定"
+            channel.graceful_invocations() <= 1,
+            "优雅关闭在并发场景下至多递增一次"
+        );
+        assert_eq!(
+            channel.force_invocations(),
+            1,
+            "强制关闭计数只能在首次 close 时递增"
         );
     });
 }

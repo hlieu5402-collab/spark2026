@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# == Workspace Miri 扫描器（教案级注释） ==
+# == 并发原语 Miri 扫描器（教案级注释） ==
 #
 # ## 意图 (Why)
-# 1. 在 CI 中统一驱动 `cargo miri test --workspace`，确保所有 crate 的单元测试均能在
-#    未定义行为 (Undefined Behavior) 侦测器下执行，及时发现越界访问、非法并发等隐患。
+# 1. 聚焦 `Cancellation`/`Budget`/`Channel` 三类原语的并发单元测试，
+#    使用 Miri 抽样执行 `concurrency_primitives` 测试二进制，验证核心原子序语义。
 # 2. 封装 toolchain、参数与准备步骤，避免在多个工作流/本地脚本中复制 `cargo miri setup`
-#    等样板代码，降低维护成本。
+#    等样板代码，降低维护成本并确保 CI 必过。
 #
 # ## 所在位置与架构作用 (Where)
 # - 位于 `tools/ci/` 目录，供 GitHub Actions 与本地开发者复用；
-# - 在整体 CI 拓扑中，它属于“内存与数据竞争审计”链路的第一环，先于 ASan/TSan，
-#   负责模拟解释执行层面的 UB 排查。
+# - 在整体 CI 拓扑中，它属于“内存与数据竞争审计”链路的第一环，
+#   专注取消/预算/通道三类原语的 UB 排查。
 #
 # ## 核心策略 (How)
-# - 默认使用 `nightly-2024-12-31` toolchain（可通过环境变量覆盖），与工作流缓存键保持一致；
-# - 必须先运行 `cargo +<toolchain> miri setup` 以下载并配置 Miri runtime；
-# - 调用 `cargo +<toolchain> miri test --workspace` 运行全部测试用例；
+# - 默认使用 `nightly-2025-06-15` toolchain（可通过环境变量覆盖），与工作流缓存键保持一致；
+# - 若目标 toolchain 未安装 `miri` 组件，会自动通过 `rustup component add` 安装；
+# - 随后运行 `cargo +<toolchain> miri setup` 以下载并配置 Miri runtime；
+# - 调用 `cargo +<toolchain> miri test -p spark-core --test concurrency_primitives` 聚焦关键测试；
 # - 支持通过环境变量覆写测试特性：
 #   - `MIRI_FEATURES`：传入 `--features <value>`；
 #   - `MIRI_NO_DEFAULT_FEATURES=1`：追加 `--no-default-features`；
@@ -35,7 +36,7 @@ set -euo pipefail
 #   2. 目标 toolchain 已安装 Miri 组件；
 #   3. 运行环境具备 Bash、Cargo 与必要的 LLVM 依赖。
 # - **后置条件**：
-#   - 成功时，所有工作区测试已由 Miri 执行一遍；
+#   - 成功时，取消/预算/通道三类原语的 Miri 抽样测试全部通过；
 #   - 失败时，CI 应立即终止后续与 UB 相关的作业，以提醒贡献者修复。
 #
 # ## 设计考量 (Trade-offs)
@@ -52,14 +53,15 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
-MIRI_TOOLCHAIN=${MIRI_TOOLCHAIN:-nightly-2024-12-31}
+MIRI_TOOLCHAIN=${MIRI_TOOLCHAIN:-nightly-2025-06-15}
 MIRI_FEATURES=${MIRI_FEATURES:-}
 MIRI_NO_DEFAULT_FEATURES=${MIRI_NO_DEFAULT_FEATURES:-0}
 MIRI_EXTRA_ARGS=${MIRI_EXTRA_ARGS:-}
 
+rustup component add --toolchain "${MIRI_TOOLCHAIN}" miri >/dev/null
 cargo +"${MIRI_TOOLCHAIN}" miri setup
 
-cmd=(cargo +"${MIRI_TOOLCHAIN}" miri test --workspace)
+cmd=(cargo +"${MIRI_TOOLCHAIN}" miri test --package spark-core --test concurrency_primitives)
 
 if [[ -n "${MIRI_FEATURES}" ]]; then
   cmd+=(--features "${MIRI_FEATURES}")

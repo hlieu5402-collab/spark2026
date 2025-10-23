@@ -1,9 +1,12 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt;
-#[cfg(not(loom))]
+#[cfg(not(any(loom, spark_loom)))]
 use core::sync::atomic::{AtomicU64, Ordering};
-#[cfg(loom)]
-use loom::sync::atomic::{AtomicU64, Ordering};
+#[cfg(any(loom, spark_loom))]
+use loom::{
+    lazy_static,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 /// 链路追踪上下文，遵循 W3C Trace Context 规范。
 ///
@@ -136,19 +139,19 @@ impl TraceContext {
     }
 }
 
-#[cfg(not(loom))]
+#[cfg(not(any(loom, spark_loom)))]
 static TRACE_ID_HIGH: AtomicU64 = AtomicU64::new(0);
-#[cfg(not(loom))]
+#[cfg(not(any(loom, spark_loom)))]
 static TRACE_ID_LOW: AtomicU64 = AtomicU64::new(1);
-#[cfg(not(loom))]
+#[cfg(not(any(loom, spark_loom)))]
 static SPAN_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-#[cfg(loom)]
-static TRACE_ID_HIGH: AtomicU64 = AtomicU64::new(0);
-#[cfg(loom)]
-static TRACE_ID_LOW: AtomicU64 = AtomicU64::new(1);
-#[cfg(loom)]
-static SPAN_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+#[cfg(any(loom, spark_loom))]
+lazy_static! {
+    static ref TRACE_ID_HIGH: AtomicU64 = AtomicU64::new(0);
+    static ref TRACE_ID_LOW: AtomicU64 = AtomicU64::new(1);
+    static ref SPAN_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+}
 
 fn next_trace_id_bytes() -> [u8; TraceContext::TRACE_ID_LENGTH] {
     let high = TRACE_ID_HIGH.fetch_add(1, Ordering::Relaxed);
