@@ -6,7 +6,8 @@
 //! - **如何集成**：在目标仓库的 `tests` 目录下引入 `#[spark_tck]` 宏（或直接调用 `run_*` 入口函数），即可将完整
 //!   套件编译为标准的 Rust 测试；宏支持选择性启用子套件，满足增量验证需求。
 //! - **测试对象**：所有用例均以 `spark-core` 暴露的稳定面为边界，既覆盖轻量级数据结构（如 `Budget`、
-//!   `Cancellation`），也验证运行期状态机（如 `HotSwapController` 与热重载配置）。
+//!   `Cancellation`），也验证运行期状态机（如 `HotSwapController` 与热重载配置），并扩展到优雅关闭协
+//!   调器的 FIN/超时契约。
 //!
 //! # 契约说明（What）
 //! - **输入要求**：调用方仅需在构建时依赖 `spark-core` 与本 crate；无额外的环境前置（热重载测试会内部创建模拟配置源）。
@@ -20,12 +21,13 @@
 //!
 //! # 模块结构
 //! - `case` 模块：定义测试用例与套件的元信息结构体，以及统一的执行辅助函数。
-//! - 子模块 `backpressure`、`cancellation` 等分别实现七大主题的实际断言逻辑。
+//! - 子模块 `backpressure`、`cancellation` 等分别实现八大主题的实际断言逻辑。
 //! - 顶层提供 `run_*` 入口与 `#[spark_tck]` 宏 re-export，供外部直接调用。
 
 mod backpressure;
 mod cancellation;
 mod errors;
+mod graceful_shutdown;
 mod hot_reload;
 mod hot_swap;
 mod observability;
@@ -35,10 +37,11 @@ mod support;
 use case::{TckSuite, run_suite};
 pub use spark_contract_tests_macros::spark_tck;
 
-const ALL_SUITES: [&TckSuite; 7] = [
+const ALL_SUITES: [&TckSuite; 8] = [
     backpressure::suite(),
     cancellation::suite(),
     errors::suite(),
+    graceful_shutdown::suite(),
     state_machine::suite(),
     hot_swap::suite(),
     hot_reload::suite(),
@@ -117,6 +120,11 @@ pub fn run_cancellation_suite() {
 /// 运行“错误自动响应”主题的全部用例，确保 `ErrorCategory` 映射正确。
 pub fn run_errors_suite() {
     run_suite(errors::suite());
+}
+
+/// 运行“优雅关闭”主题的全部用例，验证 FIN/半关闭/超时契约。
+pub fn run_graceful_shutdown_suite() {
+    run_suite(graceful_shutdown::suite());
 }
 
 /// 运行“状态机”主题的全部用例，聚焦 `CallContext` 与执行视图一致性。
