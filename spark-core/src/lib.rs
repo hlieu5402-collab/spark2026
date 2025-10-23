@@ -19,6 +19,8 @@ extern crate alloc;
 pub use async_trait::async_trait;
 pub use spark_macros::service;
 
+mod macros;
+
 /// 框架级过程宏命名空间。
 ///
 /// # 设计目标（Why）
@@ -54,6 +56,7 @@ pub mod observability;
 pub mod pipeline;
 pub mod retry;
 pub mod router;
+pub mod rt;
 pub mod runtime;
 pub mod security;
 pub mod service;
@@ -67,8 +70,8 @@ pub use audit::{
     AuditError, AuditEventV1, AuditPipeline, AuditRecorder, AuditStateHasher, TsaEvidence,
 };
 pub use buffer::{
-    BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,
-    PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
+    BufView, BufferAllocator, BufferPool, Bytes, Chunks, ErasedSparkBuf, ErasedSparkBufMut,
+    PipelineMessage, PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
 };
 pub use cluster::{
     ClusterConsistencyLevel, ClusterEpoch, ClusterMembership, ClusterMembershipEvent,
