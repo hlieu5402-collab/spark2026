@@ -1,5 +1,7 @@
 use core::time::Duration;
 
+use libm::pow;
+
 /// 自适应 `RetryAfter` 计算核心：依据拥塞度（backlog）、观测 RTT 与错误建议的基础等待时间，
 /// 生成带抖动、饱和上限与冷却下限的最终等待窗口。
 ///
@@ -53,7 +55,7 @@ pub fn compute(backlog: f32, rtt: Duration, base: Duration) -> Duration {
     } else {
         backlog_units
     };
-    let backlog_pressure = 1.0 + BACKLOG_WEIGHT * (capped_backlog / BACKLOG_CEILING).powf(1.35);
+    let backlog_pressure = 1.0 + BACKLOG_WEIGHT * pow(capped_backlog / BACKLOG_CEILING, 1.35);
 
     let baseline_rtt_secs = BASELINE_RTT.as_secs_f64();
     let observed_rtt_secs = rtt.as_secs_f64();

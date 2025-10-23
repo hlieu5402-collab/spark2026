@@ -19,7 +19,7 @@
 //   以换取零拷贝地传递控制器引用；
 // - 若未来引入跨线程异步执行器，需要重新审视该策略并可能改为 `Arc<HotSwapController>`。
 use alloc::string::ToString;
-use alloc::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, format, string::String, sync::Arc, vec::Vec};
 
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use spin::Mutex;

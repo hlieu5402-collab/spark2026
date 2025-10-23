@@ -2,6 +2,8 @@ use crate::{
     Error, TraceContext, cluster::NodeId, contract::BudgetKind, sealed::Sealed,
     security::SecurityClass, status::RetryAdvice, transport::TransportSocketAddr,
 };
+#[cfg(test)]
+use alloc::format;
 use alloc::{
     borrow::{Cow, ToOwned},
     boxed::Box,
