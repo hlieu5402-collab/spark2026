@@ -20,7 +20,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt;
 
-use crate::configuration::{ChangeSet, ConfigKey, ConfigValue};
+use crate::configuration::{ChangeSet, ConfigKey, ConfigKeyRepr, ConfigValue, ConfigValueRepr};
 
 use sha2::{Digest, Sha256};
 
@@ -157,16 +157,85 @@ impl AuditChangeSet {
 }
 
 /// 表示单个新增或更新的配置条目。
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+///
+/// ## 设计动机（补充）
+/// - 序列化时会调用 `ConfigKey::to_repr` 与 `ConfigValue::to_repr`，在不暴露 `serde` 依赖的情况下完成 JSON 编码。
+/// - 反序列化阶段若检测到非法作用域或不合法的时间间隔，会转换为 `serde` 的 `custom` 错误，便于上层诊断输入问题。
+#[derive(Clone, Debug, PartialEq)]
 pub struct AuditChangeEntry {
     pub key: ConfigKey,
     pub value: ConfigValue,
 }
 
+impl serde::Serialize for AuditChangeEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let repr = AuditChangeEntryRepr {
+            key: self.key.to_repr(),
+            value: self.value.to_repr(),
+        };
+        repr.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AuditChangeEntry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let repr = AuditChangeEntryRepr::deserialize(deserializer)?;
+        let key = ConfigKey::from_repr(repr.key)
+            .map_err(|err| serde::de::Error::custom(err.to_string()))?;
+        let value = ConfigValue::from_repr(repr.value)
+            .map_err(|err| serde::de::Error::custom(err.to_string()))?;
+        Ok(Self { key, value })
+    }
+}
+
 /// 表示单个删除的配置条目。
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+///
+/// ## 设计提醒（Trade-offs）
+/// - 与新增/更新逻辑一致，通过内部表示完成序列化；非法作用域同样会映射为反序列化错误。
+#[derive(Clone, Debug, PartialEq)]
 pub struct AuditDeletedEntry {
     pub key: ConfigKey,
+}
+
+impl serde::Serialize for AuditDeletedEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let repr = AuditDeletedEntryRepr {
+            key: self.key.to_repr(),
+        };
+        repr.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AuditDeletedEntry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let repr = AuditDeletedEntryRepr::deserialize(deserializer)?;
+        let key = ConfigKey::from_repr(repr.key)
+            .map_err(|err| serde::de::Error::custom(err.to_string()))?;
+        Ok(Self { key })
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AuditChangeEntryRepr {
+    key: ConfigKeyRepr,
+    value: ConfigValueRepr,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AuditDeletedEntryRepr {
+    key: ConfigKeyRepr,
 }
 
 /// Recorder 接口定义。

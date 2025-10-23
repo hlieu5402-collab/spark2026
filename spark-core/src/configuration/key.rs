@@ -2,12 +2,7 @@ use alloc::{
     borrow::Cow,
     string::{String, ToString},
 };
-use core::fmt;
-
-use serde::{
-    Deserialize, Deserializer, Serialize, Serializer, de::Error as SerdeDeError,
-    ser::SerializeStruct,
-};
+use core::{cmp::Ordering, fmt};
 
 /// 描述配置项作用域的枚举。
 ///
@@ -25,7 +20,7 @@ use serde::{
 ///
 /// ## 契约定义（What）
 /// - 无输入参数；作为 [`ConfigKey`] 的一个字段。
-/// - 枚举值可安全序列化成 `&'static str` 传递给其它语言实现。
+/// - 枚举值可安全转换为稳定字符串传递给其它语言实现。
 ///
 /// ## 设计权衡与注意事项（Trade-offs）
 /// - 未额外引入 `Tenant` 等领域专用枚举，避免降低通用性；若需扩展，请在上层自定义。
@@ -152,62 +147,28 @@ impl ConfigKey {
     pub fn summary(&self) -> &str {
         &self.summary
     }
+
+    /// 将配置键转换为内部可序列化表示。
+    pub(crate) fn to_repr(&self) -> ConfigKeyRepr {
+        ConfigKeyRepr {
+            domain: self.domain().to_string(),
+            name: self.name().to_string(),
+            scope: self.scope().as_str().to_string(),
+            summary: self.summary().to_string(),
+        }
+    }
+
+    /// 根据中间表示还原配置键。
+    pub(crate) fn from_repr(repr: ConfigKeyRepr) -> Result<Self, ConfigKeyReprError> {
+        let scope = ConfigScope::parse(&repr.scope)
+            .ok_or_else(|| ConfigKeyReprError::InvalidScope(repr.scope.clone()))?;
+        Ok(Self::new(repr.domain, repr.name, scope, repr.summary))
+    }
 }
 
 impl fmt::Display for ConfigKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}::{}@{}", self.domain, self.name, self.scope)
-    }
-}
-
-impl Serialize for ConfigScope {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for ConfigScope {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = <&str>::deserialize(deserializer)?;
-        ConfigScope::parse(value).ok_or_else(|| SerdeDeError::custom("invalid config scope"))
-    }
-}
-
-impl Serialize for ConfigKey {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("ConfigKey", 4)?;
-        state.serialize_field("domain", self.domain())?;
-        state.serialize_field("name", self.name())?;
-        state.serialize_field("scope", &self.scope)?;
-        state.serialize_field("summary", self.summary())?;
-        state.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for ConfigKey {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct ConfigKeyDe {
-            domain: String,
-            name: String,
-            scope: ConfigScope,
-            summary: String,
-        }
-
-        let raw = ConfigKeyDe::deserialize(deserializer)?;
-        Ok(Self::new(raw.domain, raw.name, raw.scope, raw.summary))
     }
 }
 
@@ -218,16 +179,46 @@ impl From<&ConfigKey> for String {
 }
 
 impl PartialOrd for ConfigKey {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for ConfigKey {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.domain
             .cmp(&other.domain)
             .then_with(|| self.name.cmp(&other.name))
             .then_with(|| self.scope.as_str().cmp(other.scope.as_str()))
+    }
+}
+
+/// 表示配置键在序列化往返过程中的错误。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ConfigKeyReprError {
+    InvalidScope(String),
+}
+
+impl fmt::Display for ConfigKeyReprError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidScope(scope) => write!(f, "invalid config scope: {}", scope),
+        }
+    }
+}
+
+pub(crate) use serde_repr::ConfigKeyRepr;
+
+mod serde_repr {
+    //! `ConfigKey` 的内部序列化表示，避免公共 API 直接依赖 `serde`。
+    use super::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub(crate) struct ConfigKeyRepr {
+        pub domain: String,
+        pub name: String,
+        pub scope: String,
+        pub summary: String,
     }
 }

@@ -2,15 +2,11 @@ use crate::{
     Error, TraceContext, cluster::NodeId, contract::BudgetKind, sealed::Sealed,
     security::SecurityClass, status::RetryAdvice, transport::TransportSocketAddr,
 };
+use alloc::borrow::Cow;
 
 pub mod category_matrix;
 #[cfg(test)]
-use alloc::{
-    borrow::{Cow, ToOwned},
-    boxed::Box,
-    string::String,
-    format，
-};
+use alloc::{borrow::ToOwned, boxed::Box, format, string::String};
 use core::fmt;
 
 /// `CoreError` 表示 `spark-core` 跨层共享的稳定错误域，是所有可观察错误的最终形态。

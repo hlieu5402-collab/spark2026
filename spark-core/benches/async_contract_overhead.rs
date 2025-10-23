@@ -12,7 +12,9 @@ use spark_core::service::{DynBridge, SimpleServiceFn};
 use spark_core::status::{ReadyCheck, ReadyState};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::env;
+#[cfg(feature = "std_json")]
 use std::fs;
+#[cfg(feature = "std_json")]
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -298,6 +300,7 @@ fn build_report(
 }
 
 /// 生成 `docs/reports/benchmarks` 目录下的 JSON 文件。
+#[cfg(feature = "std_json")]
 fn persist_report(report: &BenchmarkReport, quick_mode: bool) -> std::io::Result<()> {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let repo_root = manifest_dir.parent().expect("crate placed under repo root");
@@ -313,6 +316,11 @@ fn persist_report(report: &BenchmarkReport, quick_mode: bool) -> std::io::Result
     let file = fs::File::create(&output_path)?;
     serde_json::to_writer_pretty(file, report)?;
     println!("report_path={}", output_path.display());
+    Ok(())
+}
+
+#[cfg(not(feature = "std_json"))]
+fn persist_report(_report: &BenchmarkReport, _quick_mode: bool) -> std::io::Result<()> {
     Ok(())
 }
 
