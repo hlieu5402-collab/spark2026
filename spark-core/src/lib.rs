@@ -70,8 +70,8 @@ pub use audit::{
     AuditError, AuditEventV1, AuditPipeline, AuditRecorder, AuditStateHasher, TsaEvidence,
 };
 pub use buffer::{
-    BufferAllocator, BufferPool, Bytes, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage,
-    PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
+    BufView, BufferAllocator, BufferPool, Bytes, Chunks, ErasedSparkBuf, ErasedSparkBufMut,
+    PipelineMessage, PoolStatDimension, PoolStats, ReadableBuffer, UserMessage, WritableBuffer,
 };
 pub use cluster::{
     ClusterConsistencyLevel, ClusterEpoch, ClusterMembership, ClusterMembershipEvent,
