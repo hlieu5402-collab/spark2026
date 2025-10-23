@@ -71,6 +71,10 @@ name = "contracts_context_propagation_spawn"
 path = "tests/contracts/context_propagation_spawn.rs"
 
 [[test]]
+name = "contracts_ready_state_matrix"
+path = "tests/contracts/ready_state_matrix.rs"
+
+[[test]]
 name = "pipeline"
 path = "tests/pipeline/mod.rs"
 

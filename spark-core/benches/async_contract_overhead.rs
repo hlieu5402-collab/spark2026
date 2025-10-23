@@ -3,17 +3,17 @@
 use core::future::Future;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use serde::Serialize;
+use spark_core as spark;
 use spark_core::Service;
 use spark_core::SparkError;
 use spark_core::buffer::PipelineMessage;
 use spark_core::contract::CallContext;
-use spark_core::service::{SimpleServiceFn, bridge_to_box_service};
+use spark_core::service::{DynBridge, SimpleServiceFn};
 use spark_core::status::{ReadyCheck, ReadyState};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
@@ -137,18 +137,18 @@ impl AllocationDelta {
     }
 }
 
-/// 场景枚举：泛型 Service 与 BoxService。
+/// 场景枚举：手写 Service 与宏生成 Service。
 #[derive(Clone, Copy, Debug)]
 enum ScenarioKind {
-    Generic,
-    Boxed,
+    Manual,
+    Macro,
 }
 
 impl ScenarioKind {
     fn label(&self) -> &'static str {
         match self {
-            ScenarioKind::Generic => "generic_service",
-            ScenarioKind::Boxed => "boxed_service",
+            ScenarioKind::Manual => "manual_service",
+            ScenarioKind::Macro => "macro_service",
         }
     }
 }
@@ -192,6 +192,8 @@ struct BenchmarkReport {
     iterations: u64,
     scenarios: Vec<ScenarioReport>,
     p99_overhead_ratio: f64,
+    /// 宏生成 Service 相比手写基线的 P99 相对开销（0.03 表示 3%）。
+    macro_p99_overhead: f64,
     p99_overhead_percent: f64,
     allocation_overhead_percent: f64,
 }
@@ -208,6 +210,24 @@ struct EchoMessage {
     seq: u64,
 }
 
+/// 宏生成 Service：评估 `#[spark::service]` 展开后的执行胶水开销。
+///
+/// # 教案式注释
+/// - **意图 (Why)**：对比宏展开与手写 Service 的运行时开销，为“宏展开 P99 开销 ≤ 3%”提供量化依据。
+/// - **位置 (Where)**：仅在本基准文件使用，不影响库对外 API。
+/// - **执行逻辑 (How)**：宏生成的服务会复用顺序协调器，与 [`SimpleServiceFn`] 保持一致，内部逻辑直接委托
+///   给 [`process_request`]。
+/// - **契约 (What)**：输入输出均为 [`PipelineMessage`]，错误类型为 [`SparkError`]；调用方需遵循 `poll_ready` → `call` 契约。
+/// - **风险提示 (Trade-offs & Gotchas)**：若未来 `process_request` 引入阻塞操作，需要在宏路径同步评估 waker 注册与
+///   释放逻辑是否仍满足零 Pending 的假设。
+#[spark::service]
+async fn macro_generated_echo(
+    _ctx: spark::CallContext,
+    req: PipelineMessage,
+) -> Result<PipelineMessage, SparkError> {
+    process_request(req)
+}
+
 /// 基准主入口：执行两个场景并输出 JSON 报告。
 fn main() {
     // 解析命令行开关，CI 会传入 `--quick` 以缩短运行时间。
@@ -219,23 +239,23 @@ fn main() {
     let call_ctx = CallContext::builder().build();
 
     // 逐场景测量延迟与分配。
-    let generic = measure_scenario(ScenarioKind::Generic, iterations, &waker, &call_ctx);
-    let boxed = measure_scenario(ScenarioKind::Boxed, iterations, &waker, &call_ctx);
+    let manual = measure_scenario(ScenarioKind::Manual, iterations, &waker, &call_ctx);
+    let macro_generated = measure_scenario(ScenarioKind::Macro, iterations, &waker, &call_ctx);
 
     // 生成 JSON 报告并落盘。
-    let report = build_report(iterations, quick_mode, generic, boxed);
+    let report = build_report(iterations, quick_mode, manual, macro_generated);
     persist_report(&report, quick_mode).expect("write benchmark report");
 
     // 控制台打印摘要，方便本地调试时快速确认结论。
     println!("benchmark=async_contract_overhead quick_mode={quick_mode}");
     println!(
-        "generic_p99_ns={:.2} boxed_p99_ns={:.2} overhead_percent={:.3}",
+        "manual_p99_ns={:.2} macro_p99_ns={:.2} overhead_percent={:.3}",
         report.scenarios[0].latency_ns.p99,
         report.scenarios[1].latency_ns.p99,
         report.p99_overhead_percent,
     );
     println!(
-        "generic_alloc_per_iter={:.4} boxed_alloc_per_iter={:.4}",
+        "manual_alloc_per_iter={:.4} macro_alloc_per_iter={:.4}",
         report.scenarios[0].allocations.allocations_per_iter,
         report.scenarios[1].allocations.allocations_per_iter,
     );
@@ -245,20 +265,23 @@ fn main() {
 fn build_report(
     iterations: u64,
     quick_mode: bool,
-    generic: ScenarioReport,
-    boxed: ScenarioReport,
+    manual: ScenarioReport,
+    macro_generated: ScenarioReport,
 ) -> BenchmarkReport {
-    let p99_ratio = boxed.latency_ns.p99 / generic.latency_ns.p99;
-    let p99_overhead_percent = (p99_ratio - 1.0) * 100.0;
+    let p99_ratio = macro_generated.latency_ns.p99 / manual.latency_ns.p99;
+    let macro_overhead = p99_ratio - 1.0;
+    let p99_overhead_percent = macro_overhead * 100.0;
 
-    let allocation_overhead_percent = if generic.allocations.allocations_per_iter == 0.0 {
-        if boxed.allocations.allocations_per_iter == 0.0 {
+    let allocation_overhead_percent = if manual.allocations.allocations_per_iter == 0.0 {
+        if macro_generated.allocations.allocations_per_iter == 0.0 {
             0.0
         } else {
             f64::INFINITY
         }
     } else {
-        ((boxed.allocations.allocations_per_iter / generic.allocations.allocations_per_iter) - 1.0)
+        ((macro_generated.allocations.allocations_per_iter
+            / manual.allocations.allocations_per_iter)
+            - 1.0)
             * 100.0
     };
 
@@ -266,8 +289,9 @@ fn build_report(
         benchmark: "async_contract_overhead",
         quick_mode,
         iterations,
-        scenarios: vec![generic, boxed],
+        scenarios: vec![manual, macro_generated],
         p99_overhead_ratio: p99_ratio,
+        macro_p99_overhead: macro_overhead,
         p99_overhead_percent,
         allocation_overhead_percent,
     }
@@ -281,9 +305,9 @@ fn persist_report(report: &BenchmarkReport, quick_mode: bool) -> std::io::Result
     fs::create_dir_all(&target_dir)?;
 
     let file_name = if quick_mode {
-        "dyn_service_overhead.quick.json"
+        "service_macro_overhead.quick.json"
     } else {
-        "dyn_service_overhead.full.json"
+        "service_macro_overhead.full.json"
     };
     let output_path = target_dir.join(file_name);
     let file = fs::File::create(&output_path)?;
@@ -305,11 +329,11 @@ fn measure_scenario(
     let before = AllocationSnapshot::capture();
 
     match kind {
-        ScenarioKind::Generic => {
-            run_generic(iterations, SAMPLE_BATCH_SIZE, waker, call_ctx, &mut samples);
+        ScenarioKind::Manual => {
+            run_manual(iterations, SAMPLE_BATCH_SIZE, waker, call_ctx, &mut samples);
         }
-        ScenarioKind::Boxed => {
-            run_boxed(iterations, SAMPLE_BATCH_SIZE, waker, call_ctx, &mut samples);
+        ScenarioKind::Macro => {
+            run_macro(iterations, SAMPLE_BATCH_SIZE, waker, call_ctx, &mut samples);
         }
     }
 
@@ -374,8 +398,8 @@ fn simulate_user_logic(seed: u64) -> u64 {
     core::hint::black_box(acc)
 }
 
-/// 泛型 Service 场景：直接在 `SimpleServiceFn` 上驱动 `poll_ready` 与 `call`。
-fn run_generic(
+/// 手写 Service 场景：直接在 `SimpleServiceFn` 上驱动 `poll_ready` 与 `call`。
+fn run_manual(
     iterations: u64,
     batch_size: u64,
     waker: &Waker,
@@ -383,12 +407,13 @@ fn run_generic(
     samples: &mut Vec<u64>,
 ) {
     // 教案式注释
-    // - **意图 (Why)**：建立零虚分派基线，作为对象层对比的参照物。
-    // - **执行逻辑 (How)**：构造顺序执行的 `SimpleServiceFn`，循环驱动 `poll_ready` 与 `call`，并在同一 waker 下立即完成 Future。
+    // - **意图 (Why)**：建立零虚分派的手写基线，作为宏展开性能对比的参照物。
+    // - **执行逻辑 (How)**：构造顺序执行的 `SimpleServiceFn`，再通过 `DynBridge` 保持与宏生成代码一致的胶水层，循环驱动
+    //   `poll_ready` 与 `call` 并在同一 waker 下立即完成 Future。
     // - **契约 (What)**：输入为 `PipelineMessage`，响应按原样返回；遇到非就绪或错误会直接 panic，确保基准环境保持稳定。
-    let mut service = SimpleServiceFn::new(|_ctx: CallContext, req: PipelineMessage| async move {
-        process_request(req)
-    });
+    let mut service = DynBridge::<_, PipelineMessage>::new(SimpleServiceFn::new(
+        |_ctx: CallContext, req: PipelineMessage| async move { process_request(req) },
+    ));
 
     let exec_ctx = call_ctx.execution();
 
@@ -401,14 +426,14 @@ fn run_generic(
             let mut task_cx = Context::from_waker(waker);
             match service.poll_ready(&exec_ctx, &mut task_cx) {
                 Poll::Ready(ReadyCheck::Ready(ReadyState::Ready)) => {}
-                other => panic!("generic service unexpectedly pending: {other:?}"),
+                other => panic!("manual service unexpectedly pending: {other:?}"),
             }
 
             let payload = PipelineMessage::from_user(EchoMessage { seq });
             seq = seq.wrapping_add(1);
             let future = service.call(call_ctx.clone(), payload);
             let response =
-                block_on_ready(future, waker).expect("generic service must echo the message back");
+                block_on_ready(future, waker).expect("manual service must echo the message back");
             consume_response(response);
         }
         let elapsed = started.elapsed().as_nanos();
@@ -418,8 +443,8 @@ fn run_generic(
     }
 }
 
-/// BoxService 场景：通过对象层 `DynService` 驱动调用，捕获虚分派与装箱开销。
-fn run_boxed(
+/// 宏生成 Service 场景：直接测量 `#[spark::service]` 展开的胶水代码开销。
+fn run_macro(
     iterations: u64,
     batch_size: u64,
     waker: &Waker,
@@ -427,17 +452,10 @@ fn run_boxed(
     samples: &mut Vec<u64>,
 ) {
     // 教案式注释
-    // - **意图 (Why)**：验证 `BoxService` + `DynService` 桥接后的最坏情况延迟，评估是否满足“P99 < 5%”的约束。
-    // - **执行逻辑 (How)**：将与泛型场景相同的 `SimpleServiceFn` 桥接到对象层，通过 `Arc<dyn DynService>` 的可变引用驱动
-    //   `poll_ready_dyn` 与 `call_dyn`，测量虚表调用与 `async_trait` 装箱的附加时间。
-    // - **契约 (What)**：请求/响应依旧是 `PipelineMessage`，若对象层返回错误则直接 panic，用于抓取潜在回归。
-    let service = SimpleServiceFn::new(|_ctx: CallContext, req: PipelineMessage| async move {
-        process_request(req)
-    });
-    let boxed = bridge_to_box_service::<_, PipelineMessage>(service);
-    let mut arc = boxed.into_arc();
-    let dyn_service =
-        Arc::get_mut(&mut arc).expect("fresh Arc from BoxService must be uniquely owned");
+    // - **意图 (Why)**：与手写场景对比宏展开生成的调度胶水是否引入额外延迟或分配。
+    // - **执行逻辑 (How)**：调用 [`macro_generated_echo`] 构造服务，复用同一业务逻辑，再按顺序驱动 `poll_ready` 与 `call`。
+    // - **契约 (What)**：输入输出仍为 `PipelineMessage`，若宏展开路径出现 Pending 或错误将直接 panic，便于第一时间发现回归。
+    let mut service = macro_generated_echo();
 
     let exec_ctx = call_ctx.execution();
 
@@ -448,16 +466,16 @@ fn run_boxed(
         let started = Instant::now();
         for _ in 0..chunk {
             let mut task_cx = Context::from_waker(waker);
-            match dyn_service.poll_ready_dyn(&exec_ctx, &mut task_cx) {
+            match service.poll_ready(&exec_ctx, &mut task_cx) {
                 Poll::Ready(ReadyCheck::Ready(ReadyState::Ready)) => {}
-                other => panic!("dyn service unexpectedly pending: {other:?}"),
+                other => panic!("macro service unexpectedly pending: {other:?}"),
             }
 
             let payload = PipelineMessage::from_user(EchoMessage { seq });
             seq = seq.wrapping_add(1);
-            let future = dyn_service.call_dyn(call_ctx.clone(), payload);
+            let future = service.call(call_ctx.clone(), payload);
             let response =
-                block_on_ready(future, waker).expect("dynamic service must echo the message back");
+                block_on_ready(future, waker).expect("macro service must echo the message back");
             consume_response(response);
         }
         let elapsed = started.elapsed().as_nanos();
