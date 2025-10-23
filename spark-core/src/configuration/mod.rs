@@ -30,6 +30,7 @@ pub use builder::{
 };
 pub use change::{ChangeEvent, ChangeNotification, ChangeSet};
 pub use error::{ConfigurationError, ConfigurationErrorKind, SourceRegistrationError};
+pub(crate) use key::ConfigKeyRepr;
 pub use key::{ConfigKey, ConfigScope};
 pub use profile::{ProfileDescriptor, ProfileId, ProfileLayering};
 pub use snapshot::{
@@ -40,4 +41,5 @@ pub use source::{
     ConfigDelta, ConfigurationLayer, ConfigurationSource, DynConfigurationSource, NoopConfigStream,
     SourceMetadata,
 };
+pub(crate) use value::ConfigValueRepr;
 pub use value::{ConfigMetadata, ConfigValue};

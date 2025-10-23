@@ -1,9 +1,8 @@
 use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::fmt;
 use core::time::Duration;
-
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// 配置项附带的可选元数据。
 ///
@@ -18,12 +17,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// - `tags`：额外标签，沿用 CNCF 项目推崇的键值标签理念。
 ///
 /// ### 契约说明（What）
-/// - **前置条件**：标签键值需满足 UTF-8，可与 `serde`、`prost` 等序列化方案直接映射。
+/// - **前置条件**：标签键值需满足 UTF-8，可被任意序列化框架或 FFI 层安全消费。
 /// - **后置条件**：实现 `Default`，便于调用方仅关注需要的字段。
 ///
 /// ### 设计取舍（Trade-offs）
 /// - 仅使用向量存储标签，避免在 `no_std` 场景强行引入 `HashMap`；上层可选择合适的查找结构。
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ConfigMetadata {
     pub hot_reloadable: bool,
     pub encrypted: bool,
@@ -48,7 +47,7 @@ pub struct ConfigMetadata {
 /// - **后置条件**：所有变体均实现 `Clone`，适用于广播、快照与缓存。
 ///
 /// ### 设计取舍与风险（Trade-offs）
-/// - 未引入 `serde::Deserialize` 约束，避免强绑序列化方案；实际落地时可在上层实现转换。
+/// - 不直接实现 `serde::Serialize/Deserialize`，以免框架在公共 API 上强绑定序列化方案；若需 JSON/Protobuf，可借助下方内部表示自行转换。
 /// - `List` 与 `Dictionary` 采用 `Vec` 以保持顺序性，便于与 YAML/JSON 对齐；若需高性能查询可在业务侧转换。
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -87,134 +86,242 @@ impl ConfigValue {
     }
 }
 
-impl Serialize for ConfigValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        ConfigValueRepr::from(self).serialize(serializer)
-    }
+/// 表示配置值序列化/反序列化过程中可能出现的错误。
+///
+/// ### 设计动机（Why）
+/// - 当我们将 `ConfigValue` 映射到外部格式（例如 JSON 或审计事件载荷）时，需要统一的错误语义描述非法输入，
+///   以避免上层重复维护零散的错误字符串。
+///
+/// ### 契约说明（What）
+/// - **输入**：来自结构化载荷的中间表示。
+/// - **输出**：若成功则还原为 `ConfigValue`，否则返回错误，调用方需据此决定降级策略。
+///
+/// ### 风险提示（Trade-offs）
+/// - 当前仅对时间间隔的纳秒字段做上限校验，其它字段的语义校验交由上层完成，以保持本模块的通用性。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ConfigValueReprError {
+    InvalidDuration { secs: u64, nanos: u32 },
 }
 
-impl<'de> Deserialize<'de> for ConfigValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let repr = ConfigValueRepr::deserialize(deserializer)?;
-        Ok(repr.into())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum ConfigValueRepr {
-    Boolean {
-        value: bool,
-        metadata: ConfigMetadata,
-    },
-    Integer {
-        value: i64,
-        metadata: ConfigMetadata,
-    },
-    Float {
-        value: f64,
-        metadata: ConfigMetadata,
-    },
-    Text {
-        value: String,
-        metadata: ConfigMetadata,
-    },
-    Binary {
-        value: alloc::vec::Vec<u8>,
-        metadata: ConfigMetadata,
-    },
-    Duration {
-        secs: u64,
-        nanos: u32,
-        metadata: ConfigMetadata,
-    },
-    List {
-        values: alloc::vec::Vec<ConfigValueRepr>,
-        metadata: ConfigMetadata,
-    },
-    Dictionary {
-        entries: alloc::vec::Vec<(String, ConfigValueRepr)>,
-        metadata: ConfigMetadata,
-    },
-}
-
-impl From<&ConfigValue> for ConfigValueRepr {
-    fn from(value: &ConfigValue) -> Self {
-        match value {
-            ConfigValue::Boolean(v, meta) => Self::Boolean {
-                value: *v,
-                metadata: meta.clone(),
-            },
-            ConfigValue::Integer(v, meta) => Self::Integer {
-                value: *v,
-                metadata: meta.clone(),
-            },
-            ConfigValue::Float(v, meta) => Self::Float {
-                value: *v,
-                metadata: meta.clone(),
-            },
-            ConfigValue::Text(v, meta) => Self::Text {
-                value: v.to_string(),
-                metadata: meta.clone(),
-            },
-            ConfigValue::Binary(v, meta) => Self::Binary {
-                value: v.to_vec(),
-                metadata: meta.clone(),
-            },
-            ConfigValue::Duration(duration, meta) => Self::Duration {
-                secs: duration.as_secs(),
-                nanos: duration.subsec_nanos(),
-                metadata: meta.clone(),
-            },
-            ConfigValue::List(values, meta) => Self::List {
-                values: values.iter().map(ConfigValueRepr::from).collect(),
-                metadata: meta.clone(),
-            },
-            ConfigValue::Dictionary(entries, meta) => Self::Dictionary {
-                entries: entries
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), ConfigValueRepr::from(v)))
-                    .collect(),
-                metadata: meta.clone(),
-            },
+impl fmt::Display for ConfigValueReprError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidDuration { secs, nanos } => write!(
+                f,
+                "invalid duration representation: secs={} nanos={} (nanos must be < 1_000_000_000)",
+                secs, nanos
+            ),
         }
     }
 }
 
-impl From<ConfigValueRepr> for ConfigValue {
-    fn from(repr: ConfigValueRepr) -> Self {
+impl ConfigMetadata {
+    /// 将元数据转换为内部可序列化表示。
+    ///
+    /// ### 设计要点（Why）
+    /// - 避免直接暴露 `serde` 依赖，通过中间结构让调用方在需要时自行序列化。
+    ///
+    /// ### 前置条件（Preconditions）
+    /// - 调用方必须保证 `tags` 中的键值满足 UTF-8 编码，可安全转为 `String`。
+    pub(crate) fn to_repr(&self) -> ConfigMetadataRepr {
+        ConfigMetadataRepr {
+            hot_reloadable: self.hot_reloadable,
+            encrypted: self.encrypted,
+            experimental: self.experimental,
+            tags: self
+                .tags
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        }
+    }
+
+    /// 根据中间表示还原元数据。
+    ///
+    /// ### 后置条件（Postconditions）
+    /// - 返回的 [`ConfigMetadata`] 将所有标签存储为拥有型 `Cow::Owned`，确保生命周期独立于输入缓冲区。
+    pub(crate) fn from_repr(repr: ConfigMetadataRepr) -> Self {
+        Self {
+            hot_reloadable: repr.hot_reloadable,
+            encrypted: repr.encrypted,
+            experimental: repr.experimental,
+            tags: repr
+                .tags
+                .into_iter()
+                .map(|(k, v)| (Cow::Owned(k), Cow::Owned(v)))
+                .collect(),
+        }
+    }
+}
+
+impl ConfigValue {
+    /// 将配置值转换为序列化友好的表示。
+    pub(crate) fn to_repr(&self) -> ConfigValueRepr {
+        ConfigValueRepr::from(self)
+    }
+
+    /// 根据中间表示重建配置值。
+    pub(crate) fn from_repr(repr: ConfigValueRepr) -> Result<Self, ConfigValueReprError> {
         match repr {
-            ConfigValueRepr::Boolean { value, metadata } => ConfigValue::Boolean(value, metadata),
-            ConfigValueRepr::Integer { value, metadata } => ConfigValue::Integer(value, metadata),
-            ConfigValueRepr::Float { value, metadata } => ConfigValue::Float(value, metadata),
-            ConfigValueRepr::Text { value, metadata } => {
-                ConfigValue::Text(Cow::Owned(value), metadata)
-            }
-            ConfigValueRepr::Binary { value, metadata } => {
-                ConfigValue::Binary(Cow::Owned(value), metadata)
-            }
+            ConfigValueRepr::Boolean { value, metadata } => Ok(ConfigValue::Boolean(
+                value,
+                ConfigMetadata::from_repr(metadata),
+            )),
+            ConfigValueRepr::Integer { value, metadata } => Ok(ConfigValue::Integer(
+                value,
+                ConfigMetadata::from_repr(metadata),
+            )),
+            ConfigValueRepr::Float { value, metadata } => Ok(ConfigValue::Float(
+                value,
+                ConfigMetadata::from_repr(metadata),
+            )),
+            ConfigValueRepr::Text { value, metadata } => Ok(ConfigValue::Text(
+                Cow::Owned(value),
+                ConfigMetadata::from_repr(metadata),
+            )),
+            ConfigValueRepr::Binary { value, metadata } => Ok(ConfigValue::Binary(
+                Cow::Owned(value),
+                ConfigMetadata::from_repr(metadata),
+            )),
             ConfigValueRepr::Duration {
                 secs,
                 nanos,
                 metadata,
-            } => ConfigValue::Duration(Duration::new(secs, nanos), metadata),
-            ConfigValueRepr::List { values, metadata } => ConfigValue::List(
-                values.into_iter().map(ConfigValue::from).collect(),
-                metadata,
-            ),
-            ConfigValueRepr::Dictionary { entries, metadata } => ConfigValue::Dictionary(
-                entries
+            } => {
+                if nanos >= 1_000_000_000 {
+                    return Err(ConfigValueReprError::InvalidDuration { secs, nanos });
+                }
+                Ok(ConfigValue::Duration(
+                    Duration::new(secs, nanos),
+                    ConfigMetadata::from_repr(metadata),
+                ))
+            }
+            ConfigValueRepr::List { values, metadata } => {
+                let metadata = ConfigMetadata::from_repr(metadata);
+                let converted = values
                     .into_iter()
-                    .map(|(k, v)| (Cow::Owned(k), ConfigValue::from(v)))
-                    .collect(),
-                metadata,
-            ),
+                    .map(ConfigValue::from_repr)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ConfigValue::List(converted, metadata))
+            }
+            ConfigValueRepr::Dictionary { entries, metadata } => {
+                let metadata = ConfigMetadata::from_repr(metadata);
+                let converted = entries
+                    .into_iter()
+                    .map(|(k, v)| Ok((Cow::Owned(k), ConfigValue::from_repr(v)?)))
+                    .collect::<Result<Vec<_>, ConfigValueReprError>>()?;
+                Ok(ConfigValue::Dictionary(converted, metadata))
+            }
+        }
+    }
+}
+
+pub(crate) use serde_repr::{ConfigMetadataRepr, ConfigValueRepr};
+
+mod serde_repr {
+    //! `ConfigValue` 与 `ConfigMetadata` 的内部序列化表示。
+    use super::*;
+    use alloc::vec::Vec;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub(crate) struct ConfigMetadataRepr {
+        pub hot_reloadable: bool,
+        pub encrypted: bool,
+        pub experimental: bool,
+        pub tags: Vec<(String, String)>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case")]
+    pub(crate) enum ConfigValueRepr {
+        Boolean {
+            value: bool,
+            metadata: ConfigMetadataRepr,
+        },
+        Integer {
+            value: i64,
+            metadata: ConfigMetadataRepr,
+        },
+        Float {
+            value: f64,
+            metadata: ConfigMetadataRepr,
+        },
+        Text {
+            value: String,
+            metadata: ConfigMetadataRepr,
+        },
+        Binary {
+            value: alloc::vec::Vec<u8>,
+            metadata: ConfigMetadataRepr,
+        },
+        Duration {
+            secs: u64,
+            nanos: u32,
+            metadata: ConfigMetadataRepr,
+        },
+        List {
+            values: alloc::vec::Vec<ConfigValueRepr>,
+            metadata: ConfigMetadataRepr,
+        },
+        Dictionary {
+            entries: alloc::vec::Vec<(String, ConfigValueRepr)>,
+            metadata: ConfigMetadataRepr,
+        },
+    }
+
+    impl From<&ConfigMetadata> for ConfigMetadataRepr {
+        fn from(metadata: &ConfigMetadata) -> Self {
+            metadata.to_repr()
+        }
+    }
+
+    impl From<ConfigMetadataRepr> for ConfigMetadata {
+        fn from(repr: ConfigMetadataRepr) -> Self {
+            ConfigMetadata::from_repr(repr)
+        }
+    }
+
+    impl From<&ConfigValue> for ConfigValueRepr {
+        fn from(value: &ConfigValue) -> Self {
+            match value {
+                ConfigValue::Boolean(v, meta) => Self::Boolean {
+                    value: *v,
+                    metadata: ConfigMetadataRepr::from(meta),
+                },
+                ConfigValue::Integer(v, meta) => Self::Integer {
+                    value: *v,
+                    metadata: ConfigMetadataRepr::from(meta),
+                },
+                ConfigValue::Float(v, meta) => Self::Float {
+                    value: *v,
+                    metadata: ConfigMetadataRepr::from(meta),
+                },
+                ConfigValue::Text(v, meta) => Self::Text {
+                    value: v.to_string(),
+                    metadata: ConfigMetadataRepr::from(meta),
+                },
+                ConfigValue::Binary(v, meta) => Self::Binary {
+                    value: v.to_vec(),
+                    metadata: ConfigMetadataRepr::from(meta),
+                },
+                ConfigValue::Duration(duration, meta) => Self::Duration {
+                    secs: duration.as_secs(),
+                    nanos: duration.subsec_nanos(),
+                    metadata: ConfigMetadataRepr::from(meta),
+                },
+                ConfigValue::List(values, meta) => Self::List {
+                    values: values.iter().map(ConfigValueRepr::from).collect(),
+                    metadata: ConfigMetadataRepr::from(meta),
+                },
+                ConfigValue::Dictionary(entries, meta) => Self::Dictionary {
+                    entries: entries
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), ConfigValueRepr::from(v)))
+                        .collect(),
+                    metadata: ConfigMetadataRepr::from(meta),
+                },
+            }
         }
     }
 }
