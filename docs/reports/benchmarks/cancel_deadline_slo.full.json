@@ -1,0 +1,47 @@
+{
+  "benchmark": "cancel_deadline_slo",
+  "quick_mode": false,
+  "requested_concurrency": 1000,
+  "scenario_duration_secs": 30.0,
+  "total_observations": 1011809000,
+  "scenarios": [
+    {
+      "name": "manual_call_context",
+      "concurrency": 1000,
+      "batches": 459632,
+      "observations": 459632000,
+      "runtime_secs": 30.108703532,
+      "deadline_checks": 459632000,
+      "deadline_violations": 0,
+      "latency_us": {
+        "p50": 25.279999999999998,
+        "p95": 48.213,
+        "p99": 56.73501000000001,
+        "mean": 26.178311146729726,
+        "min": 0.04,
+        "max": 1555.9250000000002,
+        "samples_recorded": 1000000,
+        "total_observations": 459632000
+      }
+    },
+    {
+      "name": "runtime_sugar_context",
+      "concurrency": 1000,
+      "batches": 552177,
+      "observations": 552177000,
+      "runtime_secs": 30.108793688,
+      "deadline_checks": 552177000,
+      "deadline_violations": 0,
+      "latency_us": {
+        "p50": 25.374000000000002,
+        "p95": 48.48,
+        "p99": 60.358,
+        "mean": 26.99869377769626,
+        "min": 0.04,
+        "max": 1495.673,
+        "samples_recorded": 1000000,
+        "total_observations": 552177000
+      }
+    }
+  ]
+}

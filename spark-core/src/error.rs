@@ -6,6 +6,12 @@ use alloc::borrow::Cow;
 
 pub mod category_matrix;
 #[cfg(test)]
+use alloc::{
+    borrow::{Cow, ToOwned},
+    boxed::Box,
+    string::String,
+    format,
+};
 use alloc::{borrow::ToOwned, boxed::Box, format, string::String};
 use core::fmt;
 
