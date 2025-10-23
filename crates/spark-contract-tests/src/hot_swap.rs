@@ -21,14 +21,25 @@ use spark_core::runtime::{
 };
 use std::any::TypeId;
 use std::pin::Pin;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Barrier, OnceLock};
 use std::task::{Context as TaskContext, Poll};
+use std::thread;
 use std::time::Duration;
 
-const CASES: &[TckCase] = &[TckCase {
-    name: "hot_swap_inserts_handler_without_dropping_messages",
-    test: hot_swap_inserts_handler_without_dropping_messages,
-}];
+const CASES: &[TckCase] = &[
+    TckCase {
+        name: "hot_swap_inserts_handler_without_dropping_messages",
+        test: hot_swap_inserts_handler_without_dropping_messages,
+    },
+    TckCase {
+        name: "hot_swap_replaces_handler_preserves_epoch_and_ordering",
+        test: hot_swap_replaces_handler_preserves_epoch_and_ordering,
+    },
+    TckCase {
+        name: "hot_swap_addition_during_inflight_dispatch_awaits_epoch_barrier",
+        test: hot_swap_addition_during_inflight_dispatch_awaits_epoch_barrier,
+    },
+];
 
 const SUITE: TckSuite = TckSuite {
     name: "hot_swap",
@@ -55,39 +66,7 @@ pub const fn suite() -> &'static TckSuite {
 ///   - 插入后事件序列为 `tls:1`, `tls:2`, `log:2`；
 ///   - Controller 的 epoch 自增，新增句柄不指向链表头。
 fn hot_swap_inserts_handler_without_dropping_messages() {
-    let runtime = Arc::new(NoopRuntime::new());
-    let logger = Arc::new(NoopLogger);
-    let ops = Arc::new(NoopOpsBus::default());
-    let metrics = Arc::new(NoopMetrics);
-
-    let services = CoreServices {
-        runtime: runtime as Arc<dyn AsyncRuntime>,
-        buffer_pool: Arc::new(NoopBufferPool),
-        metrics: metrics as Arc<dyn MetricsProvider>,
-        logger: logger as Arc<dyn Logger>,
-        membership: None,
-        discovery: None,
-        ops_bus: ops as Arc<dyn OpsEventBus>,
-        health_checks: Arc::new(Vec::new()),
-    };
-
-    let trace_context = TraceContext::new(
-        [0x11; TraceContext::TRACE_ID_LENGTH],
-        [0x22; TraceContext::SPAN_ID_LENGTH],
-        TraceFlags::new(TraceFlags::SAMPLED),
-    );
-    let call_context = CallContext::builder()
-        .with_trace_context(trace_context.clone())
-        .build();
-
-    let channel = Arc::new(TestChannel::new("hot-swap-channel"));
-    let controller = Arc::new(HotSwapController::new(
-        channel.clone() as Arc<dyn Channel>,
-        services,
-        call_context,
-    ));
-    channel
-        .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
+    let (_channel, controller) = build_hot_swap_controller("hot-swap-channel");
 
     let events = shared_vec();
     controller.register_inbound_handler(
@@ -121,6 +100,185 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
 
     let recorded = events.lock();
     assert_eq!(recorded.as_slice(), ["tls:1", "tls:2", "log:2"]);
+}
+
+/// 验证 `replace_handler` 在运行期替换链路节点时，既能维持消息顺序，又会通过 epoch 栅栏告知观察者新快照已提交。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：运维在发布补丁版本的 Handler 时，常用“无缝替换”策略，该测试确认旧节点不会在替换后继续处理新消息。
+/// - **逻辑 (How)**：
+///   1. 构造控制器并注册 `alpha` 记录器；
+///   2. 发送首条消息确保旧 Handler 正常工作；
+///   3. 调用 `replace_handler` 将 `alpha` 替换为 `beta`，断言 epoch 自增与注册表更新；
+///   4. 再次发送消息，核对事件序列仅由新 Handler 记录。
+/// - **契约 (What)**：替换完成后，`controller.epoch()` 必须单调递增，注册表标签更新为 `beta`，且事件序列不再出现 `alpha` 处理的新消息。
+fn hot_swap_replaces_handler_preserves_epoch_and_ordering() {
+    let (_channel, controller) = build_hot_swap_controller("hot-swap-replace");
+
+    let events = shared_vec();
+    controller.register_inbound_handler(
+        "alpha",
+        Box::new(RecordingInbound::new("alpha", Arc::clone(&events))),
+    );
+
+    controller.emit_read(PipelineMessage::from_user(TestMessage { id: 1 }));
+    {
+        let recorded = events.lock();
+        assert_eq!(recorded.as_slice(), ["alpha:1"], "替换前应仅由 alpha 处理");
+    }
+
+    let alpha_handle = controller
+        .registry()
+        .snapshot()
+        .into_iter()
+        .find(|entry| entry.label() == "alpha")
+        .expect("应能找到 alpha Handler 句柄")
+        .handle_id();
+
+    let replacement: Arc<dyn InboundHandler> =
+        Arc::new(RecordingInbound::new("beta", Arc::clone(&events)));
+    let replacement = handler_from_inbound(replacement);
+
+    let epoch_before = controller.epoch();
+    assert!(
+        controller.replace_handler(alpha_handle, replacement),
+        "替换操作必须返回成功"
+    );
+    let epoch_after = controller.epoch();
+    assert!(epoch_after > epoch_before, "替换后 epoch 应自增");
+
+    let registry_labels: Vec<_> = controller
+        .registry()
+        .snapshot()
+        .into_iter()
+        .map(|entry| entry.label().to_string())
+        .collect();
+    assert_eq!(registry_labels, ["beta"], "注册表应仅包含新 Handler");
+
+    controller.emit_read(PipelineMessage::from_user(TestMessage { id: 2 }));
+
+    let recorded = events.lock();
+    assert_eq!(
+        recorded.as_slice(),
+        ["alpha:1", "beta:2"],
+        "替换后新消息只能由 beta 记录",
+    );
+}
+
+/// 验证在 Handler 正在处理消息时执行插入操作，旧快照仍然保持一致，直至新 epoch 对后续消息生效。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：确认 `HotSwapController` 的“变更栅栏”语义——在单条消息的处理流程中，新插入的 Handler 不会提前介入，避免读到半更新的快照。
+/// - **逻辑 (How)**：
+///   1. 注册带栅栏的 `alpha` Handler，并在线程 A 中触发消息，使其在 `Barrier` 处暂停；
+///   2. 主线程等待进入临界区后调用 `add_handler_after` 插入 `beta`，确认 epoch 自增；
+///   3. 释放栅栏继续转发消息，断言首条消息未经过 `beta`；
+///   4. 对第二条消息进行检查，确认两位 Handler 均参与处理，证明新快照已对后续请求生效。
+/// - **契约 (What)**：插入过程中不会出现 `beta:1` 记录；`controller.epoch()` 在插入后递增；最终注册表顺序为 `["alpha", "beta"]`。
+fn hot_swap_addition_during_inflight_dispatch_awaits_epoch_barrier() {
+    let (_channel, controller) = build_hot_swap_controller("hot-swap-barrier");
+
+    let events = shared_vec();
+    let start = Arc::new(Barrier::new(2));
+    let release = Arc::new(Barrier::new(2));
+
+    controller.register_inbound_handler(
+        "alpha",
+        Box::new(BlockingRecordingInbound::new(
+            "alpha",
+            Arc::clone(&events),
+            Arc::clone(&start),
+            Arc::clone(&release),
+        )),
+    );
+
+    let alpha_handle = controller
+        .registry()
+        .snapshot()
+        .into_iter()
+        .find(|entry| entry.label() == "alpha")
+        .expect("alpha 应注册成功")
+        .handle_id();
+
+    let reader_controller = Arc::clone(&controller);
+    let reader = thread::spawn(move || {
+        reader_controller.emit_read(PipelineMessage::from_user(TestMessage { id: 1 }));
+    });
+
+    start.wait();
+
+    let epoch_before = controller.epoch();
+    let beta_handler: Arc<dyn InboundHandler> =
+        Arc::new(RecordingInbound::new("beta", Arc::clone(&events)));
+    let beta_handler = handler_from_inbound(beta_handler);
+    let beta_handle = controller.add_handler_after(alpha_handle, "beta", beta_handler);
+    assert_ne!(beta_handle, ControllerHandleId::INBOUND_HEAD);
+    let epoch_after = controller.epoch();
+    assert!(epoch_after > epoch_before, "插入新 Handler 必须自增 epoch");
+
+    release.wait();
+    reader.join().expect("读线程应顺利结束");
+
+    controller.emit_read(PipelineMessage::from_user(TestMessage { id: 2 }));
+
+    let recorded = events.lock();
+    assert_eq!(
+        recorded.as_slice(),
+        ["alpha:1", "alpha:2", "beta:2"],
+        "首条消息不应经过 beta，而第二条应经过完整链路",
+    );
+
+    let labels: Vec<_> = controller
+        .registry()
+        .snapshot()
+        .into_iter()
+        .map(|entry| entry.label().to_string())
+        .collect();
+    assert_eq!(labels, ["alpha", "beta"], "注册表顺序应保持插入语义");
+}
+
+/// 构建绑定 `HotSwapController` 的测试通道与控制器。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：多条测试用例均需相同的控制器初始化流程，集中封装以保证依赖一致性并降低样板代码。
+/// - **逻辑 (How)**：创建无操作的运行时与观测组件，初始化 `CallContext` 与 `HotSwapController`，随后将控制器绑定到测试通道。
+/// - **契约 (What)**：返回 `(TestChannel, HotSwapController)` 的 `Arc` 元组，调用方需在生命周期结束前保持引用，以免控制器被提前释放。
+fn build_hot_swap_controller(channel_id: &str) -> (Arc<TestChannel>, Arc<HotSwapController>) {
+    let runtime = Arc::new(NoopRuntime::new());
+    let logger = Arc::new(NoopLogger);
+    let ops = Arc::new(NoopOpsBus::default());
+    let metrics = Arc::new(NoopMetrics);
+
+    let services = CoreServices {
+        runtime: runtime as Arc<dyn AsyncRuntime>,
+        buffer_pool: Arc::new(NoopBufferPool),
+        metrics: metrics as Arc<dyn MetricsProvider>,
+        logger: logger as Arc<dyn Logger>,
+        membership: None,
+        discovery: None,
+        ops_bus: ops as Arc<dyn OpsEventBus>,
+        health_checks: Arc::new(Vec::new()),
+    };
+
+    let trace_context = TraceContext::new(
+        [0x11; TraceContext::TRACE_ID_LENGTH],
+        [0x22; TraceContext::SPAN_ID_LENGTH],
+        TraceFlags::new(TraceFlags::SAMPLED),
+    );
+    let call_context = CallContext::builder()
+        .with_trace_context(trace_context.clone())
+        .build();
+
+    let channel = Arc::new(TestChannel::new(channel_id));
+    let controller = Arc::new(HotSwapController::new(
+        channel.clone() as Arc<dyn Channel>,
+        services,
+        call_context,
+    ));
+    channel
+        .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
+
+    (channel, controller)
 }
 
 /// 测试专用的 Channel，实现最小接口以绑定 `HotSwapController`。
@@ -238,6 +396,77 @@ impl InboundHandler for RecordingInbound {
                 self.events
                     .lock()
                     .push(format!("{}:{}", self.name, user.id));
+                ctx.forward_read(PipelineMessage::from_user(user));
+            }
+            Err(other) => ctx.forward_read(other),
+        }
+    }
+
+    fn on_read_complete(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+
+    fn on_writability_changed(&self, _ctx: &dyn spark_core::pipeline::Context, _is_writable: bool) {
+    }
+
+    fn on_user_event(
+        &self,
+        _ctx: &dyn spark_core::pipeline::Context,
+        _event: spark_core::observability::CoreUserEvent,
+    ) {
+    }
+
+    fn on_exception_caught(
+        &self,
+        _ctx: &dyn spark_core::pipeline::Context,
+        _error: spark_core::error::CoreError,
+    ) {
+    }
+
+    fn on_channel_inactive(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+}
+
+/// 在线程间同步的记录型 Handler：在写入共享事件缓冲后，通过双栅栏控制消息何时继续向后游走。
+struct BlockingRecordingInbound {
+    name: &'static str,
+    events: Arc<Mutex<Vec<String>>>,
+    start: Arc<Barrier>,
+    release: Arc<Barrier>,
+}
+
+impl BlockingRecordingInbound {
+    /// 构造带同步栅栏的 Handler。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：测试需要在 Handler 正在执行时插入新的链路节点，因此使用栅栏挂起执行线程，便于主线程观察并发窗口。
+    /// - **逻辑 (How)**：`start` 栅栏用于通知主线程“已进入 Handler”；`release` 栅栏控制何时继续转发消息。
+    /// - **契约 (What)**：调用方需保证两个栅栏的参与者均为 2（主线程 + 读线程），否则将导致永久阻塞。
+    fn new(
+        name: &'static str,
+        events: Arc<Mutex<Vec<String>>>,
+        start: Arc<Barrier>,
+        release: Arc<Barrier>,
+    ) -> Self {
+        Self {
+            name,
+            events,
+            start,
+            release,
+        }
+    }
+}
+
+impl InboundHandler for BlockingRecordingInbound {
+    fn on_channel_active(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+
+    fn on_read(&self, ctx: &dyn spark_core::pipeline::Context, msg: PipelineMessage) {
+        match msg.try_into_user::<TestMessage>() {
+            Ok(user) => {
+                {
+                    self.events
+                        .lock()
+                        .push(format!("{}:{}", self.name, user.id));
+                }
+                self.start.wait();
+                self.release.wait();
                 ctx.forward_read(PipelineMessage::from_user(user));
             }
             Err(other) => ctx.forward_read(other),
