@@ -1,0 +1,52 @@
+{
+  "benchmark": "zerocopy_extremes",
+  "quick_mode": true,
+  "iterations": 6400,
+  "batch_size": 32,
+  "scenarios": [
+    {
+      "name": "single_large_chunk",
+      "total_bytes": 524288,
+      "expected_chunks": 1,
+      "samples": 200,
+      "ns_per_iter": {
+        "p50": 7,
+        "p95": 7,
+        "p99": 7,
+        "mean": 7.13,
+        "min": 7,
+        "max": 31
+      },
+      "ns_per_kb": {
+        "p50": 0.013671875,
+        "p95": 0.013671875,
+        "p99": 0.013710937499999964,
+        "mean": 0.01392578125,
+        "min": 0.013671875,
+        "max": 0.060546875
+      }
+    },
+    {
+      "name": "many_tiny_chunks",
+      "total_bytes": 524288,
+      "expected_chunks": 4096,
+      "samples": 200,
+      "ns_per_iter": {
+        "p50": 18487,
+        "p95": 27589,
+        "p99": 30064,
+        "mean": 19828.915,
+        "min": 15532,
+        "max": 30589
+      },
+      "ns_per_kb": {
+        "p50": 36.107421875,
+        "p95": 53.88388671874999,
+        "p99": 58.71943359375,
+        "mean": 38.728349609375,
+        "min": 30.3359375,
+        "max": 59.744140625
+      }
+    }
+  ]
+}

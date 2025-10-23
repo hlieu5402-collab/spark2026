@@ -1,0 +1,36 @@
+{
+  "benchmark": "zerocopy_extremes",
+  "modes": [
+    {
+      "quick_mode": true,
+      "scenarios": [
+        {
+          "name": "single_large_chunk",
+          "max_p99_ns_per_kb": 0.05,
+          "max_mean_ns_per_kb": 0.03
+        },
+        {
+          "name": "many_tiny_chunks",
+          "max_p99_ns_per_kb": 60.0,
+          "max_mean_ns_per_kb": 45.0
+        }
+      ]
+    },
+    {
+      "quick_mode": false,
+      "scenarios": [
+        {
+          "name": "single_large_chunk",
+          "max_p99_ns_per_kb": 0.05,
+          "max_mean_ns_per_kb": 0.03
+        },
+        {
+          "name": "many_tiny_chunks",
+          "max_p99_ns_per_kb": 60.0,
+          "max_mean_ns_per_kb": 45.0
+        }
+      ]
+    }
+  ]
+}
+
