@@ -46,6 +46,14 @@ const CASES: &[TckCase] = &[
         name: "pending_channel_times_out_and_forces_close",
         test: pending_channel_times_out_and_forces_close,
     },
+    TckCase {
+        name: "channel_half_close_requires_dual_ack_steps",
+        test: channel_half_close_requires_dual_ack_steps,
+    },
+    TckCase {
+        name: "channel_closed_future_error_reports_failure",
+        test: channel_closed_future_error_reports_failure,
+    },
 ];
 
 const SUITE: TckSuite = TckSuite {
@@ -351,6 +359,172 @@ fn pending_channel_times_out_and_forces_close() {
             .any(|entry| entry.severity == LogSeverity::Warn && entry.message.contains("forced")),
         "超时路径需记录 WARN 日志"
     );
+    assert_eq!(
+        recorder.closed_completions.load(Ordering::SeqCst),
+        0,
+        "强制关闭后 `closed()` Future 不应报告成功"
+    );
+    assert!(
+        recorder.closed_drop_count() >= 1,
+        "超时导致的取消必须释放 `closed()` Future 资源"
+    );
+}
+
+/// 验证 `closed()` Future 只有在“读/写半关闭都确认”后才会完成，确保双向流水线被安全冲刷。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：传输层在 FIN 后仍需等待对端完成读半关闭与写方向的剩余数据同步，协调器必须在两个确认到齐前保持 Pending。
+/// - **逻辑 (How)**：
+///   1. 将测试通道配置为需要两个“半关闭确认”步骤，并在后台线程执行 `shutdown`；
+///   2. 观察到 FIN 已触发后，依次调用 `ack_closed_step`，模拟“写半关闭完成”“读半关闭完成”；
+///   3. 在第一次确认后断言线程仍未完成，第二次确认后再收集报告；
+///   4. 校验 `GracefulShutdownStatus::Completed`，同时确认未触发硬关闭且资源统计正常。
+/// - **契约 (What)**：
+///   - 输入：无截止时间，允许无限等待；
+///   - 前置：测试需在两个确认步骤之间检查 `JoinHandle::is_finished`；
+///   - 后置：`closed_completions == 1`、`force_calls == 0`、`closed_drop_count >= 1`，报告状态为 `Completed`。
+fn channel_half_close_requires_dual_ack_steps() {
+    let runtime = Arc::new(TestRuntime::new());
+    let logger = Arc::new(TestLogger::default());
+    let ops = Arc::new(TestOpsBus::default());
+    let metrics = Arc::new(TestMetrics);
+
+    let services = build_core_services(
+        Arc::clone(&runtime) as Arc<dyn AsyncRuntime>,
+        Arc::clone(&logger) as Arc<dyn Logger>,
+        Arc::clone(&ops) as Arc<dyn OpsEventBus>,
+        Arc::clone(&metrics) as Arc<dyn MetricsProvider>,
+    );
+
+    let controller = Arc::new(NoopController);
+    let channel = Arc::new(TestChannel::new("dual-ack", controller));
+    let recorder = channel.recorder();
+    recorder.require_closed_steps(2);
+
+    let mut coordinator = GracefulShutdownCoordinator::new(services);
+    coordinator.register_channel("dual-ack", channel.clone() as Arc<dyn Channel>);
+
+    let handle = thread::spawn(move || {
+        block_on(coordinator.shutdown(
+            CloseReason::new("spark.tck.shutdown.dual", "await read/write half-close"),
+            None,
+        ))
+    });
+
+    while recorder.graceful_calls.load(Ordering::SeqCst) == 0 {
+        thread::yield_now();
+    }
+
+    assert!(!handle.is_finished(), "两个半关闭确认均未到齐前不应返回");
+
+    recorder.ack_closed_step();
+    thread::yield_now();
+    assert!(!handle.is_finished(), "仅完成一个方向的半关闭时仍应等待");
+
+    recorder.ack_closed_step();
+    let report = handle.join().expect("shutdown 线程不应 panic");
+
+    assert_eq!(report.results().len(), 1);
+    assert!(matches!(
+        report.results()[0].status(),
+        GracefulShutdownStatus::Completed
+    ));
+    assert_eq!(
+        recorder.force_calls.load(Ordering::SeqCst),
+        0,
+        "双向确认完成后不应触发硬关闭"
+    );
+    assert_eq!(
+        recorder.closed_completions.load(Ordering::SeqCst),
+        1,
+        "两个方向确认后应成功完成一次 closed()"
+    );
+    assert!(
+        recorder.closed_drop_count() >= 1,
+        "Future 在完成后应被丢弃以释放资源"
+    );
+}
+
+/// 验证 `closed()` Future 返回错误时，协调器会报告 `Failed`，并确保资源释放且未触发硬关闭。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：异常路径需确保 FIN 已经发送，但对端反馈错误时仍能保持一致的状态统计并释放 `closed()` Future。
+/// - **逻辑 (How)**：
+///   1. 将测试通道配置为 Pending，并在独立线程执行 `shutdown`；
+///   2. 在 FIN 触发后调用 `complete_closed_with_error`，模拟执行器返回 `SparkError`；
+///   3. 收集报告并检查状态、日志以及资源计数；
+///   4. 断言硬关闭计数保持为 0，确认异常路径不会意外调用 `close()`。
+/// - **契约 (What)**：
+///   - 输入：`CloseReason` 描述异常收敛；
+///   - 前置：必须在返回前调用 `complete_closed_with_error`；
+///   - 后置：报告状态为 `Failed`，`closed_failure_count == 1`、`force_calls == 0`、`closed_drop_count >= 1`。
+fn channel_closed_future_error_reports_failure() {
+    let runtime = Arc::new(TestRuntime::new());
+    let logger = Arc::new(TestLogger::default());
+    let ops = Arc::new(TestOpsBus::default());
+    let metrics = Arc::new(TestMetrics);
+
+    let services = build_core_services(
+        Arc::clone(&runtime) as Arc<dyn AsyncRuntime>,
+        Arc::clone(&logger) as Arc<dyn Logger>,
+        Arc::clone(&ops) as Arc<dyn OpsEventBus>,
+        Arc::clone(&metrics) as Arc<dyn MetricsProvider>,
+    );
+
+    let controller = Arc::new(NoopController);
+    let channel = Arc::new(TestChannel::new("error", controller));
+    let recorder = channel.recorder();
+    recorder.keep_closed_pending();
+
+    let mut coordinator = GracefulShutdownCoordinator::new(services);
+    coordinator.register_channel("error", channel.clone() as Arc<dyn Channel>);
+
+    let handle = thread::spawn(move || {
+        block_on(coordinator.shutdown(
+            CloseReason::new("spark.tck.shutdown.error", "closed future failed"),
+            None,
+        ))
+    });
+
+    while recorder.graceful_calls.load(Ordering::SeqCst) == 0 {
+        thread::yield_now();
+    }
+
+    assert!(!handle.is_finished(), "在错误注入前 shutdown 应保持等待");
+
+    recorder.complete_closed_with_error(SparkError::new(
+        "spark.tck.shutdown.closed_error",
+        "closed future returned error",
+    ));
+
+    let report = handle.join().expect("shutdown 线程不应 panic");
+
+    assert_eq!(report.results().len(), 1);
+    match report.results()[0].status() {
+        GracefulShutdownStatus::Failed(err) => {
+            assert_eq!(err.code(), "spark.tck.shutdown.closed_error");
+        }
+        other => panic!("预期 Failed，实际为 {:?}", other),
+    }
+    assert_eq!(
+        recorder.force_calls.load(Ordering::SeqCst),
+        0,
+        "异常路径不应调用硬关闭"
+    );
+    assert_eq!(
+        recorder.closed_failure_count(),
+        1,
+        "应记录一次 closed() 错误"
+    );
+    assert_eq!(
+        recorder.closed_completions.load(Ordering::SeqCst),
+        0,
+        "错误场景不应统计成功关闭"
+    );
+    assert!(
+        recorder.closed_drop_count() >= 1,
+        "错误返回后 Future 应被释放"
+    );
 }
 
 /// 教学版 `block_on`，避免引入额外依赖同时展示 Future 轮询机制。
@@ -627,6 +801,10 @@ struct ChannelRecorder {
     closed_state: Arc<ManualClosedState>,
     closed_completions: AtomicUsize,
     keep_pending: AtomicBool,
+    closed_failures: AtomicUsize,
+    closed_drops: AtomicUsize,
+    failure: Mutex<Option<SparkError>>,
+    result_recorded: AtomicBool,
 }
 
 impl ChannelRecorder {
@@ -639,6 +817,10 @@ impl ChannelRecorder {
             closed_state: Arc::new(ManualClosedState::new()),
             closed_completions: AtomicUsize::new(0),
             keep_pending: AtomicBool::new(false),
+            closed_failures: AtomicUsize::new(0),
+            closed_drops: AtomicUsize::new(0),
+            failure: Mutex::new(None),
+            result_recorded: AtomicBool::new(false),
         })
     }
 
@@ -649,12 +831,54 @@ impl ChannelRecorder {
     fn keep_closed_pending(&self) {
         self.keep_pending.store(true, Ordering::SeqCst);
     }
+
+    fn require_closed_steps(&self, steps: usize) {
+        self.keep_pending.store(true, Ordering::SeqCst);
+        self.closed_state.set_pending_steps(steps);
+    }
+
+    fn ack_closed_step(&self) {
+        self.closed_state.ack_step();
+    }
+
+    fn complete_closed_with_error(&self, error: SparkError) {
+        *self.failure.lock() = Some(error);
+        self.closed_state.complete();
+    }
+
+    fn closed_failure_count(&self) -> usize {
+        self.closed_failures.load(Ordering::SeqCst)
+    }
+
+    fn closed_drop_count(&self) -> usize {
+        self.closed_drops.load(Ordering::SeqCst)
+    }
+
+    fn reset_result_recording(&self) {
+        self.result_recorded.store(false, Ordering::SeqCst);
+    }
+
+    #[allow(clippy::result_large_err)]
+    fn take_closed_result(&self) -> Result<(), SparkError> {
+        if self.result_recorded.swap(true, Ordering::SeqCst) {
+            return Ok(());
+        }
+
+        if let Some(error) = self.failure.lock().take() {
+            self.closed_failures.fetch_add(1, Ordering::SeqCst);
+            Err(error)
+        } else {
+            self.closed_completions.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
 }
 
 /// 手动控制的 `closed()` Future 状态。
 struct ManualClosedState {
     completed: AtomicBool,
     waker: Mutex<Option<Waker>>,
+    pending_steps: AtomicUsize,
 }
 
 impl ManualClosedState {
@@ -662,6 +886,7 @@ impl ManualClosedState {
         Self {
             completed: AtomicBool::new(false),
             waker: Mutex::new(None),
+            pending_steps: AtomicUsize::new(0),
         }
     }
 
@@ -670,10 +895,41 @@ impl ManualClosedState {
     }
 
     fn complete(&self) {
-        self.completed.store(true, Ordering::Release);
-        if let Some(waker) = self.waker.lock().take() {
-            waker.wake();
+        if !self.completed.swap(true, Ordering::AcqRel) {
+            self.pending_steps.store(0, Ordering::SeqCst);
+            if let Some(waker) = self.waker.lock().take() {
+                waker.wake();
+            }
         }
+    }
+
+    fn set_pending_steps(&self, steps: usize) {
+        self.pending_steps.store(steps, Ordering::SeqCst);
+        self.completed.store(false, Ordering::Release);
+    }
+
+    fn ack_step(&self) {
+        loop {
+            let current = self.pending_steps.load(Ordering::Acquire);
+            if current == 0 {
+                break;
+            }
+
+            if self
+                .pending_steps
+                .compare_exchange(current, current - 1, Ordering::AcqRel, Ordering::Relaxed)
+                .is_ok()
+            {
+                if current == 1 {
+                    self.complete();
+                }
+                break;
+            }
+        }
+    }
+
+    fn is_completed(&self) -> bool {
+        self.completed.load(Ordering::Acquire)
     }
 }
 
@@ -686,28 +942,27 @@ impl Future for ManualClosedFuture {
     type Output = Result<(), SparkError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.state.completed.load(Ordering::Acquire) {
-            self.recorder
-                .closed_completions
-                .fetch_add(1, Ordering::SeqCst);
-            Poll::Ready(Ok(()))
-        } else if self.recorder.keep_pending.load(Ordering::Acquire) {
+        if self.state.is_completed() {
+            return Poll::Ready(self.recorder.take_closed_result());
+        }
+
+        if self.recorder.keep_pending.load(Ordering::Acquire) {
             self.state.register(cx.waker());
-            if self.state.completed.load(Ordering::Acquire) {
-                self.recorder
-                    .closed_completions
-                    .fetch_add(1, Ordering::SeqCst);
-                Poll::Ready(Ok(()))
+            if self.state.is_completed() {
+                Poll::Ready(self.recorder.take_closed_result())
             } else {
                 Poll::Pending
             }
         } else {
-            // 未标记 keep_pending 时立即完成，用于 FIN 正常路径。
-            self.recorder
-                .closed_completions
-                .fetch_add(1, Ordering::SeqCst);
-            Poll::Ready(Ok(()))
+            self.state.complete();
+            Poll::Ready(self.recorder.take_closed_result())
         }
+    }
+}
+
+impl Drop for ManualClosedFuture {
+    fn drop(&mut self) {
+        self.recorder.closed_drops.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -777,6 +1032,7 @@ impl Channel for TestChannel {
     }
 
     fn closed(&self) -> spark_core::future::BoxFuture<'static, Result<(), SparkError>> {
+        self.recorder.reset_result_recording();
         Box::pin(ManualClosedFuture {
             state: Arc::clone(&self.recorder.closed_state),
             recorder: Arc::clone(&self.recorder),
