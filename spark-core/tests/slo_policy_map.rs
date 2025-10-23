@@ -1,3 +1,5 @@
+#![cfg(feature = "std_json")]
+
 use spark_core::configuration::{ConfigMetadata, ConfigValue};
 use spark_core::contract::{BudgetKind, BudgetSnapshot};
 use spark_core::runtime::{

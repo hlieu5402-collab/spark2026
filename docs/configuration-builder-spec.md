@@ -70,6 +70,9 @@ println!("{}", outcome.report.snapshot().to_json()); // 可直接落盘
 
 > 若构建失败，可通过 `err.kind()` 与 `err.stage()` 快速定位问题，再配合 `err.report().findings()` 查看已执行的检查项。
 
+> 序列化指引：`ConfigKey` 与 `ConfigValue` 不再直接实现 `serde`，若需结构化输出，可复用 `ConfigurationSnapshot::to_json()`、`AuditChangeEntry`
+> （审计链路）等辅助类型，这些类型在内部完成格式转换并保持公共 API 的框架无关性。
+
 ## 快照文件（示例）
 
 仓库根目录的 [`snapshots/configuration-example.json`](../snapshots/configuration-example.json) 展示了一个脱敏后的快照，可用于对照输出格式与字段含义。
