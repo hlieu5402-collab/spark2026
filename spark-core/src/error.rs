@@ -5,11 +5,11 @@ use crate::{
 
 pub mod category_matrix;
 #[cfg(test)]
+use alloc::format;
 use alloc::{
     borrow::{Cow, ToOwned},
     boxed::Box,
     string::String,
-    format，
 };
 use core::fmt;
 

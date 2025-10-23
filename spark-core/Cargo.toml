@@ -74,8 +74,12 @@ path = "tests/contracts/context_propagation_spawn.rs"
 [[test]]
 name = "concurrency_primitives"
 path = "tests/concurrency_primitives.rs"
+
+[[test]]
 name = "contracts_error_category_autoresponse"
 path = "tests/contracts/error_category_autoresponse.rs"
+
+[[test]]
 name = "contracts_ready_state_matrix"
 path = "tests/contracts/ready_state_matrix.rs"
 
@@ -98,6 +102,13 @@ path = "tests/retry/mod.rs"
 [[bin]]
 name = "audit_replay"
 path = "src/bin/audit_replay.rs"
+required-features = ["std", "std_json"]
+bench = false
+test = false
+
+[[bin]]
+name = "cancel_deadline_slo"
+path = "src/bin/cancel_deadline_slo.rs"
 required-features = ["std", "std_json"]
 bench = false
 test = false
