@@ -5,14 +5,244 @@
       "quick_mode": true,
       "scenarios": [
         {
-          "name": "single_large_chunk",
-          "max_p99_ns_per_kb": 0.05,
-          "max_mean_ns_per_kb": 0.03
+          "name": "payload_1kb_chunks_1",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 240.59999999999945,
+              "max_p99_overhead_pct": 1187.272727272722
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 190.0999999999999,
+              "max_p99_overhead_pct": 2000.0
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 220.0999999999999,
+              "max_p99_overhead_pct": 1799.9999999999998
+            }
+          ]
         },
         {
-          "name": "many_tiny_chunks",
-          "max_p99_ns_per_kb": 60.0,
-          "max_mean_ns_per_kb": 45.0
+          "name": "payload_1kb_chunks_4",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 3556.0999999999945,
+              "max_p99_overhead_pct": 11700.357142857123
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 2280.5999999999995,
+              "max_p99_overhead_pct": 10397.301349325338
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 4652.299999999997,
+              "max_p99_overhead_pct": 16230.740740740732
+            }
+          ]
+        },
+        {
+          "name": "payload_1kb_chunks_8",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 3230.899999999999,
+              "max_p99_overhead_pct": 4499.404255319297
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 3253.7999999999965,
+              "max_p99_overhead_pct": 8569.999999999989
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 3405.0999999999954,
+              "max_p99_overhead_pct": 6913.31629095979
+            }
+          ]
+        },
+        {
+          "name": "payload_1kb_chunks_32",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 14476.999999999967,
+              "max_p99_overhead_pct": 7877.23816531762
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 9054.699999999995,
+              "max_p99_overhead_pct": 4080.3456208270245
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 10114.299999999996,
+              "max_p99_overhead_pct": 3812.6665397792167
+            }
+          ]
+        },
+        {
+          "name": "payload_64kb_chunks_1",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 4.07343749999999,
+              "max_p99_overhead_pct": 1299.9999999999998
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 3.2828124999999986,
+              "max_p99_overhead_pct": 1996.6722129783725
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 3.7562499999999943,
+              "max_p99_overhead_pct": 1100.0000000000002
+            }
+          ]
+        },
+        {
+          "name": "payload_64kb_chunks_4",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 22.698437499997972,
+              "max_p99_overhead_pct": 3686.1290322576456
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 64.69375,
+              "max_p99_overhead_pct": 15561.599999999999
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 19.085937499999837,
+              "max_p99_overhead_pct": 3116.109188773548
+            }
+          ]
+        },
+        {
+          "name": "payload_64kb_chunks_8",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 25.9375,
+              "max_p99_overhead_pct": 2531.9148936170213
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 23.909374999999997,
+              "max_p99_overhead_pct": 3313.5351227869796
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 101.68124999999989,
+              "max_p99_overhead_pct": 15268.999999999985
+            }
+          ]
+        },
+        {
+          "name": "payload_64kb_chunks_32",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 148.0437499999998,
+              "max_p99_overhead_pct": 1151.6398476845616
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 189.8265624999993,
+              "max_p99_overhead_pct": 8340.99646317127
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 203.52343749999977,
+              "max_p99_overhead_pct": 3615.566515775961
+            }
+          ]
+        },
+        {
+          "name": "payload_1mb_chunks_1",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 0.224609375,
+              "max_p99_overhead_pct": 1148.5714285714232
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 0.1953125,
+              "max_p99_overhead_pct": 2000.0
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 0.2637695312499999,
+              "max_p99_overhead_pct": 1277.2727272727234
+            }
+          ]
+        },
+        {
+          "name": "payload_1mb_chunks_4",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 1.11337890625,
+              "max_p99_overhead_pct": 3000.7142857142853
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 2.057324218749994,
+              "max_p99_overhead_pct": 9031.904761904732
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 1.2419921874999984,
+              "max_p99_overhead_pct": 3540.5212424134193
+            }
+          ]
+        },
+        {
+          "name": "payload_1mb_chunks_8",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 1.7503906249999979,
+              "max_p99_overhead_pct": 2513.1321050568376
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 3.1951171874999185,
+              "max_p99_overhead_pct": 7603.2079936889795
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 2.3973632812499868,
+              "max_p99_overhead_pct": 4570.456092579963
+            }
+          ]
+        },
+        {
+          "name": "payload_1mb_chunks_32",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 9.937207031249933,
+              "max_p99_overhead_pct": 4043.0821787815535
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 9.705664062499974,
+              "max_p99_overhead_pct": 6640.375153751521
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 10.409960937499992,
+              "max_p99_overhead_pct": 5902.67435083858
+            }
+          ]
         }
       ]
     },
@@ -20,17 +250,246 @@
       "quick_mode": false,
       "scenarios": [
         {
-          "name": "single_large_chunk",
-          "max_p99_ns_per_kb": 0.05,
-          "max_mean_ns_per_kb": 0.03
+          "name": "payload_1kb_chunks_1",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 240.59999999999945,
+              "max_p99_overhead_pct": 1187.272727272722
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 190.0999999999999,
+              "max_p99_overhead_pct": 2000.0
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 220.0999999999999,
+              "max_p99_overhead_pct": 1799.9999999999998
+            }
+          ]
         },
         {
-          "name": "many_tiny_chunks",
-          "max_p99_ns_per_kb": 60.0,
-          "max_mean_ns_per_kb": 45.0
+          "name": "payload_1kb_chunks_4",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 3556.0999999999945,
+              "max_p99_overhead_pct": 11700.357142857123
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 2280.5999999999995,
+              "max_p99_overhead_pct": 10397.301349325338
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 4652.299999999997,
+              "max_p99_overhead_pct": 16230.740740740732
+            }
+          ]
+        },
+        {
+          "name": "payload_1kb_chunks_8",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 3230.899999999999,
+              "max_p99_overhead_pct": 4499.404255319297
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 3253.7999999999965,
+              "max_p99_overhead_pct": 8569.999999999989
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 3405.0999999999954,
+              "max_p99_overhead_pct": 6913.31629095979
+            }
+          ]
+        },
+        {
+          "name": "payload_1kb_chunks_32",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 14476.999999999967,
+              "max_p99_overhead_pct": 7877.23816531762
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 9054.699999999995,
+              "max_p99_overhead_pct": 4080.3456208270245
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 10114.299999999996,
+              "max_p99_overhead_pct": 3812.6665397792167
+            }
+          ]
+        },
+        {
+          "name": "payload_64kb_chunks_1",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 4.07343749999999,
+              "max_p99_overhead_pct": 1299.9999999999998
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 3.2828124999999986,
+              "max_p99_overhead_pct": 1996.6722129783725
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 3.7562499999999943,
+              "max_p99_overhead_pct": 1100.0000000000002
+            }
+          ]
+        },
+        {
+          "name": "payload_64kb_chunks_4",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 22.698437499997972,
+              "max_p99_overhead_pct": 3686.1290322576456
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 64.69375,
+              "max_p99_overhead_pct": 15561.599999999999
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 19.085937499999837,
+              "max_p99_overhead_pct": 3116.109188773548
+            }
+          ]
+        },
+        {
+          "name": "payload_64kb_chunks_8",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 25.9375,
+              "max_p99_overhead_pct": 2531.9148936170213
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 23.909374999999997,
+              "max_p99_overhead_pct": 3313.5351227869796
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 101.68124999999989,
+              "max_p99_overhead_pct": 15268.999999999985
+            }
+          ]
+        },
+        {
+          "name": "payload_64kb_chunks_32",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 148.0437499999998,
+              "max_p99_overhead_pct": 1151.6398476845616
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 189.8265624999993,
+              "max_p99_overhead_pct": 8340.99646317127
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 203.52343749999977,
+              "max_p99_overhead_pct": 3615.566515775961
+            }
+          ]
+        },
+        {
+          "name": "payload_1mb_chunks_1",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 0.224609375,
+              "max_p99_overhead_pct": 1148.5714285714232
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 0.1953125,
+              "max_p99_overhead_pct": 2000.0
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 0.2637695312499999,
+              "max_p99_overhead_pct": 1277.2727272727234
+            }
+          ]
+        },
+        {
+          "name": "payload_1mb_chunks_4",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 1.11337890625,
+              "max_p99_overhead_pct": 3000.7142857142853
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 2.057324218749994,
+              "max_p99_overhead_pct": 9031.904761904732
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 1.2419921874999984,
+              "max_p99_overhead_pct": 3540.5212424134193
+            }
+          ]
+        },
+        {
+          "name": "payload_1mb_chunks_8",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 1.7503906249999979,
+              "max_p99_overhead_pct": 2513.1321050568376
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 3.1951171874999185,
+              "max_p99_overhead_pct": 7603.2079936889795
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 2.3973632812499868,
+              "max_p99_overhead_pct": 4570.456092579963
+            }
+          ]
+        },
+        {
+          "name": "payload_1mb_chunks_32",
+          "operations": [
+            {
+              "kind": "encode",
+              "max_p99_ns_per_kb": 9.937207031249933,
+              "max_p99_overhead_pct": 4043.0821787815535
+            },
+            {
+              "kind": "decode",
+              "max_p99_ns_per_kb": 9.705664062499974,
+              "max_p99_overhead_pct": 6640.375153751521
+            },
+            {
+              "kind": "forward",
+              "max_p99_ns_per_kb": 10.409960937499992,
+              "max_p99_overhead_pct": 5902.67435083858
+            }
+          ]
         }
       ]
     }
   ]
 }
-

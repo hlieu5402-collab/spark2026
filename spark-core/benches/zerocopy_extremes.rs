@@ -6,27 +6,28 @@ use std::hint::black_box;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// `zerocopy_extremes` 基准：在分片数量与单片尺寸的极端组合下，测量 `BufView::as_chunks`
-/// 暴露零拷贝窗口的稳定性，并对 P99 延迟实施阈值守门。
+/// `zerocopy_extremes` 基准：在“极端分片 × 极端载荷”的组合下量化 `BufView`
+/// 在编码、解码、转发三条路径上的额外开销，并对 P99 延迟设置守门红线。
 ///
 /// # 教案式摘要
-/// - **意图 (Why)**：BufView 契约承诺“任意分片布局下均不额外拷贝”，本基准专门聚焦
-///   “单片超大”与“超多微片”两种极端，锁定 P99 延迟，避免未来重构意外引入线性额外
-///   开销。
-/// - **定位 (Where)**：作为 `cargo bench -- --quick` 的组成部分，运行在 `spark-core`
+/// - **意图 (Why)**：BufView 契约承诺“任意分片布局下额外开销 ≤ 阈值”。为了验证这一点，
+///   本基准穷举“分片数 = 1/4/8/32”与“负载 = 1KiB/64KiB/1MiB”的 12 种组合，并在编码/
+///   解码/转发三条逻辑路径上测量 P99 延迟与对单片基线的额外百分比。
+/// - **定位 (Where)**：基准作为 `cargo bench -- --quick` 的组成部分运行在 `spark-core`
 ///   crate 内的独立二进制，生成 `docs/reports/benchmarks/zerocopy_extremes.{quick,full}.json`。
-/// - **执行逻辑 (How)**：针对每个场景多次调用 `BufView::as_chunks` 并遍历所有分片，采集
-///   “每 KB 消耗的纳秒”样本，计算 P50/P95/P99 等统计量。
+/// - **执行逻辑 (How)**：针对每个场景反复执行编码/解码/转发模拟函数，记录“每次调用耗时”
+///   与“每 KiB 耗时”，并对样本进行分位数统计，同时计算相对单片基线的 P99 额外开销。
 /// - **契约 (What)**：
 ///   - **输入参数**：支持 `--quick`、`--output <path>`、`--threshold <path>` 命令行参数；
 ///     其余参数视为非法。
-///   - **输出**：标准输出打印关键指标，同时将统计结果写入 JSON 文件；若 P99 超过阈值，
-///     立即返回错误码。
+///   - **输出**：标准输出打印关键指标，同时将统计结果写入 JSON 文件；若任一路径的 P99
+///     或额外开销超过阈值，立即返回错误码。
 ///   - **前置条件**：运行环境需提供 `std`，并允许在 `docs/reports/benchmarks` 下创建文件。
-///   - **后置条件**：若阈值校验通过，则保证两种极端场景的 `p99_ns_per_kb` 不超过配置。
-/// - **设计权衡 (Trade-offs)**：为了让数据具有实际意义，基准会在内部重新分配 `Vec<&[u8]>`
-///   保存分片指针；虽然这会带来额外指针复制，但它与真实业务实现使用
-///   `Chunks::from_vec` 时的代价一致。
+///   - **后置条件**：若阈值校验通过，则保证所有场景的 `p99_ns_per_kb` 与 `p99_overhead_pct`
+///     满足 SLO。
+/// - **设计权衡 (Trade-offs)**：编码/转发路径会收集分片指针元数据；这会引入轻微的
+///   `Vec` 指针写入，但与真实业务通过 `Chunks::from_vec` 构造 scatter/gather 列表的成本
+///   保持一致，确保基准具有代表性。
 fn main() {
     if let Err(error) = run() {
         eprintln!("zerocopy_extremes_error={error}");
@@ -167,33 +168,261 @@ struct SamplePoint {
     ns_per_kb: f64,
 }
 
+/// 基准中模拟的三类路径。
+///
+/// # Why
+/// - 与业务实践对齐：编码阶段准备 scatter/gather 元数据，解码阶段快速校验报文，转发
+///   阶段保留零拷贝语义继续传递。将这三类路径显式建模，便于观察不同访问模式的性能
+///   差异。
+///
+/// # How
+/// - 作为枚举提供有限集合，并实现 `Serialize`/`Deserialize` 以便直接写入/读取 JSON
+///   报告与阈值文件。
+///
+/// # What
+/// - `Encode`：模拟出站数据编码准备；
+/// - `Decode`：模拟入站数据的轻量校验；
+/// - `Forward`：模拟在 Handler 链中继续传递视图。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum OperationKind {
+    Encode,
+    Decode,
+    Forward,
+}
+
+impl OperationKind {
+    /// 返回稳定的字符串标签，供日志与 JSON 输出复用。
+    fn as_str(self) -> &'static str {
+        match self {
+            OperationKind::Encode => "encode",
+            OperationKind::Decode => "decode",
+            OperationKind::Forward => "forward",
+        }
+    }
+
+    /// 枚举所有路径，保持遍历顺序固定（编码→解码→转发）。
+    fn all() -> &'static [OperationKind] {
+        const ALL: &[OperationKind] = &[
+            OperationKind::Encode,
+            OperationKind::Decode,
+            OperationKind::Forward,
+        ];
+        ALL
+    }
+
+    /// 在给定场景上执行一次模拟操作（BufView 路径）。
+    fn execute_bufview(self, scenario: &ScenarioSpec, scratch: &mut OperationScratch) {
+        match self {
+            OperationKind::Encode => {
+                encode_like(&scenario.fixture, scratch, scenario.payload_bytes)
+            }
+            OperationKind::Decode => decode_like(&scenario.fixture, scratch),
+            OperationKind::Forward => {
+                forward_like(&scenario.fixture, scratch, scenario.expected_chunks)
+            }
+        }
+    }
+
+    /// 在给定场景上执行一次模拟操作（基线路径）。
+    fn execute_baseline(self, scenario: &ScenarioSpec, scratch: &mut OperationScratch) {
+        match self {
+            OperationKind::Encode => {
+                encode_like_baseline(&scenario.fixture, scratch, scenario.payload_bytes)
+            }
+            OperationKind::Decode => decode_like_baseline(&scenario.fixture, scratch),
+            OperationKind::Forward => {
+                forward_like_baseline(&scenario.fixture, scratch, scenario.expected_chunks)
+            }
+        }
+    }
+}
+
+/// Scatter/Gather 元数据片段，仅存储指针与长度以模拟真实网络发送队列。
+#[derive(Clone, Copy)]
+struct FramePart {
+    ptr: *const u8,
+    len: usize,
+}
+
+/// 为操作重用的 scratch 区域，避免在热循环中重复分配。
+struct OperationScratch {
+    frame_parts: Vec<FramePart>,
+    decode_checksum: u64,
+}
+
+impl OperationScratch {
+    fn new(expected_chunks: usize) -> Self {
+        Self {
+            frame_parts: Vec::with_capacity(expected_chunks),
+            decode_checksum: 0,
+        }
+    }
+}
+
+/// 编码阶段：收集分片指针并校验总字节数。
+fn encode_like(view: &ViewFixture, scratch: &mut OperationScratch, expected_bytes: usize) {
+    scratch.frame_parts.clear();
+    let mut total = 0usize;
+    for chunk in view.as_chunks() {
+        scratch.frame_parts.push(FramePart {
+            ptr: chunk.as_ptr(),
+            len: chunk.len(),
+        });
+        total += chunk.len();
+        black_box(chunk);
+    }
+    debug_assert_eq!(total, expected_bytes, "编码阶段观察到的字节数不匹配");
+    let checksum = scratch.frame_parts.iter().fold(0usize, |acc, part| {
+        acc ^ part.len ^ ((part.ptr as usize) & 0xFF)
+    });
+    black_box(checksum);
+}
+
+/// 解码阶段：轻量验证各分片首尾字节，模拟解析器对结构化帧的快速检查。
+fn decode_like(view: &ViewFixture, scratch: &mut OperationScratch) {
+    let mut checksum = 0u64;
+    for chunk in view.as_chunks() {
+        if let Some((&first, rest)) = chunk.split_first() {
+            let last = rest.last().copied().unwrap_or(first);
+            checksum = checksum.wrapping_add(first as u64);
+            checksum = checksum.rotate_left(7) ^ last as u64;
+            checksum = checksum.wrapping_add(chunk.len() as u64);
+        } else {
+            checksum = checksum.rotate_left(5) ^ 0xA5;
+        }
+    }
+    scratch.decode_checksum ^= checksum;
+    black_box(scratch.decode_checksum);
+}
+
+/// 转发阶段：复用 scatter/gather 元数据并校验分片数量。
+fn forward_like(view: &ViewFixture, scratch: &mut OperationScratch, expected_chunks: usize) {
+    scratch.frame_parts.clear();
+    let mut observed = 0usize;
+    for chunk in view.as_chunks() {
+        scratch.frame_parts.push(FramePart {
+            ptr: chunk.as_ptr(),
+            len: chunk.len(),
+        });
+        observed += 1;
+        black_box(chunk.len());
+    }
+    debug_assert_eq!(observed, expected_chunks, "转发阶段观察到的分片数不匹配");
+    let checksum = scratch.frame_parts.iter().fold(0usize, |acc, part| {
+        acc ^ part.len ^ ((part.ptr as usize) & 0xFF)
+    });
+    black_box(checksum);
+}
+
+/// 遍历底层分片的辅助函数，避免基线逻辑重复匹配枚举。
+fn for_each_raw_chunk(view: &ViewFixture, mut visitor: impl FnMut(&[u8])) {
+    match view {
+        ViewFixture::Linear(data) => visitor(data.as_slice()),
+        ViewFixture::Scatter(scatter) => {
+            for shard in &scatter.shards {
+                visitor(shard.as_ref());
+            }
+        }
+    }
+}
+
+/// 编码路径基线：直接访问底层分片，不经过 `BufView` 抽象。
+fn encode_like_baseline(view: &ViewFixture, scratch: &mut OperationScratch, expected_bytes: usize) {
+    scratch.frame_parts.clear();
+    let mut total = 0usize;
+    for_each_raw_chunk(view, |chunk| {
+        scratch.frame_parts.push(FramePart {
+            ptr: chunk.as_ptr(),
+            len: chunk.len(),
+        });
+        total += chunk.len();
+        black_box(chunk);
+    });
+    debug_assert_eq!(total, expected_bytes, "基线编码观察到的字节数不匹配");
+    let checksum = scratch.frame_parts.iter().fold(0usize, |acc, part| {
+        acc ^ part.len ^ ((part.ptr as usize) & 0xFF)
+    });
+    black_box(checksum);
+}
+
+/// 解码路径基线：直接访问分片首尾字节。
+fn decode_like_baseline(view: &ViewFixture, scratch: &mut OperationScratch) {
+    let mut checksum = 0u64;
+    for_each_raw_chunk(view, |chunk| {
+        if let Some((&first, rest)) = chunk.split_first() {
+            let last = rest.last().copied().unwrap_or(first);
+            checksum = checksum.wrapping_add(first as u64);
+            checksum = checksum.rotate_left(7) ^ last as u64;
+            checksum = checksum.wrapping_add(chunk.len() as u64);
+        } else {
+            checksum = checksum.rotate_left(5) ^ 0xA5;
+        }
+    });
+    scratch.decode_checksum ^= checksum;
+    black_box(scratch.decode_checksum);
+}
+
+/// 转发路径基线：统计分片数量并生成相同的元数据校验。
+fn forward_like_baseline(
+    view: &ViewFixture,
+    scratch: &mut OperationScratch,
+    expected_chunks: usize,
+) {
+    scratch.frame_parts.clear();
+    let mut observed = 0usize;
+    for_each_raw_chunk(view, |chunk| {
+        scratch.frame_parts.push(FramePart {
+            ptr: chunk.as_ptr(),
+            len: chunk.len(),
+        });
+        observed += 1;
+        black_box(chunk.len());
+    });
+    debug_assert_eq!(observed, expected_chunks, "基线转发观察到的分片数不匹配");
+    let checksum = scratch.frame_parts.iter().fold(0usize, |acc, part| {
+        acc ^ part.len ^ ((part.ptr as usize) & 0xFF)
+    });
+    black_box(checksum);
+}
+
 /// 基准中使用的场景定义，包含名称与底层数据形态。
 ///
 /// # Why
 /// - 将“单片超大”“超多微片”抽象为统一结构，便于后续遍历与报告生成。
 ///
 /// # How
-/// - `fixture` 保存底层缓冲，`total_bytes`/`expected_chunks` 提供契约校验所需的元信息。
+/// - `fixture` 保存底层缓冲，`payload_bytes`/`expected_chunks` 提供契约校验所需的元信息。
 ///
 /// # What
 /// - `name`：场景名称，用于日志与阈值匹配。
-/// - `total_bytes`：每次遍历应观察到的总字节数。
+/// - `payload_bytes`：每次遍历应观察到的总字节数。
 /// - `expected_chunks`：理论分片数量，保证实现未擅自折叠。
 struct ScenarioSpec {
-    name: &'static str,
+    name: String,
+    payload_label: &'static str,
+    chunk_count: usize,
     fixture: ViewFixture,
-    total_bytes: usize,
+    payload_bytes: usize,
     expected_chunks: usize,
 }
 
 impl ScenarioSpec {
-    fn new(name: &'static str, fixture: ViewFixture) -> Self {
-        let total_bytes = fixture.total_len();
+    fn new(payload_label: &'static str, chunk_count: usize, fixture: ViewFixture) -> Self {
+        let payload_bytes = fixture.total_len();
         let expected_chunks = fixture.expected_chunks();
+        let name = format!("payload_{}_chunks_{}", payload_label, chunk_count);
+        debug_assert_eq!(
+            expected_chunks,
+            if payload_bytes == 0 { 0 } else { chunk_count },
+            "期望分片数与配置不符"
+        );
         Self {
             name,
+            payload_label,
+            chunk_count,
             fixture,
-            total_bytes,
+            payload_bytes,
             expected_chunks,
         }
     }
@@ -342,12 +571,24 @@ struct LatencySummaryU64 {
 /// 单场景基准结果。
 #[derive(Debug, Serialize)]
 struct ScenarioReport {
-    name: &'static str,
-    total_bytes: usize,
+    name: String,
+    payload_label: &'static str,
+    payload_bytes: usize,
+    chunk_count: usize,
     expected_chunks: usize,
+    operations: Vec<OperationReport>,
+}
+
+/// 单条路径的统计摘要，同时记录 BufView 与基线耗时。
+#[derive(Debug, Serialize)]
+struct OperationReport {
+    kind: OperationKind,
     samples: u64,
-    ns_per_iter: LatencySummaryU64,
-    ns_per_kb: LatencySummaryF64,
+    bufview_ns_per_iter: LatencySummaryU64,
+    bufview_ns_per_kb: LatencySummaryF64,
+    baseline_ns_per_iter: LatencySummaryU64,
+    baseline_ns_per_kb: LatencySummaryF64,
+    p99_overhead_pct: f64,
 }
 
 /// 总体基准报告。
@@ -376,8 +617,15 @@ struct ModeThreshold {
 #[derive(Debug, Deserialize)]
 struct ScenarioThreshold {
     name: String,
+    operations: Vec<OperationThreshold>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OperationThreshold {
+    kind: OperationKind,
     max_p99_ns_per_kb: f64,
     max_mean_ns_per_kb: Option<f64>,
+    max_p99_overhead_pct: Option<f64>,
 }
 
 /// 基准主流程：解析 CLI、运行场景、生成报告并执行阈值校验。
@@ -389,8 +637,9 @@ struct ScenarioThreshold {
 /// 1. 调用 [`parse_cli`] 获取运行模式与路径覆盖；
 /// 2. 根据模式构造 [`BenchConfig`]；
 /// 3. 遍历 [`build_scenarios`] 返回的场景并采样；
-/// 4. 读取阈值文件、执行 [`enforce_thresholds`]；
-/// 5. 将结果写入 JSON。
+/// 4. 输出测量结果（包含基线与 BufView 的对比统计）；
+/// 5. 读取阈值文件、执行 [`enforce_thresholds`]；
+/// 6. 将结果写入 JSON。
 ///
 /// # What
 /// - 返回 `Result<(), BenchError>`：成功时说明阈值满足，失败时携带诊断信息。
@@ -416,12 +665,7 @@ fn run() -> Result<(), BenchError> {
     let mut reports = Vec::with_capacity(scenarios.len());
 
     for scenario in &scenarios {
-        let report = measure_scenario(scenario, config);
-        println!(
-            "scenario={} p50_ns_per_kb={:.3} p99_ns_per_kb={:.3}",
-            scenario.name, report.ns_per_kb.p50, report.ns_per_kb.p99
-        );
-        reports.push(report);
+        reports.push(measure_scenario(scenario, config));
     }
 
     let report = BenchmarkReport {
@@ -431,6 +675,19 @@ fn run() -> Result<(), BenchError> {
         batch_size: config.batch_size,
         scenarios: reports,
     };
+
+    for scenario in &report.scenarios {
+        for operation in &scenario.operations {
+            println!(
+                "scenario={} operation={} bufview_p99_ns_per_kb={:.3} baseline_p99_ns_per_kb={:.3} p99_overhead_pct={:.3}",
+                scenario.name,
+                operation.kind.as_str(),
+                operation.bufview_ns_per_kb.p99,
+                operation.baseline_ns_per_kb.p99,
+                operation.p99_overhead_pct,
+            );
+        }
+    }
 
     let thresholds = load_thresholds(cli.threshold.as_deref(), config.quick_mode)?;
     enforce_thresholds(&report, &thresholds)?;
@@ -445,102 +702,190 @@ fn run() -> Result<(), BenchError> {
 /// - 将极端分片模式固定在代码中，避免不同开发者在本地选择不同的组合导致结果不可对比。
 ///
 /// # How
-/// - 选择 512 KiB 单片作为“最大连续块”场景；
-/// - 选择 128 B × 4096 片作为“海量微片”场景，确保总字节数一致。
+/// - 穷举 `{1, 4, 8, 32}` 四种分片数量；
+/// - 结合 `{1KiB, 64KiB, 1MiB}` 三种负载大小，共生成 12 个场景。
 ///
 /// # What
 /// - 返回按顺序排列的 [`ScenarioSpec`] 向量。
-/// - 前置条件：内存足够容纳 512 KiB + 512 KiB 数据。
-/// - 后置条件：两个场景总字节数相同，可直接比较 `ns/KB` 指标。
+/// - 前置条件：内存足以容纳最大场景（1MiB × 32 片）。
+/// - 后置条件：每个场景的 `payload_bytes` 能被 `chunk_count` 整除。
 fn build_scenarios() -> Vec<ScenarioSpec> {
-    let single_large = ScenarioSpec::new(
-        "single_large_chunk",
-        ViewFixture::Linear(vec![0u8; 512 * 1024]),
-    );
+    let payloads = [
+        (1024usize, "1kb"),
+        (64 * 1024usize, "64kb"),
+        (1024 * 1024usize, "1mb"),
+    ];
+    let chunk_counts = [1usize, 4, 8, 32];
 
-    let scatter = ScenarioSpec::new(
-        "many_tiny_chunks",
-        ViewFixture::Scatter(ScatterView::new(128, 4096)),
-    );
+    let mut scenarios = Vec::new();
+    for (payload_bytes, label) in payloads {
+        for &chunk_count in &chunk_counts {
+            assert_eq!(
+                payload_bytes % chunk_count,
+                0,
+                "payload={} 不可整除 chunk_count={}",
+                payload_bytes,
+                chunk_count
+            );
+            let fixture = if chunk_count == 1 {
+                ViewFixture::Linear(vec![0u8; payload_bytes])
+            } else {
+                let chunk_len = payload_bytes / chunk_count;
+                ViewFixture::Scatter(ScatterView::new(chunk_len, chunk_count))
+            };
+            scenarios.push(ScenarioSpec::new(label, chunk_count, fixture));
+        }
+    }
 
-    vec![single_large, scatter]
+    scenarios
 }
 
 /// 针对单个场景执行测量。
 ///
 /// # Why
-/// - 获取 `BufView::as_chunks` 在固定数据布局下的延迟分布，支持后续阈值比较。
+/// - 需要在同一数据布局下比较编码/解码/转发路径的差异。
 ///
 /// # How
-/// - 按批次循环调用 [`consume_view`]，对批次耗时做整数除法得到每次调用耗时；
-/// - 将耗时换算为 `ns/KB` 存入样本；
-/// - 调用统计函数生成分位数。
+/// - 首先调用 [`validate_fixture`] 验证分片契约；
+/// - 随后依次调用 [`measure_operation`]，对三条路径分别收集样本；
+/// - 将结果聚合为结构化报告。
 ///
 /// # What
 /// - 输入：`scenario` 提供数据与期望，`config` 控制迭代总量。
-/// - 输出：`ScenarioReport`，包含样本数量与两套延迟摘要。
-/// - 前置条件：`scenario.total_bytes` 与 `expected_chunks` 真实反映底层数据；
-/// - 后置条件：样本长度等于批次数，每个样本至少包含一次迭代。
+/// - 输出：`ScenarioReport`，包含三条路径的统计摘要。
+/// - 前置条件：场景在构建时确保 `payload_bytes` 能被 `chunk_count` 整除。
+/// - 后置条件：若成功返回，`operations` 列表中每条路径至少包含一个样本。
 fn measure_scenario(scenario: &ScenarioSpec, config: BenchConfig) -> ScenarioReport {
-    let mut samples = Vec::with_capacity((config.iterations / config.batch_size) as usize + 1);
+    validate_fixture(scenario);
+
+    let mut operations = Vec::new();
+    for &operation in OperationKind::all() {
+        operations.push(measure_operation(scenario, config, operation));
+    }
+
+    ScenarioReport {
+        name: scenario.name.clone(),
+        payload_label: scenario.payload_label,
+        payload_bytes: scenario.payload_bytes,
+        chunk_count: scenario.chunk_count,
+        expected_chunks: scenario.expected_chunks,
+        operations,
+    }
+}
+
+/// 针对指定路径执行基准采样。
+///
+/// # Why
+/// - 不同路径的访问模式（指针收集、轻量校验、透明转发）对缓存友好度与分片数量敏感度
+///   各不相同，将其拆分可以更精确地暴露瓶颈。
+///
+/// # How
+/// - 复用批量计时逻辑：每个批次分别执行 BufView 路径与基线路径，记录平均纳秒；
+/// - 将两组耗时换算为 `ns/KB`，并通过统计函数计算分位数与额外开销百分比。
+///
+/// # What
+/// - 输入：场景定义、基准配置、待测路径枚举值；
+/// - 输出：`OperationReport`，同时包含 BufView 与基线路径的统计结果；
+/// - 前置条件：`validate_fixture` 已确认分片契约成立；
+/// - 后置条件：`p99_overhead_pct` 以 `(BufView/BaseLine - 1) * 100` 计算完成。
+fn measure_operation(
+    scenario: &ScenarioSpec,
+    config: BenchConfig,
+    operation: OperationKind,
+) -> OperationReport {
+    let capacity = (config.iterations / config.batch_size) as usize + 1;
+    let mut bufview_samples = Vec::with_capacity(capacity);
+    let mut baseline_samples = Vec::with_capacity(capacity);
+    let mut bufview_scratch = OperationScratch::new(scenario.expected_chunks.max(1));
+    let mut baseline_scratch = OperationScratch::new(scenario.expected_chunks.max(1));
 
     let mut remaining = config.iterations;
     while remaining > 0 {
         let chunk = remaining.min(config.batch_size);
-        let started = Instant::now();
+
+        let started_bufview = Instant::now();
         for _ in 0..chunk {
-            consume_view(scenario);
+            operation.execute_bufview(scenario, &mut bufview_scratch);
         }
-        let elapsed = started.elapsed().as_nanos();
-        let per_iter = ((elapsed + (chunk as u128 / 2)) / chunk as u128) as u64;
-        let bytes = scenario.total_bytes as f64;
-        let ns_per_kb = if bytes == 0.0 {
+        let bufview_elapsed = started_bufview.elapsed().as_nanos();
+        let bufview_per_iter = ((bufview_elapsed + (chunk as u128 / 2)) / chunk as u128) as u64;
+
+        let started_baseline = Instant::now();
+        for _ in 0..chunk {
+            operation.execute_baseline(scenario, &mut baseline_scratch);
+        }
+        let baseline_elapsed = started_baseline.elapsed().as_nanos();
+        let baseline_per_iter = ((baseline_elapsed + (chunk as u128 / 2)) / chunk as u128) as u64;
+
+        let bytes = scenario.payload_bytes as f64;
+        let bufview_ns_per_kb = if bytes == 0.0 {
             0.0
         } else {
-            (per_iter as f64) / (bytes / 1024.0)
+            (bufview_per_iter as f64) / (bytes / 1024.0)
         };
-        samples.push(SamplePoint {
-            ns_per_iter: per_iter,
-            ns_per_kb,
+        let baseline_ns_per_kb = if bytes == 0.0 {
+            0.0
+        } else {
+            (baseline_per_iter as f64) / (bytes / 1024.0)
+        };
+
+        bufview_samples.push(SamplePoint {
+            ns_per_iter: bufview_per_iter,
+            ns_per_kb: bufview_ns_per_kb,
         });
+        baseline_samples.push(SamplePoint {
+            ns_per_iter: baseline_per_iter,
+            ns_per_kb: baseline_ns_per_kb,
+        });
+
         remaining -= chunk;
     }
 
-    let ns_per_iter = analyze_ns(&samples);
-    let ns_per_kb = analyze_ns_per_kb(&samples);
+    let bufview_ns_per_iter = analyze_ns(&bufview_samples);
+    let bufview_ns_per_kb = analyze_ns_per_kb(&bufview_samples);
+    let baseline_ns_per_iter = analyze_ns(&baseline_samples);
+    let baseline_ns_per_kb = analyze_ns_per_kb(&baseline_samples);
 
-    ScenarioReport {
-        name: scenario.name,
-        total_bytes: scenario.total_bytes,
-        expected_chunks: scenario.expected_chunks,
-        samples: samples.len() as u64,
-        ns_per_iter,
-        ns_per_kb,
+    let p99_overhead_pct = if baseline_ns_per_kb.p99 > 0.0 {
+        ((bufview_ns_per_kb.p99 / baseline_ns_per_kb.p99) - 1.0) * 100.0
+    } else {
+        0.0
+    };
+
+    OperationReport {
+        kind: operation,
+        samples: bufview_samples.len() as u64,
+        bufview_ns_per_iter,
+        bufview_ns_per_kb,
+        baseline_ns_per_iter,
+        baseline_ns_per_kb,
+        p99_overhead_pct,
     }
 }
 
-/// 消费 BufView，统计分片数量与字节数。
+/// 验证 BufView 契约，确保分片统计与场景描述一致。
 ///
 /// # Why
-/// - 在基准过程中验证 `BufView` 的契约是否成立，防止实现悄然折叠分片或丢字节。
+/// - 在基准开始前进行一次快速检查，避免因实现偏差导致后续采样结果失真。
 ///
 /// # How
-/// - 通过 `as_chunks` 迭代全部分片，累计字节数与分片数，使用 `black_box` 阻止优化。
+/// - 迭代全部分片并统计字节数、分片数，与场景提供的期望值对比；
+/// - 使用 `black_box` 阻止编译器将迭代优化掉。
 ///
 /// # What
-/// - 输入：[`ScenarioSpec`]，提供期望的总字节与分片数。
-/// - 前置条件：`fixture` 必须实现 `BufView`，且在迭代期间保持只读。
-/// - 后置条件：函数返回前若契约不满足将 panic，从而终止基准并提示实现缺陷。
-fn consume_view(scenario: &ScenarioSpec) {
+/// - 输入：[`ScenarioSpec`]，包含期望的总字节与分片数量。
+/// - 前置条件：`fixture` 在调用期间保持只读。
+/// - 后置条件：若契约不满足直接 panic，阻断基准执行。
+fn validate_fixture(scenario: &ScenarioSpec) {
     let view = &scenario.fixture;
     let mut observed_bytes = 0usize;
     let mut observed_chunks = 0usize;
     for chunk in view.as_chunks() {
         observed_bytes += chunk.len();
         observed_chunks += 1;
-        black_box(chunk);
+        black_box(chunk.len());
     }
-    assert_eq!(observed_bytes, scenario.total_bytes, "分片长度总和不匹配");
+    assert_eq!(observed_bytes, scenario.payload_bytes, "分片长度总和不匹配");
     assert_eq!(observed_chunks, scenario.expected_chunks, "分片数量不匹配");
     black_box(observed_chunks);
 }
@@ -743,19 +1088,50 @@ fn enforce_thresholds(
             )));
         };
 
-        if scenario.ns_per_kb.p99 > limit.max_p99_ns_per_kb {
-            violations.push(format!(
-                "场景 {} 的 P99 {:.3}ns/KB 超过阈值 {:.3}ns/KB",
-                scenario.name, scenario.ns_per_kb.p99, limit.max_p99_ns_per_kb
-            ));
-        }
-        if let Some(max_mean) = limit.max_mean_ns_per_kb
-            && scenario.ns_per_kb.mean > max_mean
-        {
-            violations.push(format!(
-                "场景 {} 的均值 {:.3}ns/KB 超过阈值 {:.3}ns/KB",
-                scenario.name, scenario.ns_per_kb.mean, max_mean
-            ));
+        for operation in &scenario.operations {
+            let Some(op_limit) = limit
+                .operations
+                .iter()
+                .find(|entry| entry.kind == operation.kind)
+            else {
+                return Err(BenchError::Threshold(format!(
+                    "阈值文件未定义场景 {} 的 {} 路径",
+                    scenario.name,
+                    operation.kind.as_str()
+                )));
+            };
+
+            if operation.bufview_ns_per_kb.p99 > op_limit.max_p99_ns_per_kb {
+                violations.push(format!(
+                    "场景 {} 路径 {} 的 P99 {:.3}ns/KB 超过阈值 {:.3}ns/KB",
+                    scenario.name,
+                    operation.kind.as_str(),
+                    operation.bufview_ns_per_kb.p99,
+                    op_limit.max_p99_ns_per_kb
+                ));
+            }
+            if let Some(max_mean) = op_limit.max_mean_ns_per_kb
+                && operation.bufview_ns_per_kb.mean > max_mean
+            {
+                violations.push(format!(
+                    "场景 {} 路径 {} 的均值 {:.3}ns/KB 超过阈值 {:.3}ns/KB",
+                    scenario.name,
+                    operation.kind.as_str(),
+                    operation.bufview_ns_per_kb.mean,
+                    max_mean
+                ));
+            }
+            if let Some(max_overhead) = op_limit.max_p99_overhead_pct
+                && operation.p99_overhead_pct > max_overhead
+            {
+                violations.push(format!(
+                    "场景 {} 路径 {} 的 P99 额外开销 {:.3}% 超过阈值 {:.3}%",
+                    scenario.name,
+                    operation.kind.as_str(),
+                    operation.p99_overhead_pct,
+                    max_overhead
+                ));
+            }
         }
     }
 
