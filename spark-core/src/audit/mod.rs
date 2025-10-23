@@ -34,12 +34,82 @@ use sha2::{Digest, Sha256};
 /// - `kind`：实体类型，例如 `configuration.profile`、`router.route`。
 /// - `id`：实体在其命名空间内的唯一标识。
 /// - `labels`：用于补充上下文的键值对，调用方需避免写入敏感信息。
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AuditEntityRef {
     pub kind: Cow<'static, str>,
     pub id: String,
-    #[serde(default)]
     pub labels: Vec<(Cow<'static, str>, Cow<'static, str>)>,
+}
+
+impl AuditEntityRef {
+    /// ## 设计动机（Why）
+    /// - 通过内部表示将公共 API 与具体序列化框架解耦，避免对 `serde` 的硬依赖。
+    /// - 便于未来根据不同媒介（JSON、MessagePack 等）灵活生成载荷。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`&self`，要求调用者已构造出合法的实体引用。
+    /// - 返回：[`AuditEntityRefRepr`]，仅供当前模块序列化使用。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 对全部字段执行浅克隆，使内部表示拥有独立所有权，便于跨线程与生命周期传递。
+    /// - `labels` 直接克隆向量，确保键值在序列化过程中保持稳定顺序。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：上层需保证字段内容满足业务命名规范。
+    /// - 后置：返回结构不会修改原实例，可安全重复调用。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 牺牲一次拷贝换取类型隔离；审计实体字段规模有限，该成本可忽略。
+    pub(crate) fn to_repr(&self) -> AuditEntityRefRepr {
+        AuditEntityRefRepr {
+            kind: self.kind.clone(),
+            id: self.id.clone(),
+            labels: self.labels.clone(),
+        }
+    }
+
+    /// ## 设计动机（Why）
+    /// - 从序列化层的中间表示恢复领域模型，满足反序列化和回放需求。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`repr`，经 `serde` 语法校验后的内部表示。
+    /// - 返回：[`AuditEntityRef`]，供业务层继续使用。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 逐字段移动内部表示的所有权，避免多余分配。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：尚未进行业务层的合法性校验，需要调用方在之后补充。
+    /// - 后置：保证 `labels` 始终返回空向量而非 `None`，维持既有契约。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 保持 `pub(crate)` 可见性，避免外部绕过类型抽象直接依赖内部表示。
+    pub(crate) fn from_repr(repr: AuditEntityRefRepr) -> Self {
+        Self {
+            kind: repr.kind,
+            id: repr.id,
+            labels: repr.labels,
+        }
+    }
+}
+
+impl serde::Serialize for AuditEntityRef {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_repr().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AuditEntityRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let repr = AuditEntityRefRepr::deserialize(deserializer)?;
+        Ok(Self::from_repr(repr))
+    }
 }
 
 /// 描述触发审计事件的操作者。
@@ -52,13 +122,82 @@ pub struct AuditEntityRef {
 /// - `id`：操作者稳定标识，通常为 IAM 用户或服务账号。
 /// - `display_name`：面向展示的人类可读名称，可选。
 /// - `tenant`：多租户系统中的租户标识，可选。
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AuditActor {
     pub id: Cow<'static, str>,
-    #[serde(default)]
     pub display_name: Option<Cow<'static, str>>,
-    #[serde(default)]
     pub tenant: Option<Cow<'static, str>>,
+}
+
+impl AuditActor {
+    /// ## 设计动机（Why）
+    /// - 与其他审计结构保持一致，通过内部表示隐藏对 `serde` 的直接依赖。
+    /// - 支持未来在不破坏类型定义的情况下扩展额外字段。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`&self`。
+    /// - 返回：[`AuditActorRepr`]，仅供序列化通道使用。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 克隆 `Cow` 字段，确保内部表示拥有独立生命周期。
+    /// - 保持 `Option` 语义不变，避免出现空字符串等歧义值。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：调用者需保证 `id` 为非空、稳定标识。
+    /// - 后置：返回值与原结构字段一一对应，可安全传递给 `serde`。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 额外拷贝换取接口稳定性；相比审计事件写入频率，该成本可接受。
+    pub(crate) fn to_repr(&self) -> AuditActorRepr {
+        AuditActorRepr {
+            id: self.id.clone(),
+            display_name: self.display_name.clone(),
+            tenant: self.tenant.clone(),
+        }
+    }
+
+    /// ## 设计动机（Why）
+    /// - 从中间表示恢复操作者信息，支撑 CLI 与后端共享数据格式。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`repr`，内部序列化表示。
+    /// - 返回：[`AuditActor`]。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 将内部表示的所有权直接转移至领域模型，避免重复分配。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：字段已通过语法校验，但业务校验仍由上层负责。
+    /// - 后置：返回结构中的可选字段若缺省则保持 `None`。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 函数仅在 crate 内可见，防止外部绕过模型接口。
+    pub(crate) fn from_repr(repr: AuditActorRepr) -> Self {
+        Self {
+            id: repr.id,
+            display_name: repr.display_name,
+            tenant: repr.tenant,
+        }
+    }
+}
+
+impl serde::Serialize for AuditActor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_repr().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AuditActor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let repr = AuditActorRepr::deserialize(deserializer)?;
+        Ok(Self::from_repr(repr))
+    }
 }
 
 /// 时间戳权威（TSA）锚点，用于外部可信时间证明。
@@ -70,11 +209,80 @@ pub struct AuditActor {
 /// - `provider`：TSA 服务提供方。
 /// - `evidence`：原始签名或凭证字符串，通常为 Base64 编码。
 /// - `issued_at`：TSA 签发时间的 Unix 秒级时间戳。
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TsaEvidence {
     pub provider: Cow<'static, str>,
     pub evidence: String,
     pub issued_at: u64,
+}
+
+impl TsaEvidence {
+    /// ## 设计动机（Why）
+    /// - 通过内部表示隐藏序列化细节，保持公共 API 的纯净度。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`&self`。
+    /// - 返回：[`TsaEvidenceRepr`]`，可直接交由 `serde` 处理。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 克隆 `provider` 与 `evidence`，复制 `issued_at`，形成独立的中间表示。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：调用方保证字段值已满足业务要求（例如证据格式、时间范围）。
+    /// - 后置：返回表示不会反向影响原结构，适合在多线程中复用。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 为了保证类型隔离选择深拷贝，但对象尺寸较小，性能影响可忽略。
+    pub(crate) fn to_repr(&self) -> TsaEvidenceRepr {
+        TsaEvidenceRepr {
+            provider: self.provider.clone(),
+            evidence: self.evidence.clone(),
+            issued_at: self.issued_at,
+        }
+    }
+
+    /// ## 设计动机（Why）
+    /// - 从序列化表示还原 TSA 锚点，支撑审计事件在不同系统间传递。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`repr`。
+    /// - 返回：[`TsaEvidence`]`。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 将内部表示的字段直接移动到新结构，避免重复分配。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：反序列化阶段已确保字段类型正确。
+    /// - 后置：返回实例未对证据有效性做进一步校验。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 将签名校验留给业务层，保持模块职责单一。
+    pub(crate) fn from_repr(repr: TsaEvidenceRepr) -> Self {
+        Self {
+            provider: repr.provider,
+            evidence: repr.evidence,
+            issued_at: repr.issued_at,
+        }
+    }
+}
+
+impl serde::Serialize for TsaEvidence {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_repr().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for TsaEvidence {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let repr = TsaEvidenceRepr::deserialize(deserializer)?;
+        Ok(Self::from_repr(repr))
+    }
 }
 
 /// 审计事件 v1.0 的标准载荷。
@@ -93,7 +301,7 @@ pub struct TsaEvidence {
 /// - `occurred_at`：事件发生时间（Unix 毫秒）。
 /// - `tsa_evidence`：可选的可信时间锚点。
 /// - `changes`：脱敏后的配置变更集合，可用于回放。
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AuditEventV1 {
     pub event_id: String,
     pub sequence: u64,
@@ -103,9 +311,96 @@ pub struct AuditEventV1 {
     pub state_curr_hash: String,
     pub actor: AuditActor,
     pub occurred_at: u64,
-    #[serde(default)]
     pub tsa_evidence: Option<TsaEvidence>,
     pub changes: AuditChangeSet,
+}
+
+impl AuditEventV1 {
+    /// ## 设计动机（Why）
+    /// - 通过内部表示统一控制序列化行为，确保公共 API 不暴露 `serde` 类型。
+    /// - 为未来多格式输出（JSON、YAML、二进制协议）预留扩展空间。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`&self`。
+    /// - 返回：[`AuditEventV1Repr`]，供序列化栈使用。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 逐字段克隆标量值与 `Cow` 字符串，调用子结构的 `to_repr` 获取嵌套表示。
+    /// - `tsa_evidence` 通过 `Option::map` 转换，保持可选语义。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：事件已经过业务层校验（哈希、序列、权限等）。
+    /// - 后置：返回表示拥有完整所有权，可安全传递到任意序列化上下文。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 复制字段带来的额外成本换来 API 稳定性与后续扩展能力。
+    pub(crate) fn to_repr(&self) -> AuditEventV1Repr {
+        AuditEventV1Repr {
+            event_id: self.event_id.clone(),
+            sequence: self.sequence,
+            entity: self.entity.to_repr(),
+            action: self.action.clone(),
+            state_prev_hash: self.state_prev_hash.clone(),
+            state_curr_hash: self.state_curr_hash.clone(),
+            actor: self.actor.to_repr(),
+            occurred_at: self.occurred_at,
+            tsa_evidence: self.tsa_evidence.as_ref().map(TsaEvidence::to_repr),
+            changes: self.changes.to_repr(),
+        }
+    }
+
+    /// ## 设计动机（Why）
+    /// - 集中管理反序列化逻辑，便于未来 Schema 升级时处理兼容策略。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`repr`，内部序列化表示。
+    /// - 返回：`Result<AuditEventV1, String>`，失败时携带可读错误信息。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 逐字段调用子结构的 `from_repr`，恢复原始领域模型。
+    /// - 对 `Option` 字段进行 `map` 转换，保留缺省语义。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：`repr` 已通过 `serde` 的结构校验。
+    /// - 后置：返回实例与原输入语义等价，可直接用于回放或校验。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 通过集中转换点可以在未来 Schema 演进时加入默认值或迁移逻辑，降低破坏性改动。
+    pub(crate) fn from_repr(repr: AuditEventV1Repr) -> Result<Self, String> {
+        let changes = AuditChangeSet::from_repr(repr.changes)
+            .map_err(|err| format!("invalid change set: {}", err))?;
+        Ok(Self {
+            event_id: repr.event_id,
+            sequence: repr.sequence,
+            entity: AuditEntityRef::from_repr(repr.entity),
+            action: repr.action,
+            state_prev_hash: repr.state_prev_hash,
+            state_curr_hash: repr.state_curr_hash,
+            actor: AuditActor::from_repr(repr.actor),
+            occurred_at: repr.occurred_at,
+            tsa_evidence: repr.tsa_evidence.map(TsaEvidence::from_repr),
+            changes,
+        })
+    }
+}
+
+impl serde::Serialize for AuditEventV1 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_repr().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AuditEventV1 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let repr = AuditEventV1Repr::deserialize(deserializer)?;
+        Self::from_repr(repr).map_err(serde::de::Error::custom)
+    }
 }
 
 /// 审计事件中用于回放的差异集合。
@@ -113,7 +408,7 @@ pub struct AuditEventV1 {
 /// ## 设计动机（Why）
 /// - 复用配置模块已有的 `ChangeSet` 语义，同时将键和值转换为可序列化结构。
 /// - 在保持最小字段的前提下，确保 CLI 工具能够完全复现非脱敏的样例数据。
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AuditChangeSet {
     pub created: Vec<AuditChangeEntry>,
     pub updated: Vec<AuditChangeEntry>,
@@ -154,6 +449,107 @@ impl AuditChangeSet {
             deleted,
         }
     }
+
+    /// ## 设计动机（Why）
+    /// - 将差异集合转换为内部表示，从而隐藏 `serde` 依赖并统一序列化入口。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`&self`。
+    /// - 返回：[`AuditChangeSetRepr`]，供序列化使用。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 对三类变更分别迭代调用条目级 `to_repr`，确保结构一致。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：调用方应确保 `created`、`updated`、`deleted` 的键互斥。
+    /// - 后置：返回表示拥有独立所有权，可在序列化过程中长期存活。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 进行深拷贝以换取生命周期简化；考虑到变更数量通常有限，该开销可接受。
+    pub(crate) fn to_repr(&self) -> AuditChangeSetRepr {
+        AuditChangeSetRepr {
+            created: self.created.iter().map(AuditChangeEntry::to_repr).collect(),
+            updated: self.updated.iter().map(AuditChangeEntry::to_repr).collect(),
+            deleted: self
+                .deleted
+                .iter()
+                .map(AuditDeletedEntry::to_repr)
+                .collect(),
+        }
+    }
+
+    /// ## 设计动机（Why）
+    /// - 支持从中间表示恢复差异集合，保证回放流程的对等性。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`repr`。
+    /// - 返回：`Result<AuditChangeSet, String>`，失败时包含详细错误信息。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 对内部表示的向量执行 `into_iter` 并调用条目级 `from_repr` 还原。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：`repr` 已通过 `serde` 成功解析。
+    /// - 后置：返回结构满足原始语义，可直接传递给回放与校验逻辑。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 保持函数 `pub(crate)`，防止外部组件绕过类型抽象直接依赖内部表示。
+    pub(crate) fn from_repr(repr: AuditChangeSetRepr) -> Result<Self, String> {
+        let created = repr
+            .created
+            .into_iter()
+            .enumerate()
+            .map(|(idx, entry)| {
+                AuditChangeEntry::from_repr(entry).map_err(|err| {
+                    format!("invalid created change entry at index {}: {}", idx, err)
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let updated = repr
+            .updated
+            .into_iter()
+            .enumerate()
+            .map(|(idx, entry)| {
+                AuditChangeEntry::from_repr(entry).map_err(|err| {
+                    format!("invalid updated change entry at index {}: {}", idx, err)
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let deleted = repr
+            .deleted
+            .into_iter()
+            .enumerate()
+            .map(|(idx, entry)| {
+                AuditDeletedEntry::from_repr(entry).map_err(|err| {
+                    format!("invalid deleted change entry at index {}: {}", idx, err)
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            created,
+            updated,
+            deleted,
+        })
+    }
+}
+
+impl serde::Serialize for AuditChangeSet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_repr().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AuditChangeSet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let repr = AuditChangeSetRepr::deserialize(deserializer)?;
+        Self::from_repr(repr).map_err(serde::de::Error::custom)
+    }
 }
 
 /// 表示单个新增或更新的配置条目。
@@ -172,11 +568,7 @@ impl serde::Serialize for AuditChangeEntry {
     where
         S: serde::Serializer,
     {
-        let repr = AuditChangeEntryRepr {
-            key: self.key.to_repr(),
-            value: self.value.to_repr(),
-        };
-        repr.serialize(serializer)
+        self.to_repr().serialize(serializer)
     }
 }
 
@@ -186,10 +578,55 @@ impl<'de> serde::Deserialize<'de> for AuditChangeEntry {
         D: serde::Deserializer<'de>,
     {
         let repr = AuditChangeEntryRepr::deserialize(deserializer)?;
+        AuditChangeEntry::from_repr(repr).map_err(serde::de::Error::custom)
+    }
+}
+
+impl AuditChangeEntry {
+    /// ## 设计动机（Why）
+    /// - 提供统一的内部表示转换入口，隐藏 `serde` 依赖的同时维持审计条目的可序列化能力。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`&self`。
+    /// - 返回：[`AuditChangeEntryRepr`]，包含可序列化的键和值。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 调用配置模块提供的 `to_repr` 方法，生成拥有所有权的键和值表示。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：当前结构需已通过业务校验。
+    /// - 后置：返回的内部表示不会影响原实例，可安全地交由 `serde` 序列化。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 深拷贝不可避免，但换来类型隔离与生命周期简化，适用于审计变更规模有限的场景。
+    pub(crate) fn to_repr(&self) -> AuditChangeEntryRepr {
+        AuditChangeEntryRepr {
+            key: self.key.to_repr(),
+            value: self.value.to_repr(),
+        }
+    }
+
+    /// ## 设计动机（Why）
+    /// - 从内部表示恢复领域模型，支撑 CLI、回放器及服务端之间的数据互通。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：[`AuditChangeEntryRepr`]，通常由 `serde` 反序列化获得。
+    /// - 返回：成功时为 [`AuditChangeEntry`]，失败时返回描述性错误字符串。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 分别调用 `ConfigKey::from_repr` 与 `ConfigValue::from_repr`，并为错误附加上下文信息。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：输入在语法上合法，但仍可能违反业务约束。
+    /// - 后置：成功则构造出完整条目；失败则不产生任何副作用。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 选择 `String` 作为错误类型，方便直接映射到 `serde` 的 `custom` 错误提示。
+    pub(crate) fn from_repr(repr: AuditChangeEntryRepr) -> Result<Self, String> {
         let key = ConfigKey::from_repr(repr.key)
-            .map_err(|err| serde::de::Error::custom(err.to_string()))?;
+            .map_err(|err| format!("invalid config key in change entry: {}", err))?;
         let value = ConfigValue::from_repr(repr.value)
-            .map_err(|err| serde::de::Error::custom(err.to_string()))?;
+            .map_err(|err| format!("invalid config value in change entry: {}", err))?;
         Ok(Self { key, value })
     }
 }
@@ -208,10 +645,7 @@ impl serde::Serialize for AuditDeletedEntry {
     where
         S: serde::Serializer,
     {
-        let repr = AuditDeletedEntryRepr {
-            key: self.key.to_repr(),
-        };
-        repr.serialize(serializer)
+        self.to_repr().serialize(serializer)
     }
 }
 
@@ -221,21 +655,111 @@ impl<'de> serde::Deserialize<'de> for AuditDeletedEntry {
         D: serde::Deserializer<'de>,
     {
         let repr = AuditDeletedEntryRepr::deserialize(deserializer)?;
+        AuditDeletedEntry::from_repr(repr).map_err(serde::de::Error::custom)
+    }
+}
+
+impl AuditDeletedEntry {
+    /// ## 设计动机（Why）
+    /// - 与新增/更新条目保持一致的内部表示转换，统一序列化策略。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：`&self`。
+    /// - 返回：[`AuditDeletedEntryRepr`]。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 调用配置模块的 `to_repr`，生成拥有所有权的键信息。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：键已通过业务层校验。
+    /// - 后置：返回结构不共享可变状态，可直接交由 `serde` 序列化。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 通过深拷贝换取生命周期简单性；考虑到删除条目数量有限，此开销可控。
+    pub(crate) fn to_repr(&self) -> AuditDeletedEntryRepr {
+        AuditDeletedEntryRepr {
+            key: self.key.to_repr(),
+        }
+    }
+
+    /// ## 设计动机（Why）
+    /// - 支持从序列化表示恢复删除条目，确保审计回放能完整还原差异。
+    ///
+    /// ## 契约定义（What）
+    /// - 入参：[`AuditDeletedEntryRepr`]。
+    /// - 返回：成功时为 [`AuditDeletedEntry`]，失败时为描述性错误字符串。
+    ///
+    /// ## 逻辑解析（How）
+    /// - 调用 `ConfigKey::from_repr`，并在错误消息中附加上下文便于诊断非法作用域等问题。
+    ///
+    /// ## 前置/后置条件（Contract）
+    /// - 前置：输入在语法上合法。
+    /// - 后置：成功时即可执行删除逻辑；失败时不会影响系统状态。
+    ///
+    /// ## 设计考量（Trade-offs）
+    /// - 返回 `String` 以便与 `serde` 的 `custom` 错误无缝衔接。
+    pub(crate) fn from_repr(repr: AuditDeletedEntryRepr) -> Result<Self, String> {
         let key = ConfigKey::from_repr(repr.key)
-            .map_err(|err| serde::de::Error::custom(err.to_string()))?;
+            .map_err(|err| format!("invalid config key in deleted entry: {}", err))?;
         Ok(Self { key })
     }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-struct AuditChangeEntryRepr {
+pub(crate) struct AuditChangeEntryRepr {
     key: ConfigKeyRepr,
     value: ConfigValueRepr,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-struct AuditDeletedEntryRepr {
+pub(crate) struct AuditDeletedEntryRepr {
     key: ConfigKeyRepr,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct AuditEntityRefRepr {
+    kind: Cow<'static, str>,
+    id: String,
+    #[serde(default)]
+    labels: Vec<(Cow<'static, str>, Cow<'static, str>)>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct AuditActorRepr {
+    id: Cow<'static, str>,
+    #[serde(default)]
+    display_name: Option<Cow<'static, str>>,
+    #[serde(default)]
+    tenant: Option<Cow<'static, str>>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct TsaEvidenceRepr {
+    provider: Cow<'static, str>,
+    evidence: String,
+    issued_at: u64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct AuditChangeSetRepr {
+    created: Vec<AuditChangeEntryRepr>,
+    updated: Vec<AuditChangeEntryRepr>,
+    deleted: Vec<AuditDeletedEntryRepr>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct AuditEventV1Repr {
+    event_id: String,
+    sequence: u64,
+    entity: AuditEntityRefRepr,
+    action: Cow<'static, str>,
+    state_prev_hash: String,
+    state_curr_hash: String,
+    actor: AuditActorRepr,
+    occurred_at: u64,
+    #[serde(default)]
+    tsa_evidence: Option<TsaEvidenceRepr>,
+    changes: AuditChangeSetRepr,
 }
 
 /// Recorder 接口定义。
