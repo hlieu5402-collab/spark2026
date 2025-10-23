@@ -8,6 +8,7 @@
 
 - **来源**：稳定错误码，统一使用 `<域>.<语义>` 格式。
 - **分类**：[`ErrorCategory`](../spark-core/src/error.rs) 枚举分支，用于驱动默认策略。
+- **单一事实来源**：分类与默认动作集中声明于 [`spark_core::error::category_matrix`](../spark-core/src/error/category_matrix.rs)，文档与测试均以此为准。
 - **默认动作**：`ExceptionAutoResponder::on_exception_caught` 在无显式覆盖时执行的行为：
   - `Busy`：向上游广播 `ReadyState::Busy`（表示暂时不可用）；
   - `BudgetExhausted`：广播 `ReadyState::BudgetExhausted`，携带预算快照；
@@ -34,8 +35,8 @@
 | `app.unauthorized` | `Security(SecurityClass::Authorization)` | `Close` | 权限不足，记录安全事件并关闭通道。 | 可通过自定义 Handler 触发补偿。 |
 | `app.backpressure_applied` | `Retryable`（180ms） | `RetryAfter` + `Busy(Downstream)` | 业务端主动背压，需遵守等待窗口。 | 可结合速率控制调整等待时间。 |
 
-> **提示**：当新增错误码时，请同步更新：
-> 1. `spark-core/src/error.rs` 中的 `lookup_default_category`；
-> 2. 本文档表格；
-> 3. `spark-core/tests/contracts/error_category_autoresponse.rs` 中的分类契约测试。
+> **提示**：当新增错误码时，请同步执行：
+> 1. 在 [`spark_core::error::category_matrix`](../spark-core/src/error/category_matrix.rs) 中新增矩阵条目；
+> 2. 同步更新本文档表格，确保默认动作描述一致；
+> 3. 扩展 `spark-core/tests/contracts/error_category_autoresponse.rs`，保证契约测试覆盖新增条目。
 

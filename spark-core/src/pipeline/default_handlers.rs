@@ -123,14 +123,10 @@ fn fallback_snapshot(kind: BudgetKind) -> crate::contract::BudgetSnapshot {
 /// - **输出**：若存在约定的繁忙语义则返回 [`BusyReason`]，否则 `None`；
 /// - **前置条件**：调用前已确认错误码遵循矩阵约定。
 fn busy_reason_from_code(code: &str) -> Option<BusyReason> {
-    use crate::error::codes;
+    use crate::error::category_matrix;
 
-    match code {
-        codes::TRANSPORT_IO | codes::APP_BACKPRESSURE_APPLIED => Some(BusyReason::downstream()),
-        codes::CLUSTER_NODE_UNAVAILABLE
-        | codes::CLUSTER_NETWORK_PARTITION
-        | codes::CLUSTER_LEADER_LOST
-        | codes::DISCOVERY_STALE_READ => Some(BusyReason::upstream()),
-        _ => None,
-    }
+    category_matrix::default_autoresponse(code)
+        .and_then(|response| response.retry())
+        .and_then(|(_, _, busy)| busy)
+        .map(|disposition| disposition.to_busy_reason())
 }
