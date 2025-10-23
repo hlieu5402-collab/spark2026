@@ -39,6 +39,7 @@ thiserror = "1.0"
 spark-otel = { path = "../crates/spark-otel", features = ["test-util"] }
 spark-contract-tests = { version = "0.1.0" }
 futures = { version = "0.3", features = ["executor"] }
+serde_json = "1.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(spark_loom)'] }
@@ -60,6 +61,10 @@ harness = false
 
 [[bench]]
 name = "async_contract_overhead"
+harness = false
+
+[[bench]]
+name = "zerocopy_extremes"
 harness = false
 
 # 单独注册服务宏相关契约测试，避免引入完整 `contracts` 套件对内部模块的访问依赖。
