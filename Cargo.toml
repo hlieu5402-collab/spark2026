@@ -8,6 +8,7 @@ members = [
     "crates/spark-contract-tests",
     "crates/spark-contract-tests-macros",
 ]
+exclude = ["fuzz"]
 resolver = "3"
 
 [workspace.package]
