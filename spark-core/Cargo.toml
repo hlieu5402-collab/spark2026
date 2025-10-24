@@ -23,6 +23,7 @@ std = []
 loom-model = ["dep:loom"]
 std_json = ["dep:serde_json"]
 error_contract_doc = ["dep:toml"]
+observability_contract_doc = ["dep:toml"]
 
 [dependencies]
 async-trait = { version = "0.1", default-features = false }
@@ -125,6 +126,13 @@ test = false
 name = "gen_error_doc"
 path = "../tools/gen_error_doc.rs"
 required-features = ["std", "error_contract_doc"]
+bench = false
+test = false
+
+[[bin]]
+name = "gen_observability_doc"
+path = "../tools/gen_observability_doc.rs"
+required-features = ["std", "observability_contract_doc"]
 bench = false
 test = false
 

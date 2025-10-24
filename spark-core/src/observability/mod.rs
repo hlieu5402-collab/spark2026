@@ -10,6 +10,7 @@
 //! - [`trace`]：围绕 W3C Trace Context 的追踪上下文建模。
 //! - [`logging`]：统一日志事件结构，支持结构化字段与 Trace 关联。
 //! - [`metrics`]：覆盖计数器、测量仪表、直方图等核心指标的契约与属性模型。
+//! - [`keys`]：由合约生成的指标/日志/追踪键名常量，提供单一事实来源。
 //! - [`health`]：描述健康状态与异步探针能力。
 //! - [`events`]：定义核心用户事件与运维事件总线，适配跨组件事件流。
 //! - [`attributes`]：提供指标与日志的键值对建模，确保高基数控制与类型安全。
@@ -26,6 +27,7 @@ pub mod attributes;
 pub mod events;
 pub mod facade;
 pub mod health;
+pub mod keys;
 pub mod logging;
 pub mod metrics;
 pub mod trace;

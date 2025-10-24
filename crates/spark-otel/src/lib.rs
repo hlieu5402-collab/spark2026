@@ -15,7 +15,10 @@ use opentelemetry_sdk::{
     trace::{self, TracerProvider},
 };
 use spark_core::{
-    observability::{TraceContext, TraceFlags, TraceState, TraceStateEntry},
+    observability::{
+        TraceContext, TraceFlags, TraceState, TraceStateEntry,
+        keys::tracing::pipeline as pipeline_keys,
+    },
     pipeline::{
         controller::HandlerDirection,
         instrument::{
@@ -210,20 +213,20 @@ impl OtelHandlerTracer {
         builder.span_kind = Some(otel_span_kind(params.direction));
         builder.attributes = Some(vec![
             KeyValue::new(
-                "spark.pipeline.direction",
+                pipeline_keys::ATTR_DIRECTION,
                 direction_tag(params.direction).to_string(),
             ),
-            KeyValue::new("spark.pipeline.label", params.label.to_string()),
+            KeyValue::new(pipeline_keys::ATTR_LABEL, params.label.to_string()),
             KeyValue::new(
-                "spark.pipeline.component",
+                pipeline_keys::ATTR_COMPONENT,
                 params.descriptor.name().to_string(),
             ),
             KeyValue::new(
-                "spark.pipeline.category",
+                pipeline_keys::ATTR_CATEGORY,
                 params.descriptor.category().to_string(),
             ),
             KeyValue::new(
-                "spark.pipeline.summary",
+                pipeline_keys::ATTR_SUMMARY,
                 params.descriptor.summary().to_string(),
             ),
         ]);
@@ -262,9 +265,9 @@ impl HandlerSpanGuard for OtelHandlerSpanGuard {
 
 fn direction_tag(direction: HandlerDirection) -> &'static str {
     match direction {
-        HandlerDirection::Inbound => "inbound",
-        HandlerDirection::Outbound => "outbound",
-        _ => "unspecified",
+        HandlerDirection::Inbound => pipeline_keys::DIRECTION_INBOUND,
+        HandlerDirection::Outbound => pipeline_keys::DIRECTION_OUTBOUND,
+        _ => pipeline_keys::DIRECTION_UNSPECIFIED,
     }
 }
 

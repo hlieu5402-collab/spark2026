@@ -1,136 +1,145 @@
-# 可观测性契约键名规范
+<!-- @generated 自动生成，请勿手工编辑 -->
+# 可观测性键名契约（Observability Keys Contract）
 
-本文档描述了框架内默认可观测性契约（`DEFAULT_OBSERVABILITY_CONTRACT`）暴露的所有指标、日志字段、追踪键与审计字段。目标是保证文档、实现与消费方约定保持一致，避免键名漂移导致监控面混乱。
+> 目标：指标/日志/追踪键名统一管理，避免代码与仪表盘漂移。
+> 来源：`contracts/observability_keys.toml`（单一事实来源）。
+> 产物：生成 `spark-core/src/observability/keys.rs` 与本文档。
 
-## 机器可校验的契约清单
+## 阅读指引
 
-```json
-{
-  "metric_names": [
-    "spark.request.total",
-    "spark.request.duration",
-    "spark.request.inflight",
-    "spark.request.errors",
-    "spark.bytes.inbound",
-    "spark.bytes.outbound",
-    "spark.codec.encode.duration",
-    "spark.codec.decode.duration",
-    "spark.codec.encode.bytes",
-    "spark.codec.decode.bytes",
-    "spark.codec.encode.errors",
-    "spark.codec.decode.errors",
-    "spark.transport.connections",
-    "spark.transport.connection.attempts",
-    "spark.transport.connection.failures",
-    "spark.transport.handshake.duration",
-    "spark.transport.bytes.inbound",
-    "spark.transport.bytes.outbound",
-    "spark.limits.usage",
-    "spark.limits.limit",
-    "spark.limits.hit",
-    "spark.limits.drop",
-    "spark.limits.degrade",
-    "spark.limits.queue.depth",
-    "spark.pipeline.epoch",
-    "spark.pipeline.mutation.total"
-  ],
-  "log_fields": [
-    "request.id",
-    "route.id",
-    "caller.identity",
-    "peer.identity",
-    "budget.kind"
-  ],
-  "trace_keys": [
-    "traceparent",
-    "tracestate",
-    "spark-budget"
-  ],
-  "audit_schema": [
-    "event_id",
-    "sequence",
-    "occurred_at",
-    "actor_id",
-    "action",
-    "entity_kind",
-    "entity_id",
-    "state_prev_hash",
-    "state_curr_hash",
-    "tsa_evidence"
-  ]
-}
-```
+- **键类型**：区分指标/日志键、标签枚举值、日志字段与追踪字段；
+- **适用范围**：标记该键应用于指标、日志、追踪或运维事件；
+- **更新流程**：修改合约后同步运行生成器，并提交代码与文档。
 
-> 上表仅用于 CI 校验，任何键名调整需同时更新代码与此处 JSON 列表。
+## logging.deprecation — 弃用公告日志字段
 
-## 指标键（`metric_names`）
+> 统一的弃用告警日志字段集合，便于告警平台解析。
 
-| 键名 | 含义 | 示例 |
-| --- | --- | --- |
-| spark.request.total | 单位时间内接收到的请求数量。 | `spark.request.total{route="upload"} = 128` |
-| spark.request.duration | 请求处理耗时分布（通常采用直方图/摘要）。 | `p95 = 42ms` |
-| spark.request.inflight | 当前正在处理的请求数。 | `current = 8` |
-| spark.request.errors | 失败请求数量，包含应用与协议错误。 | `spark.request.errors{code="APP_TIMEOUT"} = 3` |
-| spark.bytes.inbound | 请求体/流量入站字节数。 | `bytes = 524288` |
-| spark.bytes.outbound | 响应体/流量出站字节数。 | `bytes = 786432` |
-| spark.codec.encode.duration | 编码阶段的耗时分布。 | `avg = 3.5ms` |
-| spark.codec.decode.duration | 解码阶段的耗时分布。 | `avg = 4.1ms` |
-| spark.codec.encode.bytes | 编码后输出的字节量。 | `bytes = 4096` |
-| spark.codec.decode.bytes | 解码时读取的字节量。 | `bytes = 4096` |
-| spark.codec.encode.errors | 编码阶段的错误次数。 | `count = 1` |
-| spark.codec.decode.errors | 解码阶段的错误次数。 | `count = 2` |
-| spark.transport.connections | 活跃传输连接数量。 | `connections = 12` |
-| spark.transport.connection.attempts | 发起传输连接的尝试次数。 | `attempts = 5` |
-| spark.transport.connection.failures | 连接失败次数。 | `failures = 2` |
-| spark.transport.handshake.duration | 连接握手耗时分布。 | `p99 = 80ms` |
-| spark.transport.bytes.inbound | 传输层入站字节数。 | `bytes = 65536` |
-| spark.transport.bytes.outbound | 传输层出站字节数。 | `bytes = 98304` |
-| spark.limits.usage | 当前资源占用量（如并发、速率等指标）。 | `usage = 75` |
-| spark.limits.limit | 资源上限值。 | `limit = 100` |
-| spark.limits.hit | 触发限流判定的次数。 | `hits = 4` |
-| spark.limits.drop | 因限流被直接丢弃的请求数。 | `drops = 1` |
-| spark.limits.degrade | 因限流而采取降级策略的次数。 | `degrade = 2` |
-| spark.limits.queue.depth | 限流队列当前深度。 | `queue_depth = 16` |
-| spark.pipeline.epoch | 当前管线配置的 epoch 版本号。 | `epoch = 42` |
-| spark.pipeline.mutation.total | 动态管线变更累计次数。 | `mutations = 7` |
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `FIELD_MIGRATION` | 日志字段 | 日志、运维事件 | `deprecation.migration` | 迁移或替代方案提示。 |
+| `FIELD_REMOVAL` | 日志字段 | 日志、运维事件 | `deprecation.removal` | 计划移除的版本或时间。 |
+| `FIELD_SINCE` | 日志字段 | 日志、运维事件 | `deprecation.since` | 自哪个版本开始弃用。 |
+| `FIELD_SYMBOL` | 日志字段 | 日志、运维事件 | `deprecation.symbol` | 被弃用的符号或能力标识。 |
+| `FIELD_TRACKING` | 日志字段 | 日志、运维事件 | `deprecation.tracking` | 追踪链接或工单地址。 |
 
-## 日志字段（`log_fields`）
+## logging.shutdown — 关机流程日志字段
 
-| 键名 | 含义 | 示例 |
-| --- | --- | --- |
-| request.id | 全局唯一的请求标识，用于跨系统定位。 | `"req-20240318-abcdef"` |
-| route.id | 命中的路由或 handler 标识。 | `"pipeline.upload"` |
-| caller.identity | 调用方身份（例如应用或租户）。 | `"tenant_001"` |
-| peer.identity | 对端身份（例如下游服务或代理）。 | `"spark-edge"` |
-| budget.kind | 当前预算类型（如并发、速率、配额）。 | `"rate"` |
+> Host Shutdown 生命周期的结构化日志字段。
 
-## 追踪键（`trace_keys`）
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `FIELD_DEADLINE_MS` | 日志字段 | 日志、运维事件 | `shutdown.deadline.ms` | 关机截止时间与当前时刻的剩余毫秒数。 |
+| `FIELD_ELAPSED_MS` | 日志字段 | 日志、运维事件 | `shutdown.elapsed.ms` | 关机耗时，毫秒。 |
+| `FIELD_ERROR_CODE` | 日志字段 | 日志、运维事件 | `shutdown.error.code` | 关机过程出现的错误码。 |
+| `FIELD_REASON_CODE` | 日志字段 | 日志、运维事件 | `shutdown.reason.code` | 关机原因代码，通常来源于治理策略。 |
+| `FIELD_REASON_MESSAGE` | 日志字段 | 日志、运维事件 | `shutdown.reason.message` | 关机原因文本描述。 |
+| `FIELD_TARGET_COUNT` | 日志字段 | 日志、运维事件 | `shutdown.target.count` | 计划关机的目标数量。 |
+| `FIELD_TARGET_LABEL` | 日志字段 | 日志、运维事件 | `shutdown.target.label` | 被关机目标的逻辑标识。 |
 
-| 键名 | 含义 | 示例 |
-| --- | --- | --- |
-| traceparent | W3C Trace Context 标准的父追踪标识。 | `"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"` |
-| tracestate | W3C Trace Context 的 vendor 扩展链。 | `"congo=t61rcWkgMzE"` |
-| spark-budget | Spark 自定义预算传播头。 | `"concurrency=10,rate=200rps"` |
+## metrics.codec — Codec 域指标键
 
-## 审计字段（`audit_schema`）
+> 编解码链路的标签与枚举，辅助区分 encode/decode、错误类型与内容类型。
 
-| 键名 | 含义 | 示例 |
-| --- | --- | --- |
-| event_id | 审计事件的唯一标识。 | `"audit-20240318-0001"` |
-| sequence | 相同实体下的递增序列号。 | `42` |
-| occurred_at | 事件发生的 UTC 时间戳。 | `"2024-03-18T12:00:00Z"` |
-| actor_id | 触发事件的主体身份。 | `"svc-admin"` |
-| action | 执行的动作类型。 | `"update_policy"` |
-| entity_kind | 被操作实体的类型。 | `"policy"` |
-| entity_id | 被操作实体的唯一标识。 | `"policy-123"` |
-| state_prev_hash | 变更前实体状态的哈希。 | `"prev:sha256:..."` |
-| state_curr_hash | 变更后实体状态的哈希。 | `"curr:sha256:..."` |
-| tsa_evidence | 时间戳权威服务的佐证。 | `"tsa:20240318T120000Z:signature"` |
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ATTR_CODEC_NAME` | 指标/日志键 | 指标、日志 | `codec.name` | 编解码器名称，通常与协议/格式实现绑定。 |
+| `ATTR_CONTENT_TYPE` | 指标/日志键 | 指标、日志 | `content.type` | 内容类型或媒体类型，例如 application/grpc。 |
+| `ATTR_ERROR_KIND` | 指标/日志键 | 指标、日志 | `error.kind` | 编解码阶段的错误分类。 |
+| `ATTR_MODE` | 指标/日志键 | 指标 | `codec.mode` | 编码/解码模式标签。 |
+| `MODE_DECODE` | 标签枚举值 | 指标 | `decode` | Codec 模式：解码。 |
+| `MODE_ENCODE` | 标签枚举值 | 指标 | `encode` | Codec 模式：编码。 |
 
-## 更新流程
+## metrics.hot_reload — 热更新指标键
 
-1. 修改 `spark-core/src/contract.rs` 中的 `DEFAULT_OBSERVABILITY_CONTRACT`。
-2. 同步更新本文档 JSON 列表与说明表格。
-3. 运行 `bash tools/ci/check_observability_keys.sh` 确认 CI 校验通过。
+> 运行时热更新流程的标签集合。
 
-遵循以上流程，可确保契约在文档、实现与各类数据面之间保持一致。
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ATTR_COMPONENT` | 指标/日志键 | 指标、日志 | `hot_reload.component` | 热更新组件名称，如 limits/timeouts。 |
+
+## metrics.limits — 限流/限额指标键
+
+> 资源限额治理相关的标签集合。
+
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ATTR_ACTION` | 指标/日志键 | 指标、日志 | `limit.action` | 策略动作标签，如 queue/drop/degrade。 |
+| `ATTR_RESOURCE` | 指标/日志键 | 指标、日志 | `limit.resource` | 资源类型标签，例如并发/队列。 |
+
+## metrics.pipeline — Pipeline 域指标/日志键
+
+> Pipeline 纪元、控制器与变更事件的统一标签。
+
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ATTR_CONTROLLER` | 指标/日志键 | 指标、日志 | `pipeline.controller` | Pipeline 控制器实现标识。 |
+| `ATTR_EPOCH` | 指标/日志键 | 指标、日志 | `pipeline.epoch` | Pipeline 逻辑纪元。 |
+| `ATTR_MUTATION_OP` | 指标/日志键 | 指标、日志 | `pipeline.mutation.op` | 变更操作类型。 |
+| `ATTR_PIPELINE_ID` | 指标/日志键 | 指标、日志 | `pipeline.id` | Pipeline 唯一标识，通常映射到 Channel ID。 |
+| `CONTROLLER_HOT_SWAP` | 标签枚举值 | 指标、日志 | `hot_swap` | 控制器枚举：HotSwap 控制器实现。 |
+| `OP_ADD` | 标签枚举值 | 指标、日志 | `add` | 变更操作：新增 Handler。 |
+| `OP_REMOVE` | 标签枚举值 | 指标、日志 | `remove` | 变更操作：移除 Handler。 |
+| `OP_REPLACE` | 标签枚举值 | 指标、日志 | `replace` | 变更操作：替换 Handler。 |
+
+## metrics.service — Service 域指标/日志键
+
+> 服务调用面指标与结构化日志共享的标签与标签值，覆盖 ReadyState、Outcome 等核心维度。
+
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ATTR_ERROR_KIND` | 指标/日志键 | 指标、日志 | `error.kind` | 稳定错误分类（如 timeout/internal/security），需与错误分类矩阵保持一致。 |
+| `ATTR_OPERATION` | 指标/日志键 | 指标、日志 | `operation` | 操作/方法名，统一为低基数字符串，如 grpc 方法或 RPC 名称。 |
+| `ATTR_OUTCOME` | 指标/日志键 | 指标、日志 | `outcome` | 调用总体结果，限制在 success/error 等少量枚举内。 |
+| `ATTR_PEER_IDENTITY` | 指标/日志键 | 指标、日志 | `peer.identity` | 对端身份标签，例如 upstream/downstream 或租户别名，需保持低基数。 |
+| `ATTR_PROTOCOL` | 指标/日志键 | 指标、日志、追踪 | `protocol` | 入站协议标识，常见值如 grpc/http/quic。 |
+| `ATTR_READY_DETAIL` | 指标/日志键 | 指标、日志 | `ready.detail` | ReadyState 细分详情，承载更具体的背压原因。 |
+| `ATTR_READY_STATE` | 指标/日志键 | 指标、日志 | `ready.state` | ReadyState 主枚举值，用于关联治理 ReadyState 仪表盘。 |
+| `ATTR_ROUTE_ID` | 指标/日志键 | 指标、日志 | `route.id` | 路由或逻辑分组标识，例如 API Path、租户 ID 映射。 |
+| `ATTR_SERVICE_NAME` | 指标/日志键 | 指标、日志 | `service.name` | 业务服务名，建议与服务注册中心或配置中的逻辑名称保持一致。 |
+| `ATTR_STATUS_CODE` | 指标/日志键 | 指标、日志 | `status.code` | HTTP/gRPC 等响应码或业务状态码。 |
+| `OUTCOME_ERROR` | 标签枚举值 | 指标、日志 | `error` | Outcome 失败枚举值。 |
+| `OUTCOME_SUCCESS` | 标签枚举值 | 指标、日志 | `success` | Outcome 成功枚举值。 |
+| `READY_DETAIL_CUSTOM` | 标签枚举值 | 指标、日志 | `custom` | Ready detail：自定义繁忙原因。 |
+| `READY_DETAIL_DOWNSTREAM` | 标签枚举值 | 指标、日志 | `downstream` | Ready detail：下游繁忙。 |
+| `READY_DETAIL_PLACEHOLDER` | 标签枚举值 | 指标、日志 | `_` | Ready detail 占位符，避免缺失标签导致基数膨胀。 |
+| `READY_DETAIL_QUEUE_FULL` | 标签枚举值 | 指标、日志 | `queue_full` | Ready detail：内部队列溢出。 |
+| `READY_DETAIL_RETRY_AFTER` | 标签枚举值 | 指标、日志 | `after` | Ready detail：RetryAfter 相对等待。 |
+| `READY_DETAIL_UPSTREAM` | 标签枚举值 | 指标、日志 | `upstream` | Ready detail：上游繁忙。 |
+| `READY_STATE_BUDGET_EXHAUSTED` | 标签枚举值 | 指标、日志 | `budget_exhausted` | ReadyState：预算耗尽。 |
+| `READY_STATE_BUSY` | 标签枚举值 | 指标、日志 | `busy` | ReadyState：繁忙状态。 |
+| `READY_STATE_READY` | 标签枚举值 | 指标、日志 | `ready` | ReadyState：完全就绪。 |
+| `READY_STATE_RETRY_AFTER` | 标签枚举值 | 指标、日志 | `retry_after` | ReadyState：处于 RetryAfter 冷却期。 |
+
+## metrics.transport — Transport 域指标键
+
+> 传输层连接与字节统计使用的标签与枚举。
+
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ATTR_ERROR_KIND` | 指标/日志键 | 指标、日志 | `error.kind` | 传输层错误分类。 |
+| `ATTR_LISTENER_ID` | 指标/日志键 | 指标、日志 | `listener.id` | 监听器或连接逻辑标识，保持低基数以利聚合。 |
+| `ATTR_PEER_ROLE` | 指标/日志键 | 指标、日志 | `peer.role` | 对端角色，通常为 client/server。 |
+| `ATTR_PROTOCOL` | 指标/日志键 | 指标、日志 | `transport.protocol` | 传输协议：tcp/quic/uds 等。 |
+| `ATTR_RESULT` | 指标/日志键 | 指标、日志 | `result` | 连接尝试结果。 |
+| `ATTR_SOCKET_FAMILY` | 指标/日志键 | 指标、日志 | `socket.family` | Socket 家族：ipv4/ipv6/unix。 |
+| `RESULT_FAILURE` | 标签枚举值 | 指标、日志 | `failure` | 连接结果：失败。 |
+| `RESULT_SUCCESS` | 标签枚举值 | 指标、日志 | `success` | 连接结果：成功。 |
+| `ROLE_CLIENT` | 标签枚举值 | 指标、日志 | `client` | 对端角色：客户端。 |
+| `ROLE_SERVER` | 标签枚举值 | 指标、日志 | `server` | 对端角色：服务端。 |
+
+## tracing.pipeline — Pipeline Trace 属性
+
+> OpenTelemetry Handler Span 使用的标签及枚举。
+
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ATTR_CATEGORY` | 追踪字段 | 追踪 | `spark.pipeline.category` | Handler 分类。 |
+| `ATTR_COMPONENT` | 追踪字段 | 追踪 | `spark.pipeline.component` | Handler 所属组件（Descriptor name）。 |
+| `ATTR_DIRECTION` | 追踪字段 | 追踪 | `spark.pipeline.direction` | Pipeline Handler 方向标签。 |
+| `ATTR_LABEL` | 追踪字段 | 追踪 | `spark.pipeline.label` | Handler 注册时的 Label。 |
+| `ATTR_SUMMARY` | 追踪字段 | 追踪 | `spark.pipeline.summary` | Handler 文本摘要。 |
+| `DIRECTION_INBOUND` | 标签枚举值 | 追踪 | `inbound` | Handler 方向：入站。 |
+| `DIRECTION_OUTBOUND` | 标签枚举值 | 追踪 | `outbound` | Handler 方向：出站。 |
+| `DIRECTION_UNSPECIFIED` | 标签枚举值 | 追踪 | `unspecified` | Handler 方向：未指定（兜底）。 |
+

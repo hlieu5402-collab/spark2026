@@ -19,7 +19,9 @@
 //! - 若调用方在纯 `alloc` 环境且未提供日志，将无法看到告警；文档中要求宿主提供兜底通道。
 //! - 常量配置在编译期固定；若需热更新请改用宿主侧配置文件。
 
-use crate::observability::{Logger, OwnedAttributeSet};
+use crate::observability::{
+    Logger, OwnedAttributeSet, keys::logging::deprecation as deprecation_fields,
+};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 /// 描述单个弃用符号的元信息与告警状态。
@@ -100,14 +102,14 @@ impl DeprecationNotice {
         }
 
         let mut fields = OwnedAttributeSet::new();
-        fields.push_owned("deprecation.symbol", self.symbol);
-        fields.push_owned("deprecation.since", self.since);
-        fields.push_owned("deprecation.removal", self.removal);
+        fields.push_owned(deprecation_fields::FIELD_SYMBOL, self.symbol);
+        fields.push_owned(deprecation_fields::FIELD_SINCE, self.since);
+        fields.push_owned(deprecation_fields::FIELD_REMOVAL, self.removal);
         if let Some(tracking) = self.tracking {
-            fields.push_owned("deprecation.tracking", tracking);
+            fields.push_owned(deprecation_fields::FIELD_TRACKING, tracking);
         }
         if let Some(hint) = self.migration_hint {
-            fields.push_owned("deprecation.migration", hint);
+            fields.push_owned(deprecation_fields::FIELD_MIGRATION, hint);
         }
 
         if let Some(logger) = logger {
@@ -251,13 +253,13 @@ mod tests {
             record
                 .attributes
                 .iter()
-                .any(|(k, v)| k == "deprecation.symbol" && v == "demo::symbol")
+                .any(|(k, v)| k == deprecation_fields::FIELD_SYMBOL && v == "demo::symbol")
         );
         assert!(
             record
                 .attributes
                 .iter()
-                .any(|(k, v)| k == "deprecation.removal" && v == "0.3.0")
+                .any(|(k, v)| k == deprecation_fields::FIELD_REMOVAL && v == "0.3.0")
         );
     }
 
