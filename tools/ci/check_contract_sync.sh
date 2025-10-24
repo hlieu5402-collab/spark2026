@@ -88,6 +88,7 @@ readonly SCOPE_PATHSPEC=':(glob)spark-core/src/**/*.rs'
 readonly CONTRACT_REGEX='\b(ReadyState|ErrorCategory|ObservabilityContract|BufView)\b'
 readonly CATEGORY_MATRIX_SOURCE='spark-core/src/error/category_matrix.rs'
 readonly CATEGORY_MATRIX_DOC='docs/error-category-matrix.md'
+readonly CATEGORY_MATRIX_CONTRACT='contracts/error_matrix.toml'
 readonly CATEGORY_SURFACE_PATHS=(
   'spark-core/src/error.rs'
   'spark-core/src/error/category_matrix.rs'
@@ -95,18 +96,18 @@ readonly CATEGORY_SURFACE_PATHS=(
 )
 
 # 教案级注释：错误分类矩阵 SOT 守门（Why / How / What / Trade-offs）
-# - Why：`category_matrix.rs` 定义了错误分类与默认动作的唯一代码真相，而 `docs/error-category-matrix.md` 是运营/客服查阅的权威知识库。
-#   任何单侧更新都会导致诊断与告警错位，因此 CI 必须确保两者同步变更。
+# - Why：`contracts/error_matrix.toml` 是声明式 SOT，`category_matrix.rs` 与 `docs/error-category-matrix.md` 分别承载代码与知识库视图。
+#   任何一侧单独更新都会导致契约偏差，因此 CI 要求三者保持一致。
 # - How：
-#   1. 分别通过 `git diff --name-only` 检测代码与文档是否在当前 PR 中被修改。
-#   2. 若仅有一侧发生改动，则立即失败并提示补齐同步，形成“成对改动”的硬约束。
+#   1. 分别通过 `git diff --name-only` 检测合约、代码、文档是否在当前 PR 中被修改；
+#   2. 只要任一文件发生改动，就强制校验其余两者也被修改；否则立即失败并输出指导信息。
 # - What（契约）：
-#   * 输入：无需额外参数，直接读取 `BASE_COMMIT` 与工作树 HEAD 的差异。
-#   * 前置条件：仓库为 Git 工作区且已存在 `BASE_COMMIT`（脚本前序逻辑保证）。
-#   * 后置条件：要么两文件同时修改，要么均不变；若违反则脚本以非零码退出。
+#   * 输入：无需额外参数，直接读取 `BASE_COMMIT` 与工作树 HEAD 的差异；
+#   * 前置条件：仓库为 Git 工作区且已存在 `BASE_COMMIT`（脚本前序逻辑保证）；
+#   * 后置条件：要么三者同时修改，要么均保持不变；若违反则脚本以非零码退出。
 # - Trade-offs：
-#   * 采用文件级别守门（而非解析矩阵内容），实现成本低且足以捕获“忘记同步”情形。
-#   * 若确实只需修改文档中的文字说明，可在 PR 中同步提交一项无功能影响的矩阵注释更新，以通过守门并记录差异。
+#   * 采用文件级别守门（而非解析矩阵内容），实现成本低且足以捕获“忘记同步”情形；
+#   * 若确实仅调整生成逻辑，可同步提交微小的注释或排序改动以记录生成器变化。
 category_matrix_source_changed=false
 if git diff --name-only "$BASE_COMMIT"...HEAD -- "$CATEGORY_MATRIX_SOURCE" | grep -q .; then
   category_matrix_source_changed=true
@@ -117,10 +118,17 @@ if git diff --name-only "$BASE_COMMIT"...HEAD -- "$CATEGORY_MATRIX_DOC" | grep -
   category_matrix_doc_changed=true
 fi
 
-if { $category_matrix_source_changed && ! $category_matrix_doc_changed; } || { $category_matrix_doc_changed && ! $category_matrix_source_changed; }; then
-  echo "错误分类矩阵为 SOT 资源：代码 (${CATEGORY_MATRIX_SOURCE}) 与文档 (${CATEGORY_MATRIX_DOC}) 必须在同一 PR 中同时更新。" >&2
-  echo "请同步修改另一侧文件后再触发 CI。" >&2
-  exit 1
+category_matrix_contract_changed=false
+if git diff --name-only "$BASE_COMMIT"...HEAD -- "$CATEGORY_MATRIX_CONTRACT" | grep -q .; then
+  category_matrix_contract_changed=true
+fi
+
+if $category_matrix_source_changed || $category_matrix_doc_changed || $category_matrix_contract_changed; then
+  if ! $category_matrix_source_changed || ! $category_matrix_doc_changed || ! $category_matrix_contract_changed; then
+    echo "错误分类矩阵为 SOT 资源：合约 (${CATEGORY_MATRIX_CONTRACT})、代码 (${CATEGORY_MATRIX_SOURCE}) 与文档 (${CATEGORY_MATRIX_DOC}) 必须在同一 PR 中同步更新。" >&2
+    echo "请补齐缺失的改动后再触发 CI。" >&2
+    exit 1
+  fi
 fi
 
 # 教案级注释：错误分类公共接口 → 矩阵文档强制同步守门
