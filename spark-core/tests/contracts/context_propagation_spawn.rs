@@ -16,6 +16,8 @@ mod tests {
             use spark_core::BoxFuture;
             use spark_core::async_trait;
             use spark_core::contract::{CallContext, CallContextBuilder, Deadline};
+            use spark_core::rt::sugar::BorrowedRuntimeCaps;
+            use spark_core::rt::{self, spawn_in};
             use spark_core::runtime::{
                 JoinHandle, MonotonicTimePoint, TaskCancellationStrategy, TaskError, TaskExecutor,
                 TaskHandle, TaskResult,
@@ -30,7 +32,8 @@ mod tests {
                 let ctx = CallContextBuilder::default().build();
                 let worker_ctx = ctx.clone();
 
-                let handle = executor.spawn(&ctx, async move {
+                let sugar_ctx = rt::CallContext::new(&ctx, BorrowedRuntimeCaps::new(&executor));
+                let handle = spawn_in(&sugar_ctx, async move {
                     loop {
                         if worker_ctx.cancellation().is_cancelled() {
                             break "cancelled";
@@ -56,7 +59,8 @@ mod tests {
                     .build();
                 let worker_ctx = ctx.clone();
 
-                let handle = executor.spawn(&ctx, async move {
+                let sugar_ctx = rt::CallContext::new(&ctx, BorrowedRuntimeCaps::new(&executor));
+                let handle = spawn_in(&sugar_ctx, async move {
                     let start = Instant::now();
                     loop {
                         let elapsed = start.elapsed();

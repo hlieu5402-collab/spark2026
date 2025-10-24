@@ -2,7 +2,8 @@
 //!
 //! # 教案式综述（Why / How / What）
 //! - **为什么存在**：T34 任务要求将契约测试下沉为独立 crate，方便第三方实现按统一准绳进行自测。
-//!   因此本 crate 集中维护背压、取消、错误、状态机、热插拔、热重载、可观测性七大主题的校验用例。
+//!   因此本 crate 集中维护背压、取消、错误、状态机、优雅关闭、热插拔、热重载、可观测性、慢连接防护、
+//!   资源枯竭十大主题的校验用例。
 //! - **如何集成**：在目标仓库的 `tests` 目录下引入 `#[spark_tck]` 宏（或直接调用 `run_*` 入口函数），即可将完整
 //!   套件编译为标准的 Rust 测试；宏支持选择性启用子套件，满足增量验证需求。
 //! - **测试对象**：所有用例均以 `spark-core` 暴露的稳定面为边界，既覆盖轻量级数据结构（如 `Budget`、
@@ -21,7 +22,7 @@
 //!
 //! # 模块结构
 //! - `case` 模块：定义测试用例与套件的元信息结构体，以及统一的执行辅助函数。
-//! - 子模块 `backpressure`、`cancellation` 等分别实现八大主题的实际断言逻辑。
+//! - 子模块 `backpressure`、`cancellation` 等分别实现十大主题的实际断言逻辑。
 //! - 顶层提供 `run_*` 入口与 `#[spark_tck]` 宏 re-export，供外部直接调用。
 
 mod backpressure;
@@ -31,13 +32,15 @@ mod graceful_shutdown;
 mod hot_reload;
 mod hot_swap;
 mod observability;
+mod resource_exhaustion;
+mod slowloris;
 mod state_machine;
 mod support;
 
 use case::{TckSuite, run_suite};
 pub use spark_contract_tests_macros::spark_tck;
 
-const ALL_SUITES: [&TckSuite; 8] = [
+const ALL_SUITES: [&TckSuite; 10] = [
     backpressure::suite(),
     cancellation::suite(),
     errors::suite(),
@@ -46,6 +49,8 @@ const ALL_SUITES: [&TckSuite; 8] = [
     hot_swap::suite(),
     hot_reload::suite(),
     observability::suite(),
+    slowloris::suite(),
+    resource_exhaustion::suite(),
 ];
 
 mod case {
@@ -145,4 +150,27 @@ pub fn run_hot_reload_suite() {
 /// 运行“可观测性契约”主题的全部用例，确保默认字段稳定、自定义契约零拷贝。
 pub fn run_observability_suite() {
     run_suite(observability::suite());
+}
+
+/// 运行“慢连接防护”主题的全部用例，验证编解码器在 Slowloris 场景下的预算控制。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：集中执行 `slowloris` 套件下的慢速读场景，帮助调用方确认 `DecodeContext` 能在合法慢读与
+///   攻击性慢读之间做出正确区分。
+/// - **流程 (How)**：依序运行 `slow_reader_drains_within_budget` 与 `slow_reader_exceeding_budget_is_rejected` 两个用例，
+///   由统一的 `run_suite` 提供 panic 上下文包装。
+/// - **契约 (What)**：调用前无需额外前置条件；调用成功代表 Slowloris 相关的 budget 策略均被覆盖测试。
+pub fn run_slowloris_suite() {
+    run_suite(slowloris::suite());
+}
+
+/// 运行“资源枯竭退避”主题的全部用例，确认 Busy/RetryAfter 的传播语义。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：一次性验证队列与线程池耗尽时，`ExceptionAutoResponder` 广播的 ReadyState 序列符合契约矩阵。
+/// - **流程 (How)**：顺序执行 `channel_queue_exhaustion_emits_busy_then_retry_after` 与
+///   `thread_pool_starvation_emits_busy_then_retry_after`，并在断言失败时附带套件上下文信息。
+/// - **契约 (What)**：调用方应确保已链接 `spark-core` 默认错误码；执行成功即表示 Busy/RetryAfter 信号可被正确感知。
+pub fn run_resource_exhaustion_suite() {
+    run_suite(resource_exhaustion::suite());
 }

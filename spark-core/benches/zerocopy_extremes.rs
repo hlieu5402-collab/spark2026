@@ -108,6 +108,15 @@ fn parse_cli() -> Result<CliOptions, BenchError> {
                 // Cargo 在执行 `cargo bench -p crate --bench name` 时会追加 `--bench` 参数，
                 // 不携带任何值。基准无需处理该标志，直接忽略即可。
             }
+            "--output-format" => {
+                let value = iter
+                    .next()
+                    .ok_or_else(|| BenchError::Cli("--output-format 之后缺少格式字符串".into()))?;
+                // `cargo bench -- --output-format bencher` 会强制传入该标志。当前基准使用
+                // 自定义的 JSON/文本输出而非 bencher 标准格式，因此仅校验该值存在即可，
+                // 随后忽略，避免在 CI 中误报参数错误。
+                let _ = value;
+            }
             "--output" => {
                 let value = iter
                     .next()
@@ -548,6 +557,18 @@ impl BufView for ScatterView {
 }
 
 /// 延迟统计摘要，用于 JSON 序列化。
+///
+/// # Why
+/// - 在报告中记录 P50/P95/P99 同时追加 `std_dev`，方便后续脚本计算变异系数，
+///   防止仅凭极值判断误判噪音。
+///
+/// # How
+/// - 在 [`analyze_ns`] 与 [`analyze_ns_per_kb`] 中计算均值后，追加一次基于 Bessel 校正
+///   的样本标准差，从而捕获离散程度。
+///
+/// # What
+/// - 结构体字段新增 `std_dev`，单位与当前统计量一致（`ns` 或 `ns/KB`）。
+/// - 前置条件：样本数量 ≥ 1；当样本不足 2 个时标准差回落为 0。
 #[derive(Clone, Copy, Debug, Serialize)]
 struct LatencySummaryF64 {
     p50: f64,
@@ -556,6 +577,7 @@ struct LatencySummaryF64 {
     mean: f64,
     min: f64,
     max: f64,
+    std_dev: f64,
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -566,6 +588,7 @@ struct LatencySummaryU64 {
     mean: f64,
     min: u64,
     max: u64,
+    std_dev: f64,
 }
 
 /// 单场景基准结果。
@@ -580,6 +603,23 @@ struct ScenarioReport {
 }
 
 /// 单条路径的统计摘要，同时记录 BufView 与基线耗时。
+///
+/// # Why
+/// - 将 BufView 与裸分片基线的分位数、均值与波动度一并存储，便于 CI 工具直接读取并判定
+///   “额外开销是否可接受、样本是否稳定”。
+///
+/// # How
+/// - 采样阶段会分别构建 BufView 与基线的 [`LatencySummaryF64`] / [`LatencySummaryU64`]；
+/// - 新增字段 `bufview_ns_per_kb_cv` 与 `baseline_ns_per_kb_cv` 由样本标准差除以均值获得，
+///   采用 Bessel 校正以减少低样本偏差；
+/// - `p99_overhead_pct` 直接使用 `BufView P99` 与 `基线 P99` 的比值换算。
+///
+/// # What
+/// - `samples`：本次测量的批次数，保证 JSON 中存在上下文；
+/// - `bufview_ns_per_iter`/`baseline_ns_per_iter`：裸纳秒视角下的延迟统计；
+/// - `bufview_ns_per_kb`/`baseline_ns_per_kb`：按 KB 归一化后的延迟统计；
+/// - `bufview_ns_per_kb_cv`/`baseline_ns_per_kb_cv`：供脚本判定“CV < 0.2”约束；
+/// - `p99_overhead_pct`：CI 的核心指标，目标 ≤ 3%。
 #[derive(Debug, Serialize)]
 struct OperationReport {
     kind: OperationKind,
@@ -589,6 +629,8 @@ struct OperationReport {
     baseline_ns_per_iter: LatencySummaryU64,
     baseline_ns_per_kb: LatencySummaryF64,
     p99_overhead_pct: f64,
+    bufview_ns_per_kb_cv: f64,
+    baseline_ns_per_kb_cv: f64,
 }
 
 /// 总体基准报告。
@@ -649,14 +691,14 @@ fn run() -> Result<(), BenchError> {
     let cli = parse_cli()?;
     let config = if cli.quick_mode {
         BenchConfig {
-            iterations: 6_400,
-            batch_size: 32,
+            iterations: 131_072,
+            batch_size: 1_024,
             quick_mode: true,
         }
     } else {
         BenchConfig {
-            iterations: 64_000,
-            batch_size: 128,
+            iterations: 1_048_576,
+            batch_size: 4_096,
             quick_mode: false,
         }
     };
@@ -679,12 +721,14 @@ fn run() -> Result<(), BenchError> {
     for scenario in &report.scenarios {
         for operation in &scenario.operations {
             println!(
-                "scenario={} operation={} bufview_p99_ns_per_kb={:.3} baseline_p99_ns_per_kb={:.3} p99_overhead_pct={:.3}",
+                "scenario={} operation={} bufview_p99_ns_per_kb={:.3} baseline_p99_ns_per_kb={:.3} p99_overhead_pct={:.3} bufview_cv_ns_per_kb={:.6} baseline_cv_ns_per_kb={:.6}",
                 scenario.name,
                 operation.kind.as_str(),
                 operation.bufview_ns_per_kb.p99,
                 operation.baseline_ns_per_kb.p99,
                 operation.p99_overhead_pct,
+                operation.bufview_ns_per_kb_cv,
+                operation.baseline_ns_per_kb_cv,
             );
         }
     }
@@ -782,6 +826,7 @@ fn measure_scenario(scenario: &ScenarioSpec, config: BenchConfig) -> ScenarioRep
 /// # How
 /// - 复用批量计时逻辑：每个批次分别执行 BufView 路径与基线路径，记录平均纳秒；
 /// - 将两组耗时换算为 `ns/KB`，并通过统计函数计算分位数与额外开销百分比。
+/// - 根据 `mean`/`std_dev` 计算 BufView 与基线的 CV，方便 CI 判断采样稳定性。
 ///
 /// # What
 /// - 输入：场景定义、基准配置、待测路径枚举值；
@@ -851,6 +896,16 @@ fn measure_operation(
     } else {
         0.0
     };
+    let bufview_cv = if bufview_ns_per_kb.mean > 0.0 {
+        bufview_ns_per_kb.std_dev / bufview_ns_per_kb.mean
+    } else {
+        0.0
+    };
+    let baseline_cv = if baseline_ns_per_kb.mean > 0.0 {
+        baseline_ns_per_kb.std_dev / baseline_ns_per_kb.mean
+    } else {
+        0.0
+    };
 
     OperationReport {
         kind: operation,
@@ -860,6 +915,8 @@ fn measure_operation(
         baseline_ns_per_iter,
         baseline_ns_per_kb,
         p99_overhead_pct,
+        bufview_ns_per_kb_cv: bufview_cv,
+        baseline_ns_per_kb_cv: baseline_cv,
     }
 }
 
@@ -896,11 +953,13 @@ fn validate_fixture(scenario: &ScenarioSpec) {
 /// - 原始纳秒数据可帮助确认 Batch 均摊是否合理，同时为分析器提供绝对耗时基线。
 ///
 /// # How
-/// - 将样本排序后计算 P50/P95/P99，`mean` 使用 `u128` 累加避免溢出。
+/// - 将样本排序后计算 P50/P95/P99；
+/// - `mean` 使用 `u128` 累加避免溢出，同时结合 Bessel 校正计算样本标准差，方便后续
+///   计算变异系数。
 ///
 /// # What
 /// - 输入：按批次收集的样本数组。
-/// - 输出：[`LatencySummaryU64`]，记录分位数与均值。
+/// - 输出：[`LatencySummaryU64`]，记录分位数、均值以及 `std_dev`。
 /// - 前置条件：样本可为空（空时返回全 0），调用方需自行确保批次>0。
 /// - 后置条件：排序在本地 Vec 上进行，不会修改原输入。
 fn analyze_ns(samples: &[SamplePoint]) -> LatencySummaryU64 {
@@ -908,11 +967,25 @@ fn analyze_ns(samples: &[SamplePoint]) -> LatencySummaryU64 {
     values.sort_unstable();
     let min = *values.first().unwrap_or(&0);
     let max = *values.last().unwrap_or(&0);
-    let mean = if values.is_empty() {
-        0.0
+    let (mean, std_dev) = if values.is_empty() {
+        (0.0, 0.0)
     } else {
         let sum: u128 = values.iter().map(|&v| v as u128).sum();
-        (sum as f64) / (values.len() as f64)
+        let mean = (sum as f64) / (values.len() as f64);
+        let std_dev = if values.len() > 1 {
+            let variance: f64 = values
+                .iter()
+                .map(|&v| {
+                    let diff = (v as f64) - mean;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / ((values.len() - 1) as f64);
+            variance.sqrt()
+        } else {
+            0.0
+        };
+        (mean, std_dev)
     };
     LatencySummaryU64 {
         p50: percentile_u64(&values, 0.50),
@@ -921,6 +994,7 @@ fn analyze_ns(samples: &[SamplePoint]) -> LatencySummaryU64 {
         mean,
         min,
         max,
+        std_dev,
     }
 }
 
@@ -930,11 +1004,12 @@ fn analyze_ns(samples: &[SamplePoint]) -> LatencySummaryU64 {
 /// - 阈值以 `ns/KB` 定义，需要单独的统计过程来规避舍入误差。
 ///
 /// # How
-/// - 复制样本后按浮点排序，使用线性插值计算分位数。
+/// - 复制样本后按浮点排序，使用线性插值计算分位数；
+/// - 累加均值的同时计算样本标准差，为 CV 判定提供数据。
 ///
 /// # What
 /// - 输入：与 [`analyze_ns`] 相同的样本数组。
-/// - 输出：[`LatencySummaryF64`]。
+/// - 输出：[`LatencySummaryF64`]，包含 `std_dev` 供外部计算 CV。
 /// - 前置条件：样本可能包含 `0.0`，排序需处理浮点比较。
 /// - 后置条件：统计过程中不修改原样本。
 fn analyze_ns_per_kb(samples: &[SamplePoint]) -> LatencySummaryF64 {
@@ -942,10 +1017,24 @@ fn analyze_ns_per_kb(samples: &[SamplePoint]) -> LatencySummaryF64 {
     values.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let min = *values.first().unwrap_or(&0.0);
     let max = *values.last().unwrap_or(&0.0);
-    let mean = if values.is_empty() {
-        0.0
+    let (mean, std_dev) = if values.is_empty() {
+        (0.0, 0.0)
     } else {
-        values.iter().sum::<f64>() / (values.len() as f64)
+        let mean = values.iter().sum::<f64>() / (values.len() as f64);
+        let std_dev = if values.len() > 1 {
+            let variance: f64 = values
+                .iter()
+                .map(|&v| {
+                    let diff = v - mean;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / ((values.len() - 1) as f64);
+            variance.sqrt()
+        } else {
+            0.0
+        };
+        (mean, std_dev)
     };
     LatencySummaryF64 {
         p50: percentile_f64(&values, 0.50),
@@ -954,6 +1043,7 @@ fn analyze_ns_per_kb(samples: &[SamplePoint]) -> LatencySummaryF64 {
         mean,
         min,
         max,
+        std_dev,
     }
 }
 
