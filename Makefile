@@ -16,4 +16,6 @@ ci-doc-warning:
 
 ci-bench-smoke:
 	# `spark-macros` 为 proc-macro crate，未引入 Criterion，因此需排除以避免 `--quick` 参数触发 libtest 错误。
-	cargo bench --workspace --exclude spark-macros -- --quick
+	@rm -f bench.out
+	/bin/bash -o pipefail -c 'cargo bench --workspace --exclude spark-macros -- --quick | tee bench.out'
+	python3 tools/ci/check_zerocopy_bench.py bench.out
