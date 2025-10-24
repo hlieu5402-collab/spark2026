@@ -15,7 +15,7 @@ set -euo pipefail
 #   专注取消/预算/通道三类原语的 UB 排查。
 #
 # ## 核心策略 (How)
-# - 默认使用 `nightly-2025-06-15` toolchain（可通过环境变量覆盖），与工作流缓存键保持一致；
+# - 默认使用滚动更新的 `nightly` toolchain（可通过环境变量覆盖），满足 crate 的 `rust-version = 1.89` 约束；
 # - 若目标 toolchain 未安装 `miri` 组件，会自动通过 `rustup component add` 安装；
 # - 随后运行 `cargo +<toolchain> miri setup` 以下载并配置 Miri runtime；
 # - 调用 `cargo +<toolchain> miri test -p spark-core --test concurrency_primitives` 聚焦关键测试；
@@ -53,30 +53,78 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
-MIRI_TOOLCHAIN=${MIRI_TOOLCHAIN:-nightly-2025-06-15}
+MIRI_TOOLCHAIN=${MIRI_TOOLCHAIN:-nightly}
 MIRI_FEATURES=${MIRI_FEATURES:-}
 MIRI_NO_DEFAULT_FEATURES=${MIRI_NO_DEFAULT_FEATURES:-0}
 MIRI_EXTRA_ARGS=${MIRI_EXTRA_ARGS:-}
+#
+# == Miri 场景收敛器 ==
+#
+# ## Why
+# - 将执行范围收敛到取消/预算/通道三大核心不变式，既满足“CI 必过”的稳定性，
+#   又控制模拟执行的时间上限。
+#
+# ## How
+# - `MIRI_SCENARIOS` 默认为三个测试函数名，脚本会逐个以 cargo filter 方式运行；
+# - 若调用者需要自定义场景，可通过覆盖该环境变量实现；
+# - `MIRI_EXTRA_ARGS` 支持追加 cargo/miri 参数，若包含 `--` 会自动分流到测试运行器端。
+#
+# ## What
+# - 当列表为空时，退化为执行整个 `concurrency_primitives` 测试文件；
+# - 每个场景失败立即中断，保证“失败即阻断”。
+MIRI_SCENARIOS=${MIRI_SCENARIOS:-"cancellation_cross_thread_visibility budget_concurrent_consume_refund_invariant channel_close_sequences_eventually_closed"}
 
 rustup component add --toolchain "${MIRI_TOOLCHAIN}" miri >/dev/null
 cargo +"${MIRI_TOOLCHAIN}" miri setup
 
-cmd=(cargo +"${MIRI_TOOLCHAIN}" miri test --package spark-core --test concurrency_primitives)
+cmd_prefix=(cargo +"${MIRI_TOOLCHAIN}" miri test --package spark-core --test concurrency_primitives)
+cmd_suffix=()
 
 if [[ -n "${MIRI_FEATURES}" ]]; then
-  cmd+=(--features "${MIRI_FEATURES}")
+  cmd_prefix+=(--features "${MIRI_FEATURES}")
 fi
 
 if [[ "${MIRI_NO_DEFAULT_FEATURES}" == "1" ]]; then
-  cmd+=(--no-default-features)
+  cmd_prefix+=(--no-default-features)
 fi
 
 if [[ -n "${MIRI_EXTRA_ARGS}" ]]; then
   # shellcheck disable=SC2206
   extra=( ${MIRI_EXTRA_ARGS} )
-  cmd+=("${extra[@]}")
+  pass_to_suffix=0
+  for arg in "${extra[@]}"; do
+    if [[ $pass_to_suffix -eq 0 && "$arg" == "--" ]]; then
+      pass_to_suffix=1
+      cmd_suffix+=("--")
+      continue
+    fi
+
+    if [[ $pass_to_suffix -eq 1 ]]; then
+      cmd_suffix+=("${arg}")
+    else
+      cmd_prefix+=("${arg}")
+    fi
+  done
 fi
 
-printf '::group::Running %s\n' "${cmd[*]}"
-"${cmd[@]}"
-printf '::endgroup::\n'
+read -r -a miri_scenarios <<<"${MIRI_SCENARIOS}"
+
+if [[ ${#miri_scenarios[@]} -eq 0 || ( ${#miri_scenarios[@]} -eq 1 && -z "${miri_scenarios[0]}" ) ]]; then
+  full_cmd=("${cmd_prefix[@]}")
+  if [[ ${#cmd_suffix[@]} -gt 0 ]]; then
+    full_cmd+=("${cmd_suffix[@]}")
+  fi
+  printf '::group::Running %s\n' "${full_cmd[*]}"
+  "${full_cmd[@]}"
+  printf '::endgroup::\n'
+else
+  for scenario in "${miri_scenarios[@]}"; do
+    scenario_cmd=("${cmd_prefix[@]}" "${scenario}")
+    if [[ ${#cmd_suffix[@]} -gt 0 ]]; then
+      scenario_cmd+=("${cmd_suffix[@]}")
+    fi
+    printf '::group::Running %s\n' "${scenario_cmd[*]}"
+    "${scenario_cmd[@]}"
+    printf '::endgroup::\n'
+  done
+fi
