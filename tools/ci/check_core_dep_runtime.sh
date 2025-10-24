@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 教案级注释：脚本整体目标与背景
 # 1. 设计意图 (Why)
-#    - Spark Core 的架构原则要求“契约层不携带具体运行时假设”，避免核心 crate 与 tokio/async-std/smol 等执行框架产生硬编码耦合。
+#    - Spark Core 的架构原则要求“契约层不携带具体运行时假设”，避免核心 crate 与 tokio/async-std/smol/glommio 等执行框架产生硬编码耦合。
 #    - 本脚本作为 CI 守门人，自动化扫描 `cargo tree` 输出，确保任意特性组合下都没有直接引入上述运行时依赖。
 # 2. 使用场景 (What)
 #    - 在本地或 CI 环境调用脚本，若检测到禁止的依赖，将立即退出并给出清晰错误提示；
@@ -19,7 +19,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "${REPO_ROOT}"
 
 # 禁止的运行时依赖关键字，保持集中管理便于后续扩展。
-FORBIDDEN_RUNTIME_PATTERNS='tokio|async-std|smol'
+FORBIDDEN_RUNTIME_PATTERNS='tokio|async-std|smol|glommio'
 
 # teach-level 注释：函数契约与实现细节
 #
@@ -58,7 +58,7 @@ check_mode() {
         cat <<EOF >&2
 错误：在模式 "${mode_label}" 下检测到禁止的运行时依赖：
 ${matches}
-请移除 spark-core 对 tokio/async-std/smol 的直接引用，或将运行时能力下沉至宿主层。
+请移除 spark-core 对 tokio/async-std/smol/glommio 的直接引用，或将运行时能力下沉至宿主层。
 EOF
         exit 1
     fi
