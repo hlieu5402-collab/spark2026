@@ -133,3 +133,111 @@ impl ObservabilityFacade for DefaultObservabilityFacade {
         &self.health_checks
     }
 }
+
+/// 历史注入路径的兼容适配层。
+///
+/// # 设计动机（Why）
+/// - 在引入 [`ObservabilityFacade`] 之前，调用方通常直接管理日志、指标、运维事件总线
+///   以及健康探针四个句柄；为了保证迁移期平滑，本结构以 `#[deprecated]` 形式保留原
+///   有“分散注入”接口，便于旧代码在不修改签名的情况下复用 Facade 能力。
+/// - 结构位于 `observability::facade` 模块，与 Facade 并列，扮演“适配层”角色：
+///   既能快速转换为新的 Facade，也支持从 Facade 回退为旧句柄组合，为灰度迁移提供
+///   双向通道。
+///
+/// # 逻辑解析（How）
+/// - `new` 构造函数按原接口签名接收四个句柄；
+/// - `into_facade` / `to_facade` 将内部字段封装为 [`DefaultObservabilityFacade`]，
+///   供新 API 直接复用；
+/// - `from_facade` 允许在仅持有 Facade 时重新获得旧句柄集合，方便尚未迁移的组件；
+/// - 所有方法都克隆 `Arc`，确保不会改变原有所有权语义。
+///
+/// # 契约说明（What）
+/// - **字段含义**：`logger`/`metrics`/`ops_bus` 分别对应结构化日志、指标、运维事件；
+///   `health_checks` 为共享健康探针集合；
+/// - **前置条件**：与旧接口一致，所有句柄必须满足 `Send + Sync + 'static`；
+/// - **后置条件**：适配器仅复制引用计数，不修改底层实例状态。
+///
+/// # 风险与权衡（Trade-offs）
+/// - 作为兼容层保留一定技术债：若长期依赖将阻碍 Facade 普及；
+/// - 为避免误用，类型通过 `#[deprecated]` 强制在编译期给出提示；
+/// - 克隆 `Arc` 带来常数级原子操作成本，可忽略不计；
+/// - 若需要延迟创建 Facade，可在调用 `to_facade` 前结合 `OnceLock` 等结构缓存。
+#[derive(Clone)]
+#[deprecated(
+    since = "0.2.0",
+    note = "removal: planned after Trait 合并路线完成收敛阶段；migration: 直接依赖 ObservabilityFacade 并通过 CoreServices::with_observability_facade 注入能力，避免继续使用旧句柄组合。"
+)]
+pub struct LegacyObservabilityHandles {
+    /// 结构化日志句柄（旧接口字段，保持向后兼容）。
+    pub logger: Arc<dyn Logger>,
+    /// 指标采集提供者（旧接口字段，保持向后兼容）。
+    pub metrics: Arc<dyn MetricsProvider>,
+    /// 运维事件总线（旧接口字段，保持向后兼容）。
+    pub ops_bus: Arc<dyn OpsEventBus>,
+    /// 健康探针集合（旧接口字段，保持向后兼容）。
+    pub health_checks: HealthChecks,
+}
+
+#[allow(deprecated)]
+impl LegacyObservabilityHandles {
+    /// 以旧接口字段构造兼容适配层。
+    ///
+    /// # 契约说明
+    /// - **输入参数**：与历史版本保持一致，接受四个句柄；
+    /// - **前置条件**：句柄需满足线程安全约束；
+    /// - **后置条件**：返回的适配器可多次克隆，适用于仍依赖旧签名的构造函数。
+    #[allow(deprecated)]
+    pub fn new(
+        logger: Arc<dyn Logger>,
+        metrics: Arc<dyn MetricsProvider>,
+        ops_bus: Arc<dyn OpsEventBus>,
+        health_checks: HealthChecks,
+    ) -> Self {
+        Self {
+            logger,
+            metrics,
+            ops_bus,
+            health_checks,
+        }
+    }
+
+    /// 将旧句柄组合升级为 [`DefaultObservabilityFacade`]。
+    ///
+    /// # 逻辑
+    /// - 克隆内部 `Arc`，复用 Facade 构造器；
+    /// - 便于在迁移过程中直接替换旧结构为 Facade。
+    #[allow(deprecated)]
+    pub fn into_facade(self) -> DefaultObservabilityFacade {
+        DefaultObservabilityFacade::new(self.logger, self.metrics, self.ops_bus, self.health_checks)
+    }
+
+    /// 从旧句柄组合生成新的 Facade，但保留原适配器供重复使用。
+    ///
+    /// # 使用场景
+    /// - 需要多次构造 Facade，但仍要向旧接口暴露字段时；
+    /// - 通过克隆 `Arc` 保证线程安全与零额外所有权转移。
+    #[allow(deprecated)]
+    pub fn to_facade(&self) -> DefaultObservabilityFacade {
+        DefaultObservabilityFacade::new(
+            Arc::clone(&self.logger),
+            Arc::clone(&self.metrics),
+            Arc::clone(&self.ops_bus),
+            self.health_checks.clone(),
+        )
+    }
+
+    /// 自 Facade 恢复旧句柄组合，支持旧代码路径访问具体句柄。
+    ///
+    /// # 风险提示
+    /// - 建议仅在迁移窗口使用，长期依赖会抵消 Facade 降样板收益；
+    /// - 若 Facade 内部改用懒加载，需要确保恢复逻辑仍能即时提供句柄。
+    #[allow(deprecated)]
+    pub fn from_facade(facade: &impl ObservabilityFacade) -> Self {
+        Self {
+            logger: facade.logger(),
+            metrics: facade.metrics(),
+            ops_bus: facade.ops_bus(),
+            health_checks: facade.health_checks().clone(),
+        }
+    }
+}

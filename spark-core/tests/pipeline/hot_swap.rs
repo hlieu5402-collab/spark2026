@@ -12,8 +12,9 @@ use spark_core::{
     contract::{CallContext, CloseReason, Deadline},
     future::BoxFuture,
     observability::{
-        AttributeSet, Counter, EventPolicy, Gauge, Histogram, LogRecord, Logger, MetricsProvider,
-        OpsEvent, OpsEventBus, OpsEventKind, TraceContext, TraceFlags,
+        AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram,
+        LogRecord, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, TraceContext,
+        TraceFlags,
     },
     pipeline::{
         Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
@@ -34,16 +35,16 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
     let ops = Arc::new(NoopOpsBus::default());
     let metrics = Arc::new(NoopMetrics);
 
-    let services = CoreServices {
-        runtime: runtime as Arc<dyn AsyncRuntime>,
-        buffer_pool: Arc::new(NoopBufferPool),
-        metrics: metrics as Arc<dyn MetricsProvider>,
-        logger: logger as Arc<dyn Logger>,
-        membership: None,
-        discovery: None,
-        ops_bus: ops as Arc<dyn OpsEventBus>,
-        health_checks: Arc::new(Vec::new()),
-    };
+    let services = CoreServices::with_observability_facade(
+        runtime as Arc<dyn AsyncRuntime>,
+        Arc::new(NoopBufferPool),
+        DefaultObservabilityFacade::new(
+            logger as Arc<dyn Logger>,
+            metrics as Arc<dyn MetricsProvider>,
+            ops as Arc<dyn OpsEventBus>,
+            Arc::new(Vec::new()),
+        ),
+    );
 
     let trace_context = TraceContext::new(
         [0x11; TraceContext::TRACE_ID_LENGTH],
@@ -122,16 +123,16 @@ mod loom_tests {
             let ops = Arc::new(NoopOpsBus::default());
             let metrics = Arc::new(NoopMetrics);
 
-            let services = CoreServices {
-                runtime: runtime as Arc<dyn AsyncRuntime>,
-                buffer_pool: Arc::new(NoopBufferPool),
-                metrics: metrics as Arc<dyn MetricsProvider>,
-                logger: logger as Arc<dyn Logger>,
-                membership: None,
-                discovery: None,
-                ops_bus: ops as Arc<dyn OpsEventBus>,
-                health_checks: Arc::new(Vec::new()),
-            };
+            let services = CoreServices::with_observability_facade(
+                runtime as Arc<dyn AsyncRuntime>,
+                Arc::new(NoopBufferPool),
+                DefaultObservabilityFacade::new(
+                    logger as Arc<dyn Logger>,
+                    metrics as Arc<dyn MetricsProvider>,
+                    ops as Arc<dyn OpsEventBus>,
+                    Arc::new(Vec::new()),
+                ),
+            );
 
             let trace_context = TraceContext::new(
                 [0x33; TraceContext::TRACE_ID_LENGTH],

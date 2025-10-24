@@ -12,8 +12,8 @@ use spark_core::{
     contract::{CallContext, CloseReason, Deadline},
     future::BoxFuture,
     observability::{
-        AttributeSet, Counter, EventPolicy, Gauge, Histogram, LogRecord, Logger, MetricsProvider,
-        OpsEvent, OpsEventBus, OpsEventKind, TraceContext,
+        AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram,
+        LogRecord, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, TraceContext,
     },
     pipeline::{
         Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
@@ -48,16 +48,16 @@ fn trace_context_auto_injected_and_spans_form_parent_child_tree() {
     let ops = Arc::new(NoopOpsBus::default());
     let metrics = Arc::new(NoopMetrics);
 
-    let services = CoreServices {
-        runtime: runtime as Arc<dyn AsyncRuntime>,
-        buffer_pool: Arc::new(NoopBufferPool),
-        metrics: metrics as Arc<dyn MetricsProvider>,
-        logger: logger.clone() as Arc<dyn Logger>,
-        membership: None,
-        discovery: None,
-        ops_bus: ops as Arc<dyn OpsEventBus>,
-        health_checks: Arc::new(Vec::new()),
-    };
+    let services = CoreServices::with_observability_facade(
+        runtime as Arc<dyn AsyncRuntime>,
+        Arc::new(NoopBufferPool),
+        DefaultObservabilityFacade::new(
+            logger.clone() as Arc<dyn Logger>,
+            metrics as Arc<dyn MetricsProvider>,
+            ops as Arc<dyn OpsEventBus>,
+            Arc::new(Vec::new()),
+        ),
+    );
 
     let call_context = CallContext::builder().build();
     let root_trace = call_context.trace_context().clone();

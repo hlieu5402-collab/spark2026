@@ -6,8 +6,8 @@ use std::{
 use spark_core::{
     contract::CallContext,
     observability::{
-        AttributeSet, Counter, Gauge, Histogram, InstrumentDescriptor, LogRecord, LogSeverity,
-        Logger, MetricAttributeValue, MetricsProvider, OpsEventBus,
+        AttributeSet, Counter, DefaultObservabilityFacade, Gauge, Histogram, InstrumentDescriptor,
+        LogRecord, LogSeverity, Logger, MetricAttributeValue, MetricsProvider, OpsEventBus,
         metrics::contract::pipeline as pipeline_contract,
     },
     pipeline::{
@@ -37,16 +37,16 @@ fn pipeline_mutations_emit_epoch_metrics_and_logs() {
     let logger = Arc::new(RecordingLogger::default());
     let ops_bus = Arc::new(NoopOpsBus::default());
 
-    let services = CoreServices {
-        runtime: runtime as Arc<dyn AsyncRuntime>,
-        buffer_pool: Arc::new(NoopBufferPool),
-        metrics: metrics.clone() as Arc<dyn MetricsProvider>,
-        logger: logger.clone() as Arc<dyn Logger>,
-        membership: None,
-        discovery: None,
-        ops_bus: ops_bus as Arc<dyn OpsEventBus>,
-        health_checks: Arc::new(Vec::new()),
-    };
+    let services = CoreServices::with_observability_facade(
+        runtime as Arc<dyn AsyncRuntime>,
+        Arc::new(NoopBufferPool),
+        DefaultObservabilityFacade::new(
+            logger.clone() as Arc<dyn Logger>,
+            metrics.clone() as Arc<dyn MetricsProvider>,
+            ops_bus as Arc<dyn OpsEventBus>,
+            Arc::new(Vec::new()),
+        ),
+    );
 
     let call_context = CallContext::builder().build();
     let channel = Arc::new(TestChannel::new("epoch-metrics-channel"));

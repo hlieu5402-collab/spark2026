@@ -4,6 +4,8 @@ ci-lints:
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cargo run --quiet --package spark-deprecation-lint
+	./tools/ci/public_api_diff_budget.sh
+	./tools/ci/check_public_trait_budget.sh
 
 ci-zc-asm:
 	cargo build --workspace
