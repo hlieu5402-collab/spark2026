@@ -289,53 +289,19 @@ pub mod contract {
                 .with_description("向客户端发送的业务载荷大小")
                 .with_unit("bytes");
 
-        /// 标签：业务服务名。
-        pub const ATTR_SERVICE_NAME: &str = "service.name";
-        /// 标签：路由/逻辑分组。
-        pub const ATTR_ROUTE_ID: &str = "route.id";
-        /// 标签：操作/方法名。
-        pub const ATTR_OPERATION: &str = "operation";
-        /// 标签：入站协议（如 grpc/http/quic）。
-        pub const ATTR_PROTOCOL: &str = "protocol";
-        /// 标签：HTTP/gRPC 等返回码。
-        pub const ATTR_STATUS_CODE: &str = "status.code";
-        /// 标签：调用结果（success/error）。
-        pub const ATTR_OUTCOME: &str = "outcome";
-        /// 标签：错误分类（限枚举，如 timeout/internal/validation）。
-        pub const ATTR_ERROR_KIND: &str = "error.kind";
-        /// 标签：对端身份（仅允许小集合，例如 upstream/downstream）。
-        pub const ATTR_PEER_IDENTITY: &str = "peer.identity";
-        /// 标签：ReadyState 主枚举值（ready/busy/budget_exhausted/retry_after）。
-        pub const ATTR_READY_STATE: &str = "ready.state";
-        /// 标签：ReadyState 细分详情，例如 queue_full/after。
-        pub const ATTR_READY_DETAIL: &str = "ready.detail";
-
-        /// 标签值：成功。
-        pub const OUTCOME_SUCCESS: &str = "success";
-        /// 标签值：失败。
-        pub const OUTCOME_ERROR: &str = "error";
-
-        /// ReadyState 标签：完全就绪。
-        pub const READY_STATE_READY: &str = "ready";
-        /// ReadyState 标签：繁忙。
-        pub const READY_STATE_BUSY: &str = "busy";
-        /// ReadyState 标签：预算耗尽。
-        pub const READY_STATE_BUDGET_EXHAUSTED: &str = "budget_exhausted";
-        /// ReadyState 标签：RetryAfter。
-        pub const READY_STATE_RETRY_AFTER: &str = "retry_after";
-
-        /// Ready detail 占位符，避免缺失标签。
-        pub const READY_DETAIL_PLACEHOLDER: &str = "_";
-        /// Ready detail：上游繁忙。
-        pub const READY_DETAIL_UPSTREAM: &str = "upstream";
-        /// Ready detail：下游繁忙。
-        pub const READY_DETAIL_DOWNSTREAM: &str = "downstream";
-        /// Ready detail：内部队列溢出。
-        pub const READY_DETAIL_QUEUE_FULL: &str = "queue_full";
-        /// Ready detail：自定义繁忙原因。
-        pub const READY_DETAIL_CUSTOM: &str = "custom";
-        /// Ready detail：RetryAfter 相对等待。
-        pub const READY_DETAIL_RETRY_AFTER: &str = "after";
+        /// 关键标签常量由 `observability::keys::metrics::service` 自动生成，确保指标/日志与契约同步。
+        pub use crate::observability::keys::metrics::service::{
+            ATTR_ERROR_KIND, ATTR_OPERATION, ATTR_OUTCOME, ATTR_PEER_IDENTITY, ATTR_PROTOCOL,
+            ATTR_READY_DETAIL, ATTR_READY_STATE, ATTR_ROUTE_ID, ATTR_SERVICE_NAME,
+            ATTR_STATUS_CODE,
+        };
+        /// ReadyState 与 Outcome 的标签值同样来自 SOT，避免与仪表盘枚举脱节。
+        pub use crate::observability::keys::metrics::service::{
+            OUTCOME_ERROR, OUTCOME_SUCCESS, READY_DETAIL_CUSTOM, READY_DETAIL_DOWNSTREAM,
+            READY_DETAIL_PLACEHOLDER, READY_DETAIL_QUEUE_FULL, READY_DETAIL_RETRY_AFTER,
+            READY_DETAIL_UPSTREAM, READY_STATE_BUDGET_EXHAUSTED, READY_STATE_BUSY,
+            READY_STATE_READY, READY_STATE_RETRY_AFTER,
+        };
     }
 
     /// Codec 域指标契约定义。
@@ -382,19 +348,11 @@ pub mod contract {
                 .with_description("解码阶段出现的错误计数")
                 .with_unit("errors");
 
-        /// 标签：编解码器名称。
-        pub const ATTR_CODEC_NAME: &str = "codec.name";
-        /// 标签：模式（encode/decode）。
-        pub const ATTR_MODE: &str = "codec.mode";
-        /// 标签：内容类型或媒体类型。
-        pub const ATTR_CONTENT_TYPE: &str = "content.type";
-        /// 标签：错误分类。
-        pub const ATTR_ERROR_KIND: &str = "error.kind";
-
-        /// 标签值：编码模式。
-        pub const MODE_ENCODE: &str = "encode";
-        /// 标签值：解码模式。
-        pub const MODE_DECODE: &str = "decode";
+        /// 编解码标签常量统一来源于 `observability::keys::metrics::codec`，保持编码/解码枚举一致。
+        pub use crate::observability::keys::metrics::codec::{
+            ATTR_CODEC_NAME, ATTR_CONTENT_TYPE, ATTR_ERROR_KIND, ATTR_MODE, MODE_DECODE,
+            MODE_ENCODE,
+        };
     }
 
     /// Transport 域指标契约定义。
@@ -441,27 +399,11 @@ pub mod contract {
                 .with_description("底层传输层发送的字节总量")
                 .with_unit("bytes");
 
-        /// 标签：传输协议（tcp/quic/uds）。
-        pub const ATTR_PROTOCOL: &str = "transport.protocol";
-        /// 标签：监听器或连接的逻辑标识。
-        pub const ATTR_LISTENER_ID: &str = "listener.id";
-        /// 标签：对端角色（client/server）。
-        pub const ATTR_PEER_ROLE: &str = "peer.role";
-        /// 标签：连接结果（success/failure）。
-        pub const ATTR_RESULT: &str = "result";
-        /// 标签：错误分类。
-        pub const ATTR_ERROR_KIND: &str = "error.kind";
-        /// 标签：socket 家族（ipv4/ipv6/unix）。
-        pub const ATTR_SOCKET_FAMILY: &str = "socket.family";
-
-        /// 标签值：成功。
-        pub const RESULT_SUCCESS: &str = "success";
-        /// 标签值：失败。
-        pub const RESULT_FAILURE: &str = "failure";
-        /// 标签值：客户端角色。
-        pub const ROLE_CLIENT: &str = "client";
-        /// 标签值：服务端角色。
-        pub const ROLE_SERVER: &str = "server";
+        /// 传输层标签与枚举值复用合约生成的常量，避免 PromQL/日志字段出现漂移。
+        pub use crate::observability::keys::metrics::transport::{
+            ATTR_ERROR_KIND, ATTR_LISTENER_ID, ATTR_PEER_ROLE, ATTR_PROTOCOL, ATTR_RESULT,
+            ATTR_SOCKET_FAMILY, RESULT_FAILURE, RESULT_SUCCESS, ROLE_CLIENT, ROLE_SERVER,
+        };
     }
 
     /// Pipeline 域指标契约定义。
@@ -493,21 +435,11 @@ pub mod contract {
                 .with_description("Pipeline Handler 变更事件（add/remove/replace）的累计次数")
                 .with_unit("events");
 
-        /// 标签：控制器实现标识。
-        pub const ATTR_CONTROLLER: &str = "pipeline.controller";
-        /// 标签：Pipeline 唯一标识。
-        pub const ATTR_PIPELINE_ID: &str = "pipeline.id";
-        /// 标签：变更操作类型。
-        pub const ATTR_MUTATION_OP: &str = "pipeline.mutation.op";
-        /// 标签：最新纪元，便于日志、事件联动。
-        pub const ATTR_EPOCH: &str = "pipeline.epoch";
-
-        /// 变更操作：新增 Handler。
-        pub const OP_ADD: &str = "add";
-        /// 变更操作：移除 Handler。
-        pub const OP_REMOVE: &str = "remove";
-        /// 变更操作：替换 Handler。
-        pub const OP_REPLACE: &str = "replace";
+        /// Pipeline 标签与操作枚举由合约生成，保证控制面与数据面的一致性。
+        pub use crate::observability::keys::metrics::pipeline::{
+            ATTR_CONTROLLER, ATTR_EPOCH, ATTR_MUTATION_OP, ATTR_PIPELINE_ID, CONTROLLER_HOT_SWAP,
+            OP_ADD, OP_REMOVE, OP_REPLACE,
+        };
     }
 
     /// Limits 域指标契约定义。
@@ -553,10 +485,8 @@ pub mod contract {
                 .with_description("排队策略执行时的实时队列深度")
                 .with_unit("entries");
 
-        /// 标签：资源类型。
-        pub const ATTR_RESOURCE: &str = "limit.resource";
-        /// 标签：策略类型。
-        pub const ATTR_ACTION: &str = "limit.action";
+        /// 限额标签常量来自合约，保证治理策略与指标维度同步。
+        pub use crate::observability::keys::metrics::limits::{ATTR_ACTION, ATTR_RESOURCE};
     }
 
     /// 热更新域指标契约定义。
@@ -579,7 +509,7 @@ pub mod contract {
                 .with_description("从收到配置更新到完成应用的耗时分布，单位毫秒")
                 .with_unit("ms");
 
-        /// 标签：区分具体的配置组件（如 limits/timeouts）。
-        pub const ATTR_COMPONENT: &str = "hot_reload.component";
+        /// 热更新组件标签复用 SOT 常量，确保运行时与文档描述一致。
+        pub use crate::observability::keys::metrics::hot_reload::ATTR_COMPONENT;
     }
 }

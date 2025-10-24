@@ -552,8 +552,6 @@ pub struct HotSwapController {
 }
 
 /// HotSwap 控制器在观测指标中的控制器标签取值。
-const HOT_SWAP_CONTROLLER_LABEL: &str = "hot_swap";
-
 impl HotSwapController {
     /// 构造新的热插拔控制器。
     ///
@@ -621,7 +619,10 @@ impl HotSwapController {
     /// - **契约（What）**：返回集合的生命周期绑定于当前调用；调用方不得缓存引用超出函数作用域。
     fn base_pipeline_attributes(&self) -> OwnedAttributeSet {
         let mut attributes = OwnedAttributeSet::new();
-        attributes.push_owned(pipeline_metrics::ATTR_CONTROLLER, HOT_SWAP_CONTROLLER_LABEL);
+        attributes.push_owned(
+            pipeline_metrics::ATTR_CONTROLLER,
+            pipeline_metrics::CONTROLLER_HOT_SWAP,
+        );
         attributes.push_owned(
             pipeline_metrics::ATTR_PIPELINE_ID,
             self.channel.id().to_string(),

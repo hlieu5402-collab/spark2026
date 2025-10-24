@@ -5,7 +5,9 @@ use core::{fmt, time::Duration};
 use crate::{
     SparkError,
     future::BoxFuture,
-    observability::{OpsEvent, OwnedAttributeSet, TraceContext},
+    observability::{
+        OpsEvent, OwnedAttributeSet, TraceContext, keys::logging::shutdown as shutdown_fields,
+    },
     runtime::{AsyncRuntime, CoreServices, MonotonicTimePoint},
 };
 
@@ -288,10 +290,16 @@ impl GracefulShutdownCoordinator {
             });
 
             let mut fields = OwnedAttributeSet::new();
-            fields.push_owned("shutdown.reason.code", reason.code().to_owned());
-            fields.push_owned("shutdown.reason.message", reason.message().to_owned());
-            fields.push_owned("shutdown.target.count", targets.len() as u64);
-            fields.push_owned("shutdown.deadline.ms", deadline_duration.as_millis() as i64);
+            fields.push_owned(shutdown_fields::FIELD_REASON_CODE, reason.code().to_owned());
+            fields.push_owned(
+                shutdown_fields::FIELD_REASON_MESSAGE,
+                reason.message().to_owned(),
+            );
+            fields.push_owned(shutdown_fields::FIELD_TARGET_COUNT, targets.len() as u64);
+            fields.push_owned(
+                shutdown_fields::FIELD_DEADLINE_MS,
+                deadline_duration.as_millis() as i64,
+            );
             let message = format!(
                 "graceful shutdown initiated (code={}, targets={})",
                 reason.code(),
@@ -327,9 +335,11 @@ impl GracefulShutdownCoordinator {
                     }
                     TimeoutOutcome::Completed(Err(err)) => {
                         let mut warn_fields = OwnedAttributeSet::new();
-                        warn_fields
-                            .push_owned("shutdown.target.label", target.label.clone().into_owned());
-                        warn_fields.push_owned("shutdown.error.code", err.code());
+                        warn_fields.push_owned(
+                            shutdown_fields::FIELD_TARGET_LABEL,
+                            target.label.clone().into_owned(),
+                        );
+                        warn_fields.push_owned(shutdown_fields::FIELD_ERROR_CODE, err.code());
                         logger.error_with_fields(
                             "graceful shutdown failed",
                             Some(&err),
@@ -347,9 +357,14 @@ impl GracefulShutdownCoordinator {
                         (target.force_close)();
                         let elapsed = runtime.now().saturating_duration_since(start);
                         let mut warn_fields = OwnedAttributeSet::new();
-                        warn_fields
-                            .push_owned("shutdown.target.label", target.label.clone().into_owned());
-                        warn_fields.push_owned("shutdown.elapsed.ms", elapsed.as_millis() as i64);
+                        warn_fields.push_owned(
+                            shutdown_fields::FIELD_TARGET_LABEL,
+                            target.label.clone().into_owned(),
+                        );
+                        warn_fields.push_owned(
+                            shutdown_fields::FIELD_ELAPSED_MS,
+                            elapsed.as_millis() as i64,
+                        );
                         logger.warn_with_fields(
                             "graceful shutdown timed out and forced",
                             warn_fields.as_slice(),

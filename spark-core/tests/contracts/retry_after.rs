@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use spark_core::contract::{Budget, BudgetDecision, BudgetKind};
 use spark_core::observability::{
-    AttributeSet, Counter, Gauge, Histogram, KeyValue, MetricAttributeValue, MetricsProvider,
+    keys::metrics::service as service_keys, AttributeSet, Counter, Gauge, Histogram, KeyValue,
+    MetricAttributeValue, MetricsProvider,
 };
 use spark_core::service::metrics::ServiceMetricsHook;
 use spark_core::status::{ReadyState, RetryAdvice, RetryRhythm, SubscriptionBudget};
@@ -223,10 +224,10 @@ fn retry_after_alternating_with_budget_exhausted_preserves_budget() {
 
 fn build_base_attributes() -> Vec<KeyValue<'static>> {
     vec![
-        KeyValue::new("service.name", "retry-contract"),
-        KeyValue::new("route.id", "catalog"),
-        KeyValue::new("operation", "poll_ready"),
-        KeyValue::new("protocol", "grpc"),
+        KeyValue::new(service_keys::ATTR_SERVICE_NAME, "retry-contract"),
+        KeyValue::new(service_keys::ATTR_ROUTE_ID, "catalog"),
+        KeyValue::new(service_keys::ATTR_OPERATION, "poll_ready"),
+        KeyValue::new(service_keys::ATTR_PROTOCOL, "grpc"),
     ]
 }
 

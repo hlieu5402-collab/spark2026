@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     env,
     fmt::Write,
     fs,
@@ -25,11 +26,23 @@ use serde::Deserialize;
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let contract_path = manifest_dir.join("../contracts/error_matrix.toml");
+    println!("cargo:rerun-if-changed={}", contract_path.display());
     let contract = read_contract(&contract_path);
     let entries = expand_entries(&contract);
     let generated = render_category_matrix(&entries);
     let output_path = manifest_dir.join("src/error/category_matrix.rs");
     fs::write(&output_path, generated).expect("写入 category_matrix.rs");
+
+    let observability_contract_path = manifest_dir.join("../contracts/observability_keys.toml");
+    println!(
+        "cargo:rerun-if-changed={}",
+        observability_contract_path.display()
+    );
+    let observability_contract = read_observability_keys_contract(&observability_contract_path);
+    let observability_generated = render_observability_keys(&observability_contract);
+    let observability_output_path = manifest_dir.join("src/observability/keys.rs");
+    fs::write(&observability_output_path, observability_generated)
+        .expect("写入 observability/keys.rs");
 }
 
 /// 合约文件的顶层结构：包含若干行数据。
@@ -156,6 +169,284 @@ fn expand_entries(contract: &ErrorMatrixContract) -> Vec<ExpandedEntry> {
     }
     entries.sort_by(|a, b| a.code.cmp(&b.code));
     entries
+}
+
+/// 可观测性键名合约的顶层结构：按分组列出键及其元数据。
+#[derive(Debug, Deserialize)]
+struct ObservabilityKeysContract {
+    groups: Vec<KeyGroupSpec>,
+}
+
+/// 描述某一键名分组及其模块层级信息。
+#[derive(Debug, Deserialize, Clone)]
+struct KeyGroupSpec {
+    path: Vec<String>,
+    title: String,
+    description: String,
+    #[serde(default)]
+    items: Vec<KeySpec>,
+}
+
+/// 单个键或标签枚举值的声明。
+#[derive(Debug, Deserialize, Clone)]
+struct KeySpec {
+    ident: String,
+    value: String,
+    kind: KeyKind,
+    #[serde(default)]
+    usage: Vec<UsageDomain>,
+    doc: String,
+}
+
+/// 键名的分类类型。
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum KeyKind {
+    AttributeKey,
+    LabelValue,
+    LogField,
+    TraceField,
+}
+
+impl KeyKind {
+    /// 返回可读的中文标签，用于文档与注释输出。
+    fn label(self) -> &'static str {
+        match self {
+            KeyKind::AttributeKey => "指标/日志键",
+            KeyKind::LabelValue => "标签枚举值",
+            KeyKind::LogField => "日志字段",
+            KeyKind::TraceField => "追踪字段",
+        }
+    }
+}
+
+/// 键名适用的可观测性维度。
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+enum UsageDomain {
+    Metrics,
+    Logs,
+    Tracing,
+    Events,
+}
+
+impl UsageDomain {
+    /// 返回中文标签，辅助输出“适用范围”。
+    fn label(self) -> &'static str {
+        match self {
+            UsageDomain::Metrics => "指标",
+            UsageDomain::Logs => "日志",
+            UsageDomain::Tracing => "追踪",
+            UsageDomain::Events => "运维事件",
+        }
+    }
+}
+
+/// 构建模块树时使用的中间结构。
+#[derive(Default)]
+struct ModuleNode {
+    title: Option<String>,
+    description: Option<String>,
+    items: Vec<KeySpec>,
+    children: BTreeMap<String, ModuleNode>,
+}
+
+/// 读取并解析可观测性键名合约。
+///
+/// # Why
+/// - 集中读取 SOT 合约，避免在多个生成器之间重复解析逻辑；
+/// - 解析失败时立即给出上下文，帮助开发者定位格式错误。
+///
+/// # What
+/// - 输入：TOML 文件路径；输出：结构化的 [`ObservabilityKeysContract`]。
+fn read_observability_keys_contract(path: &Path) -> ObservabilityKeysContract {
+    let raw = fs::read_to_string(path).unwrap_or_else(|err| {
+        panic!("读取 {path:?} 失败: {err}");
+    });
+    toml::from_str(&raw).unwrap_or_else(|err| {
+        panic!("解析 {path:?} 失败: {err}");
+    })
+}
+
+/// 生成 `observability::keys` 模块源码。
+///
+/// # 教案式说明
+/// - **意图（Why）**：构建时一次生成全部指标/日志/追踪键，杜绝人为拼写错误；
+/// - **逻辑（How）**：构造模块树、逐层写入模块注释与常量定义；
+/// - **契约（What）**：返回完整的 Rust 源码字符串，供写入 `spark-core/src/observability/keys.rs`。
+fn render_observability_keys(contract: &ObservabilityKeysContract) -> String {
+    let mut groups = contract.groups.clone();
+    groups.sort_by(|a, b| a.path.cmp(&b.path));
+
+    let mut root = ModuleNode::default();
+    for group in &groups {
+        insert_group(&mut root, group, &group.path);
+    }
+
+    let mut buffer = String::new();
+    buffer.push_str("// @generated 自动生成文件，请勿手工修改。\n");
+    buffer.push_str("// 由 spark-core/build.rs 根据 contracts/observability_keys.toml 生成。\n\n");
+    buffer.push_str("//! 可观测性键名契约：统一指标、日志与追踪键名的单一事实来源。\n");
+    buffer.push_str("//!\n");
+    buffer.push_str(
+        "//! 教案式说明（Why）：数据来自 `contracts/observability_keys.toml`，构建脚本与工具据此生成代码与文档，避免多处漂移。\n",
+    );
+    buffer.push_str(
+        "//! 契约定义（What）：各子模块（如 `metrics::service`）提供只读常量，供指标、日志与追踪统一引用。\n",
+    );
+    buffer.push_str(
+        "//! 实现细节（How）：构建阶段展开模块树并写入稳定的 Rust 源文件，每个常量附带类型与适用范围说明。\n\n",
+    );
+
+    for (name, child) in &root.children {
+        let path = vec![name.clone()];
+        render_module(&mut buffer, name, child, 0, &path);
+        buffer.push('\n');
+    }
+
+    buffer
+}
+
+/// 将分组信息插入模块树，缺失的中间节点会自动创建。
+fn insert_group(current: &mut ModuleNode, group: &KeyGroupSpec, path: &[String]) {
+    if path.is_empty() {
+        current.title = Some(group.title.clone());
+        current.description = Some(group.description.clone());
+        current.items = group.items.clone();
+        return;
+    }
+
+    let (head, tail) = path.split_first().expect("路径非空");
+    let child = current.children.entry(head.clone()).or_default();
+    insert_group(child, group, tail);
+}
+
+/// 递归渲染模块与其子项。
+fn render_module(
+    buffer: &mut String,
+    name: &str,
+    node: &ModuleNode,
+    indent: usize,
+    path: &[String],
+) {
+    write_module_doc(buffer, indent, name, node, path);
+    indent_with(buffer, indent);
+    writeln!(buffer, "pub mod {name} {{").expect("写入模块头部");
+
+    if !node.children.is_empty() {
+        buffer.push('\n');
+    }
+
+    for (child_name, child_node) in &node.children {
+        let mut child_path = path.to_vec();
+        child_path.push(child_name.clone());
+        render_module(buffer, child_name, child_node, indent + 1, &child_path);
+        buffer.push('\n');
+    }
+
+    if !node.children.is_empty() && !node.items.is_empty() {
+        buffer.push('\n');
+    }
+
+    for (index, item) in node.items.iter().enumerate() {
+        render_item(buffer, item, indent + 1);
+        if index + 1 < node.items.len() {
+            buffer.push('\n');
+        }
+    }
+
+    indent_with(buffer, indent);
+    buffer.push_str("}\n");
+}
+
+/// 写入模块级别的注释，优先使用合约中的标题与描述。
+fn write_module_doc(
+    buffer: &mut String,
+    indent: usize,
+    name: &str,
+    node: &ModuleNode,
+    path: &[String],
+) {
+    let mut lines = Vec::new();
+    if let Some(title) = &node.title {
+        lines.push(title.clone());
+        if let Some(description) = &node.description {
+            lines.push(String::new());
+            lines.extend(description.lines().map(|line| line.to_owned()));
+        }
+    } else {
+        let scope = path.join("::");
+        lines.push(format!("{scope} 键名分组（模块标识：{name}）"));
+        lines.push(String::new());
+        lines.push("该分组由 contracts/observability_keys.toml 自动生成。".to_string());
+    }
+
+    for line in lines {
+        indent_with(buffer, indent);
+        if line.is_empty() {
+            buffer.push_str("///\n");
+        } else {
+            writeln!(buffer, "/// {line}").expect("写入模块注释");
+        }
+    }
+}
+
+/// 渲染单个键常量及其注释。
+fn render_item(buffer: &mut String, item: &KeySpec, indent: usize) {
+    let mut usage = item.usage.clone();
+    usage.sort();
+    usage.dedup();
+
+    let usage_text = if usage.is_empty() {
+        "适用范围：-".to_string()
+    } else {
+        let joined = usage
+            .into_iter()
+            .map(UsageDomain::label)
+            .collect::<Vec<_>>()
+            .join("、");
+        format!("适用范围：{joined}。")
+    };
+
+    write_doc_attr(buffer, indent, &format!("类型：{}。", item.kind.label()));
+    write_doc_attr(buffer, indent, &usage_text);
+    write_doc_attr(buffer, indent, "");
+    for line in item.doc.lines() {
+        write_doc_attr(buffer, indent, line);
+    }
+    indent_with(buffer, indent);
+    writeln!(
+        buffer,
+        "pub const {}: &str = \"{}\";",
+        item.ident,
+        escape_rust_string(&item.value)
+    )
+    .expect("写入常量");
+}
+
+/// 写入单行 `#[doc = "..."]` 属性。
+fn write_doc_attr(buffer: &mut String, indent: usize, line: &str) {
+    indent_with(buffer, indent);
+    buffer.push_str("#[doc = \"");
+    buffer.push_str(&escape_doc(line));
+    buffer.push_str("\"]\n");
+}
+
+/// 按缩进写入四个空格乘以层级。
+fn indent_with(buffer: &mut String, indent: usize) {
+    for _ in 0..indent {
+        buffer.push_str("    ");
+    }
+}
+
+/// 转义 doc 属性中的特殊字符。
+fn escape_doc(input: &str) -> String {
+    input.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// 转义字符串字面量。
+fn escape_rust_string(input: &str) -> String {
+    input.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// 渲染最终的 Rust 模块文本。
