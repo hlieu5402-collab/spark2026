@@ -16,6 +16,8 @@
 mod builder;
 mod change;
 mod error;
+mod events;
+mod events_runtime;
 mod key;
 mod profile;
 mod snapshot;
@@ -30,6 +32,11 @@ pub use builder::{
 };
 pub use change::{ChangeEvent, ChangeNotification, ChangeSet};
 pub use error::{ConfigurationError, ConfigurationErrorKind, SourceRegistrationError};
+pub use events::*;
+pub use events_runtime::{
+    DriftAggregationContext, DriftAggregationError, DriftAggregationOutcome, DriftNodeReport,
+    aggregate_configuration_drift,
+};
 pub(crate) use key::ConfigKeyRepr;
 pub use key::{ConfigKey, ConfigScope};
 pub use profile::{ProfileDescriptor, ProfileId, ProfileLayering};
