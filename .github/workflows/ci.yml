@@ -213,6 +213,7 @@ jobs:
     name: Miri smoke tests
     runs-on: ubuntu-latest
     needs: lint-and-docs
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -220,7 +221,7 @@ jobs:
       - name: Install nightly toolchain with Miri
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-12-31
+          toolchain: nightly
           components: miri
 
       - name: Cache cargo artifacts
@@ -231,7 +232,7 @@ jobs:
 
       - name: Run workspace Miri tests
         env:
-          MIRI_TOOLCHAIN: nightly-2024-12-31
+          MIRI_TOOLCHAIN: nightly
         run: tools/ci/miri-test.sh
 
   sanitizers:
@@ -249,7 +250,7 @@ jobs:
       - name: Install nightly toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-12-31
+          toolchain: nightly
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
@@ -267,29 +268,31 @@ jobs:
         run: tools/ci/sanitizers.sh
 
   loom:
-    name: Loom model checks (MSRV)
+    name: Loom model checks
     runs-on: ubuntu-latest
     needs: lint-and-docs
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.89 toolchain
+      - name: Install nightly toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.89.0
+          toolchain: nightly
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: msrv-1.89
+          shared-key: nightly-loom
           cache-on-failure: true
 
       - name: Run loom smoke tests
         env:
-          RUSTFLAGS: --cfg loom
+          LOOM_TOOLCHAIN: nightly
           LOOM_MAX_PREEMPTIONS: "2"
-        run: cargo test --manifest-path spark-core/Cargo.toml --features loom-model,std --lib --tests
+          LOOM_MAX_BRANCHES: "4096"
+        run: tools/ci/loom-test.sh
 
   runtime-adapters:
     name: Runtime adapter TCK (${{ matrix.runtime }})
