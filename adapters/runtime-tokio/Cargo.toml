@@ -1,0 +1,20 @@
+[package]
+name = "spark-runtime-tokio-adapter"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "Tokio 运行时上的 spark-contract-tests 适配层 TCK 驱动"
+
+[workspace]
+members = []
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "rt", "time"] }
+spark-core = { path = "../../spark-core" }
+spark-contract-tests = { path = "../../crates/spark-contract-tests" }
+
+[patch.crates-io]
+spark-core = { path = "../../spark-core" }
+spark-contract-tests = { path = "../../crates/spark-contract-tests" }
+spark-contract-tests-macros = { path = "../../crates/spark-contract-tests-macros" }
