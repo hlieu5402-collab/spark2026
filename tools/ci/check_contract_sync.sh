@@ -92,6 +92,10 @@ readonly CATEGORY_MATRIX_CONTRACT='contracts/error_matrix.toml'
 readonly CONFIG_EVENTS_SOURCE='spark-core/src/configuration/events.rs'
 readonly CONFIG_EVENTS_DOC='docs/configuration-events.md'
 readonly CONFIG_EVENTS_CONTRACT='contracts/config_events.toml'
+readonly CONFIG_EVENTS_SCHEMA_JSON='schemas/configuration-events.schema.json'
+readonly CONFIG_EVENTS_ASYNCAPI_JSON='schemas/configuration-events.asyncapi.json'
+readonly PYTHON_SDK_PATHSPEC=':(glob)sdk/python/**'
+readonly JAVA_SDK_PATHSPEC=':(glob)sdk/java/**'
 readonly CATEGORY_SURFACE_PATHS=(
   'spark-core/src/error.rs'
   'spark-core/src/error/category_matrix.rs'
@@ -150,9 +154,29 @@ if git diff --name-only "$BASE_COMMIT"...HEAD -- "$CONFIG_EVENTS_CONTRACT" | gre
   config_events_contract_changed=true
 fi
 
-if $config_events_source_changed || $config_events_doc_changed || $config_events_contract_changed; then
-  if ! $config_events_source_changed || ! $config_events_doc_changed || ! $config_events_contract_changed; then
-    echo "配置事件契约为 SOT 资源：合约 (${CONFIG_EVENTS_CONTRACT})、代码 (${CONFIG_EVENTS_SOURCE}) 与文档 (${CONFIG_EVENTS_DOC}) 必须在同一 PR 中同步更新。" >&2
+config_events_schema_changed=false
+if git diff --name-only "$BASE_COMMIT"...HEAD -- "$CONFIG_EVENTS_SCHEMA_JSON" | grep -q .; then
+  config_events_schema_changed=true
+fi
+
+config_events_asyncapi_changed=false
+if git diff --name-only "$BASE_COMMIT"...HEAD -- "$CONFIG_EVENTS_ASYNCAPI_JSON" | grep -q .; then
+  config_events_asyncapi_changed=true
+fi
+
+python_sdk_changed=false
+if git diff --name-only "$BASE_COMMIT"...HEAD -- "$PYTHON_SDK_PATHSPEC" | grep -q .; then
+  python_sdk_changed=true
+fi
+
+java_sdk_changed=false
+if git diff --name-only "$BASE_COMMIT"...HEAD -- "$JAVA_SDK_PATHSPEC" | grep -q .; then
+  java_sdk_changed=true
+fi
+
+if $config_events_source_changed || $config_events_doc_changed || $config_events_contract_changed || $config_events_schema_changed || $config_events_asyncapi_changed || $python_sdk_changed || $java_sdk_changed; then
+  if ! $config_events_source_changed || ! $config_events_doc_changed || ! $config_events_contract_changed || ! $config_events_schema_changed || ! $config_events_asyncapi_changed || ! $python_sdk_changed || ! $java_sdk_changed; then
+    echo "配置事件契约为跨语言 SOT：Schema (${CONFIG_EVENTS_SCHEMA_JSON}) 与 AsyncAPI (${CONFIG_EVENTS_ASYNCAPI_JSON}) 是 Python/Java SDK 的事实来源，需与合约 (${CONFIG_EVENTS_CONTRACT})、代码 (${CONFIG_EVENTS_SOURCE})、文档 (${CONFIG_EVENTS_DOC}) 及 SDK 目录 (sdk/python, sdk/java) 在同一 PR 中同步更新。" >&2
     echo "请补齐缺失的改动后再触发 CI。" >&2
     exit 1
   fi
