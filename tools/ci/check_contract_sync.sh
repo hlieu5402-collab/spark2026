@@ -89,6 +89,9 @@ readonly CONTRACT_REGEX='\b(ReadyState|ErrorCategory|ObservabilityContract|BufVi
 readonly CATEGORY_MATRIX_SOURCE='spark-core/src/error/category_matrix.rs'
 readonly CATEGORY_MATRIX_DOC='docs/error-category-matrix.md'
 readonly CATEGORY_MATRIX_CONTRACT='contracts/error_matrix.toml'
+readonly CONFIG_EVENTS_SOURCE='spark-core/src/configuration/events.rs'
+readonly CONFIG_EVENTS_DOC='docs/configuration-events.md'
+readonly CONFIG_EVENTS_CONTRACT='contracts/config_events.toml'
 readonly CATEGORY_SURFACE_PATHS=(
   'spark-core/src/error.rs'
   'spark-core/src/error/category_matrix.rs'
@@ -126,6 +129,30 @@ fi
 if $category_matrix_source_changed || $category_matrix_doc_changed || $category_matrix_contract_changed; then
   if ! $category_matrix_source_changed || ! $category_matrix_doc_changed || ! $category_matrix_contract_changed; then
     echo "错误分类矩阵为 SOT 资源：合约 (${CATEGORY_MATRIX_CONTRACT})、代码 (${CATEGORY_MATRIX_SOURCE}) 与文档 (${CATEGORY_MATRIX_DOC}) 必须在同一 PR 中同步更新。" >&2
+    echo "请补齐缺失的改动后再触发 CI。" >&2
+    exit 1
+  fi
+fi
+
+# 配置事件契约 SOT 守门：要求合约、生成代码与文档同步更新。
+config_events_source_changed=false
+if git diff --name-only "$BASE_COMMIT"...HEAD -- "$CONFIG_EVENTS_SOURCE" | grep -q .; then
+  config_events_source_changed=true
+fi
+
+config_events_doc_changed=false
+if git diff --name-only "$BASE_COMMIT"...HEAD -- "$CONFIG_EVENTS_DOC" | grep -q .; then
+  config_events_doc_changed=true
+fi
+
+config_events_contract_changed=false
+if git diff --name-only "$BASE_COMMIT"...HEAD -- "$CONFIG_EVENTS_CONTRACT" | grep -q .; then
+  config_events_contract_changed=true
+fi
+
+if $config_events_source_changed || $config_events_doc_changed || $config_events_contract_changed; then
+  if ! $config_events_source_changed || ! $config_events_doc_changed || ! $config_events_contract_changed; then
+    echo "配置事件契约为 SOT 资源：合约 (${CONFIG_EVENTS_CONTRACT})、代码 (${CONFIG_EVENTS_SOURCE}) 与文档 (${CONFIG_EVENTS_DOC}) 必须在同一 PR 中同步更新。" >&2
     echo "请补齐缺失的改动后再触发 CI。" >&2
     exit 1
   fi

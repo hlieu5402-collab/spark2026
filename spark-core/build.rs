@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use heck::ToShoutySnakeCase;
 use serde::Deserialize;
 
 /// 构建脚本入口：读取 TOML 契约，生成 `spark-core/src/error/category_matrix.rs`。
@@ -43,6 +44,17 @@ fn main() {
     let observability_output_path = manifest_dir.join("src/observability/keys.rs");
     fs::write(&observability_output_path, observability_generated)
         .expect("写入 observability/keys.rs");
+
+    let config_events_contract_path = manifest_dir.join("../contracts/config_events.toml");
+    println!(
+        "cargo:rerun-if-changed={}",
+        config_events_contract_path.display()
+    );
+    let config_events_contract = read_config_events_contract(&config_events_contract_path);
+    let config_events_generated = render_config_events(&config_events_contract);
+    let config_events_output_path = manifest_dir.join("src/configuration/events.rs");
+    fs::write(&config_events_output_path, config_events_generated)
+        .expect("写入 configuration/events.rs");
 }
 
 /// 合约文件的顶层结构：包含若干行数据。
@@ -422,6 +434,577 @@ fn render_item(buffer: &mut String, item: &KeySpec, indent: usize) {
         escape_rust_string(&item.value)
     )
     .expect("写入常量");
+}
+
+/// 配置事件合约顶层结构。
+#[derive(Debug, Deserialize)]
+struct ConfigEventsContract {
+    version: String,
+    summary: String,
+    #[serde(default)]
+    structs: Vec<EventStructSpec>,
+    events: Vec<ConfigEventSpec>,
+}
+
+/// 事件使用的嵌套结构体声明。
+#[derive(Debug, Deserialize, Clone)]
+struct EventStructSpec {
+    ident: String,
+    summary: String,
+    rationale: String,
+    description: String,
+    #[serde(default)]
+    fields: Vec<EventFieldSpec>,
+}
+
+/// 事件字段声明。
+#[derive(Debug, Deserialize, Clone)]
+struct EventFieldSpec {
+    name: String,
+    required: bool,
+    #[serde(rename = "type")]
+    ty: EventFieldTypeSpec,
+    doc: String,
+}
+
+/// 字段类型枚举。
+#[derive(Debug, Deserialize, Clone)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum EventFieldTypeSpec {
+    String,
+    U64,
+    Bool,
+    Struct { ident: String },
+    List { item: Box<EventFieldTypeSpec> },
+}
+
+/// 单个事件的完整声明。
+#[derive(Debug, Deserialize, Clone)]
+struct ConfigEventSpec {
+    ident: String,
+    code: String,
+    family: String,
+    name: String,
+    severity: String,
+    summary: String,
+    description: String,
+    audit: EventAuditSpec,
+    #[serde(default)]
+    fields: Vec<EventFieldSpec>,
+    #[serde(default)]
+    drills: Vec<EventDrillSpec>,
+}
+
+/// 审计映射声明。
+#[derive(Debug, Deserialize, Clone)]
+struct EventAuditSpec {
+    action: String,
+    entity_kind: String,
+    entity_id_field: String,
+}
+
+/// 演练用例声明。
+#[derive(Debug, Deserialize, Clone)]
+struct EventDrillSpec {
+    title: String,
+    goal: String,
+    #[serde(default)]
+    setup: Vec<String>,
+    #[serde(default)]
+    steps: Vec<String>,
+    #[serde(default)]
+    expectations: Vec<String>,
+}
+
+/// 读取配置事件合约。
+fn read_config_events_contract(path: &Path) -> ConfigEventsContract {
+    let raw = fs::read_to_string(path).unwrap_or_else(|err| {
+        panic!("读取 {path:?} 失败: {err}");
+    });
+    toml::from_str(&raw).unwrap_or_else(|err| {
+        panic!("解析 {path:?} 失败: {err}");
+    })
+}
+
+/// 渲染配置事件模块源码。
+fn render_config_events(contract: &ConfigEventsContract) -> String {
+    let mut buffer = String::new();
+    buffer.push_str("// @generated 自动生成文件，请勿手工修改。\n");
+    buffer.push_str("// 由 spark-core/build.rs 根据 contracts/config_events.toml 生成。\n\n");
+    write_doc_attr(
+        &mut buffer,
+        0,
+        "配置事件契约：由 contracts/config_events.toml 自动生成，统一控制面、运行面与审计面共享的事件语义。",
+    );
+    write_doc_attr(&mut buffer, 0, "");
+    write_doc_attr(
+        &mut buffer,
+        0,
+        &format!("合约版本（version）：{}。", escape_doc(&contract.version)),
+    );
+    write_doc_attr(
+        &mut buffer,
+        0,
+        &format!("总体说明（summary）：{}。", escape_doc(&contract.summary)),
+    );
+    write_doc_attr(
+        &mut buffer,
+        0,
+        "本模块与 docs/configuration-events.md 同步生成，如需调整字段请修改合约后重新生成。",
+    );
+    buffer.push_str("use alloc::{string::String, vec::Vec};\n\n");
+
+    render_event_severity(&mut buffer);
+    render_event_descriptor_types(&mut buffer);
+    render_event_structs(&mut buffer, &contract.structs);
+    render_event_payloads(&mut buffer, &contract.events);
+    render_event_descriptors(&mut buffer, contract);
+
+    buffer
+}
+
+fn render_event_severity(buffer: &mut String) {
+    write_doc_attr(
+        buffer,
+        0,
+        "配置事件严重性等级，映射合约中的 `severity` 字段，供告警与审计标签复用。",
+    );
+    write_doc_attr(buffer, 0, "");
+    write_doc_attr(buffer, 0, "# 教案式说明（Why）");
+    write_doc_attr(
+        buffer,
+        0,
+        "- 统一控制面与审计面对于事件严重性的理解，避免多处硬编码。",
+    );
+    write_doc_attr(buffer, 0, "# 契约定义（What）");
+    write_doc_attr(buffer, 0, "- 取值范围：info/warning/critical；");
+    write_doc_attr(buffer, 0, "# 实现提示（How）");
+    write_doc_attr(
+        buffer,
+        0,
+        "- 生成代码中提供 `as_str` 帮助转换为稳定字符串标签。",
+    );
+    buffer.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq)]\n");
+    buffer.push_str("pub enum EventSeverity {\n");
+    buffer.push_str("    Info,\n");
+    buffer.push_str("    Warning,\n");
+    buffer.push_str("    Critical,\n");
+    buffer.push_str("}\n\n");
+
+    write_doc_attr(
+        buffer,
+        0,
+        "严重性到字符串的稳定映射，用于事件标签与审计实体标签。",
+    );
+    write_doc_attr(buffer, 0, "");
+    write_doc_attr(buffer, 0, "# 合同说明（What）");
+    write_doc_attr(
+        buffer,
+        0,
+        "- 输入：严重性枚举；输出：`info`/`warning`/`critical`。",
+    );
+    write_doc_attr(buffer, 0, "# 风险提示（Trade-offs）");
+    write_doc_attr(
+        buffer,
+        0,
+        "- 若合约新增等级需同步扩展匹配分支，否则构建时会 panic。",
+    );
+    buffer.push_str("impl EventSeverity {\n");
+    buffer.push_str("    pub const fn as_str(self) -> &'static str {\n");
+    buffer.push_str("        match self {\n");
+    buffer.push_str("            Self::Info => \"info\",\n");
+    buffer.push_str("            Self::Warning => \"warning\",\n");
+    buffer.push_str("            Self::Critical => \"critical\",\n");
+    buffer.push_str("        }\n");
+    buffer.push_str("    }\n");
+    buffer.push_str("}\n\n");
+}
+
+fn render_event_descriptor_types(buffer: &mut String) {
+    write_doc_attr(
+        buffer,
+        0,
+        "事件元数据描述符，集中存放代码、名称、审计映射与演练用例。",
+    );
+    write_doc_attr(buffer, 0, "");
+    write_doc_attr(buffer, 0, "# Why");
+    write_doc_attr(
+        buffer,
+        0,
+        "- 运行面与工具链可以读取该描述符生成文档或校验事件负载。",
+    );
+    write_doc_attr(buffer, 0, "# What");
+    write_doc_attr(
+        buffer,
+        0,
+        "- 包含事件识别码、所属家族、严重性、摘要、详细说明、审计映射、字段列表与演练用例。",
+    );
+    write_doc_attr(buffer, 0, "# How");
+    write_doc_attr(
+        buffer,
+        0,
+        "- 构建脚本直接写出 `'static` 常量，确保运行期零成本访问。",
+    );
+    buffer.push_str("#[derive(Clone, Debug, PartialEq)]\n");
+    buffer.push_str("pub struct ConfigurationEventDescriptor {\n");
+    buffer.push_str("    pub ident: &'static str,\n");
+    buffer.push_str("    pub code: &'static str,\n");
+    buffer.push_str("    pub family: &'static str,\n");
+    buffer.push_str("    pub name: &'static str,\n");
+    buffer.push_str("    pub severity: EventSeverity,\n");
+    buffer.push_str("    pub summary: &'static str,\n");
+    buffer.push_str("    pub description: &'static str,\n");
+    buffer.push_str("    pub audit: AuditDescriptor,\n");
+    buffer.push_str("    pub fields: &'static [EventFieldDescriptor],\n");
+    buffer.push_str("    pub drills: &'static [DrillDescriptor],\n");
+    buffer.push_str("}\n\n");
+
+    write_doc_attr(
+        buffer,
+        0,
+        "描述事件与审计系统的映射关系，包括动作与实体标识。",
+    );
+    buffer.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\n");
+    buffer.push_str("pub struct AuditDescriptor {\n");
+    buffer.push_str("    pub action: &'static str,\n");
+    buffer.push_str("    pub entity_kind: &'static str,\n");
+    buffer.push_str("    pub entity_id_field: &'static str,\n");
+    buffer.push_str("}\n\n");
+
+    write_doc_attr(
+        buffer,
+        0,
+        "字段描述符，记录字段类型、是否必填以及教案级说明。",
+    );
+    buffer.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\n");
+    buffer.push_str("pub struct EventFieldDescriptor {\n");
+    buffer.push_str("    pub name: &'static str,\n");
+    buffer.push_str("    pub type_name: &'static str,\n");
+    buffer.push_str("    pub required: bool,\n");
+    buffer.push_str("    pub doc: &'static str,\n");
+    buffer.push_str("}\n\n");
+
+    write_doc_attr(
+        buffer,
+        0,
+        "演练用例描述符，记录目标、准备步骤、执行步骤与验收标准。",
+    );
+    buffer.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\n");
+    buffer.push_str("pub struct DrillDescriptor {\n");
+    buffer.push_str("    pub title: &'static str,\n");
+    buffer.push_str("    pub goal: &'static str,\n");
+    buffer.push_str("    pub setup: &'static [&'static str],\n");
+    buffer.push_str("    pub steps: &'static [&'static str],\n");
+    buffer.push_str("    pub expectations: &'static [&'static str],\n");
+    buffer.push_str("}\n\n");
+}
+
+fn render_event_structs(buffer: &mut String, structs: &[EventStructSpec]) {
+    for spec in structs {
+        write_doc_attr(
+            buffer,
+            0,
+            &format!("结构体 `{}`：{}。", spec.ident, escape_doc(&spec.summary)),
+        );
+        write_doc_attr(buffer, 0, "");
+        write_doc_attr(buffer, 0, "# 教案式说明（Why）");
+        write_doc_attr(buffer, 0, &format!("- {}", escape_doc(&spec.rationale)));
+        write_doc_attr(buffer, 0, "# 契约定义（What）");
+        write_doc_attr(
+            buffer,
+            0,
+            "- 字段映射遵循合约声明顺序，所有字段均参与事件序列化。",
+        );
+        write_doc_attr(buffer, 0, "# 实现提示（How）");
+        write_doc_attr(buffer, 0, &format!("- {}", escape_doc(&spec.description)));
+        write_doc_attr(buffer, 0, "# 风险与注意事项（Trade-offs）");
+        write_doc_attr(
+            buffer,
+            0,
+            "- 修改字段时务必同步更新合约与演练文档，避免 SOT 漂移。",
+        );
+        buffer.push_str("#[derive(Clone, Debug, PartialEq)]\n");
+        buffer.push_str(&format!("pub struct {} {{\n", spec.ident));
+        for field in &spec.fields {
+            let field_type = render_field_type(&field.ty, field.required);
+            let type_doc = render_field_type_doc(&field.ty, field.required);
+            write_doc_attr(
+                buffer,
+                1,
+                &format!(
+                    "字段 `{}`（Why/What/How）：{}",
+                    field.name,
+                    escape_doc(&field.doc)
+                ),
+            );
+            write_doc_attr(buffer, 1, &format!("- 类型：{}。", escape_doc(&type_doc)));
+            write_doc_attr(buffer, 1, "- 前置条件：调用方需提供符合命名规范的数据；");
+            write_doc_attr(buffer, 1, "- 后置条件：事件序列化后保持原样，供审计回放。");
+            indent_with(buffer, 1);
+            writeln!(buffer, "pub {}: {},", field.name, field_type).expect("写入结构体字段");
+            buffer.push('\n');
+        }
+        buffer.push_str("}\n\n");
+    }
+}
+
+fn render_event_payloads(buffer: &mut String, events: &[ConfigEventSpec]) {
+    for event in events {
+        write_doc_attr(
+            buffer,
+            0,
+            &format!(
+                "事件 `{}`（代码：`{}`，家族：`{}`）。",
+                escape_doc(&event.name),
+                escape_doc(&event.code),
+                escape_doc(&event.family)
+            ),
+        );
+        write_doc_attr(buffer, 0, "");
+        write_doc_attr(buffer, 0, "# 教案式说明（Why）");
+        write_doc_attr(buffer, 0, &format!("- {}", escape_doc(&event.summary)));
+        write_doc_attr(buffer, 0, "# 契约定义（What）");
+        write_doc_attr(buffer, 0, &format!("- {}", escape_doc(&event.description)));
+        write_doc_attr(
+            buffer,
+            0,
+            &format!(
+                "- 审计映射：action=`{}`，entity_kind=`{}`，entity_id_field=`{}`。",
+                escape_doc(&event.audit.action),
+                escape_doc(&event.audit.entity_kind),
+                escape_doc(&event.audit.entity_id_field)
+            ),
+        );
+        write_doc_attr(buffer, 0, "# 实现提示（How）");
+        write_doc_attr(
+            buffer,
+            0,
+            "- 该结构体字段顺序与合约保持一致，便于聚合器直接构造；",
+        );
+        write_doc_attr(
+            buffer,
+            0,
+            "- 由生成器保证字段文档嵌入，提醒调用者关注前置/后置条件。",
+        );
+        write_doc_attr(buffer, 0, "# 风险与注意事项（Trade-offs）");
+        write_doc_attr(
+            buffer,
+            0,
+            "- 修改字段前需评估审计与演练文档影响，避免链路断裂。",
+        );
+        buffer.push_str("#[derive(Clone, Debug, PartialEq)]\n");
+        buffer.push_str(&format!("pub struct {} {{\n", event.ident));
+        for field in &event.fields {
+            let field_type = render_field_type(&field.ty, field.required);
+            let type_doc = render_field_type_doc(&field.ty, field.required);
+            write_doc_attr(
+                buffer,
+                1,
+                &format!(
+                    "字段 `{}`（Why/What/How）：{}",
+                    field.name,
+                    escape_doc(&field.doc)
+                ),
+            );
+            write_doc_attr(buffer, 1, &format!("- 类型：{}。", escape_doc(&type_doc)));
+            if field.required {
+                write_doc_attr(buffer, 1, "- 前置条件：调用方必须提供该字段；");
+            } else {
+                write_doc_attr(buffer, 1, "- 前置条件：可选字段，缺省表示信息未知；");
+            }
+            write_doc_attr(buffer, 1, "- 后置条件：事件序列化后用于审计与演练校验。");
+            indent_with(buffer, 1);
+            writeln!(buffer, "pub {}: {},", field.name, field_type).expect("写入事件字段");
+            buffer.push('\n');
+        }
+        buffer.push_str("}\n\n");
+    }
+}
+
+fn render_event_descriptors(buffer: &mut String, contract: &ConfigEventsContract) {
+    write_doc_attr(
+        buffer,
+        0,
+        "配置事件合约版本常量，用于运行时快速校验生成产物。",
+    );
+    buffer.push_str(&format!(
+        "pub const CONFIGURATION_EVENTS_VERSION: &str = \"{}\";\n\n",
+        escape_rust_string(&contract.version)
+    ));
+    write_doc_attr(buffer, 0, "配置事件合约摘要，便于 UI 或 CLI 展示总体说明。");
+    buffer.push_str(&format!(
+        "pub const CONFIGURATION_EVENTS_SUMMARY: &str = \"{}\";\n\n",
+        escape_rust_string(&contract.summary)
+    ));
+
+    for event in &contract.events {
+        let const_prefix = event.ident.to_shouty_snake_case();
+        let fields_const = format!("{}_FIELDS", const_prefix);
+        let drills_const = format!("{}_DRILLS", const_prefix);
+
+        buffer.push_str(&format!(
+            "pub const {}: &[EventFieldDescriptor] = &[\n",
+            fields_const
+        ));
+        for field in &event.fields {
+            let field_type = render_field_type(&field.ty, field.required);
+            buffer.push_str("    EventFieldDescriptor {\n");
+            buffer.push_str(&format!(
+                "        name: \"{}\",\n",
+                escape_rust_string(&field.name)
+            ));
+            buffer.push_str(&format!(
+                "        type_name: \"{}\",\n",
+                escape_rust_string(&field_type)
+            ));
+            buffer.push_str(&format!(
+                "        required: {},\n",
+                if field.required { "true" } else { "false" }
+            ));
+            buffer.push_str(&format!(
+                "        doc: \"{}\",\n",
+                escape_rust_string(&field.doc)
+            ));
+            buffer.push_str("    },\n");
+        }
+        buffer.push_str("];\n\n");
+
+        buffer.push_str(&format!(
+            "pub const {}: &[DrillDescriptor] = &[\n",
+            drills_const
+        ));
+        for drill in &event.drills {
+            buffer.push_str("    DrillDescriptor {\n");
+            buffer.push_str(&format!(
+                "        title: \"{}\",\n",
+                escape_rust_string(&drill.title)
+            ));
+            buffer.push_str(&format!(
+                "        goal: \"{}\",\n",
+                escape_rust_string(&drill.goal)
+            ));
+            buffer.push_str(&format!(
+                "        setup: {},\n",
+                render_string_slice(&drill.setup)
+            ));
+            buffer.push_str(&format!(
+                "        steps: {},\n",
+                render_string_slice(&drill.steps)
+            ));
+            buffer.push_str(&format!(
+                "        expectations: {},\n",
+                render_string_slice(&drill.expectations)
+            ));
+            buffer.push_str("    },\n");
+        }
+        buffer.push_str("];\n\n");
+
+        buffer.push_str(&format!(
+            "pub const {}: ConfigurationEventDescriptor = ConfigurationEventDescriptor {{\n",
+            const_prefix
+        ));
+        buffer.push_str(&format!(
+            "    ident: \"{}\",\n",
+            escape_rust_string(&event.ident)
+        ));
+        buffer.push_str(&format!(
+            "    code: \"{}\",\n",
+            escape_rust_string(&event.code)
+        ));
+        buffer.push_str(&format!(
+            "    family: \"{}\",\n",
+            escape_rust_string(&event.family)
+        ));
+        buffer.push_str(&format!(
+            "    name: \"{}\",\n",
+            escape_rust_string(&event.name)
+        ));
+        buffer.push_str(&format!(
+            "    severity: {},\n",
+            severity_variant(&event.severity)
+        ));
+        buffer.push_str(&format!(
+            "    summary: \"{}\",\n",
+            escape_rust_string(&event.summary)
+        ));
+        buffer.push_str(&format!(
+            "    description: \"{}\",\n",
+            escape_rust_string(&event.description)
+        ));
+        buffer.push_str("    audit: AuditDescriptor {\n");
+        buffer.push_str(&format!(
+            "        action: \"{}\",\n",
+            escape_rust_string(&event.audit.action)
+        ));
+        buffer.push_str(&format!(
+            "        entity_kind: \"{}\",\n",
+            escape_rust_string(&event.audit.entity_kind)
+        ));
+        buffer.push_str(&format!(
+            "        entity_id_field: \"{}\",\n",
+            escape_rust_string(&event.audit.entity_id_field)
+        ));
+        buffer.push_str("    },\n");
+        buffer.push_str(&format!("    fields: {},\n", fields_const));
+        buffer.push_str(&format!("    drills: {},\n", drills_const));
+        buffer.push_str("};\n\n");
+    }
+
+    buffer.push_str("pub const CONFIGURATION_EVENTS: &[ConfigurationEventDescriptor] = &[\n");
+    for event in &contract.events {
+        buffer.push_str(&format!("    {},\n", event.ident.to_shouty_snake_case()));
+    }
+    buffer.push_str("];\n");
+}
+
+fn render_field_type(ty: &EventFieldTypeSpec, required: bool) -> String {
+    let base = match ty {
+        EventFieldTypeSpec::String => "String".to_string(),
+        EventFieldTypeSpec::U64 => "u64".to_string(),
+        EventFieldTypeSpec::Bool => "bool".to_string(),
+        EventFieldTypeSpec::Struct { ident } => ident.clone(),
+        EventFieldTypeSpec::List { item } => {
+            let inner = render_field_type(item, true);
+            format!("Vec<{}>", inner)
+        }
+    };
+    if required {
+        base
+    } else {
+        format!("Option<{}>", base)
+    }
+}
+
+fn render_field_type_doc(ty: &EventFieldTypeSpec, required: bool) -> String {
+    let raw = render_field_type(ty, required);
+    format!("`{}`", raw)
+}
+
+fn render_string_slice(items: &[String]) -> String {
+    if items.is_empty() {
+        "&[]".to_string()
+    } else {
+        let mut result = String::from("&[");
+        for (idx, item) in items.iter().enumerate() {
+            if idx > 0 {
+                result.push_str(", ");
+            }
+            result.push('"');
+            result.push_str(&escape_rust_string(item));
+            result.push('"');
+        }
+        result.push(']');
+        result
+    }
+}
+
+fn severity_variant(value: &str) -> &'static str {
+    match value.to_ascii_lowercase().as_str() {
+        "info" => "EventSeverity::Info",
+        "warning" => "EventSeverity::Warning",
+        "critical" => "EventSeverity::Critical",
+        other => panic!("未知的事件严重性：{other}"),
+    }
 }
 
 /// 写入单行 `#[doc = "..."]` 属性。
