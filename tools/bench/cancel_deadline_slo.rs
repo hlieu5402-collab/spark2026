@@ -34,10 +34,10 @@
 use core::time::Duration;
 use core::{future::Future, hint::spin_loop};
 use serde::Serialize;
-use spark_core::rt::sugar::BorrowedRuntimeCaps;
 use spark_core::{
     contract::{CallContext, Deadline},
     rt,
+    rt::sugar::BorrowedRuntimeCaps,
     runtime::MonotonicTimePoint,
 };
 use std::{env, error::Error, fmt, fs::File, io::Write, path::PathBuf, time::Instant};
