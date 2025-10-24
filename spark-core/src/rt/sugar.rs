@@ -87,21 +87,33 @@ where
     }
 }
 
-/// `BorrowedRuntimeCaps` 为任意已实现 [`RuntimeCaps`] 的类型提供借用包装。
+/// `BorrowedRuntimeCaps` 兼容层：保留旧版 API，帮助现有代码在迁移到“直接使用引用”模式前保持可编译。
 ///
-/// - 适用于只持有运行时能力引用的场景，避免为了满足 `RuntimeCaps` 而自定义新结构。
+/// # 设计背景（Why）
+/// - 历史上语法糖模块通过显式包装类型暴露借用运行时能力；
+/// - 为照顾仍依赖 `BorrowedRuntimeCaps::new` 的调用方，本结构体继续存在，但内部实现仅简单转发到引用实现。
+///
+/// # 契约说明（What）
+/// - **输入**：`new` 接收实现 [`RuntimeCaps`] 的对象引用；
+/// - **输出**：实现 [`RuntimeCaps`] 的轻量包装，调用行为等价于直接使用原始引用；
+/// - **前置条件**：引用生命周期需覆盖任务提交过程；
+/// - **后置条件**：`spawn_with` 保证仍以显式 [`CallContext`] 参入运行时。
+///
+/// # 权衡与风险（Trade-offs & Gotchas）
+/// - 推荐新代码直接依赖 `&R`，减少一层类型包装；
+/// - 若未来确认无调用方依赖，可在大版本中移除此兼容结构。
 #[derive(Clone, Copy)]
 pub struct BorrowedRuntimeCaps<'a, R: RuntimeCaps + ?Sized> {
     inner: &'a R,
 }
 
 impl<'a, R: RuntimeCaps + ?Sized> BorrowedRuntimeCaps<'a, R> {
-    /// 构造引用包装。
+    /// 构造引用包装，兼容旧版 API。
     pub fn new(inner: &'a R) -> Self {
         Self { inner }
     }
 
-    /// 返回底层运行时能力引用。
+    /// 返回底层运行时能力引用，便于访问宿主能力。
     pub fn inner(&self) -> &'a R {
         self.inner
     }
