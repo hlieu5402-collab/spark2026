@@ -5,8 +5,8 @@ use spark_core::contract::{CloseReason, Deadline};
 use spark_core::future::Stream;
 use spark_core::host::{GracefulShutdownCoordinator, GracefulShutdownStatus};
 use spark_core::observability::{
-    AttributeSet, Counter, EventPolicy, Gauge, Histogram, LogRecord, LogSeverity, Logger,
-    MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
+    AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram, LogRecord,
+    LogSeverity, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
 };
 use spark_core::pipeline::channel::ChannelState;
 use spark_core::pipeline::controller::{
@@ -925,22 +925,31 @@ fn block_on<F: Future>(mut future: F) -> F::Output {
 }
 
 /// 聚合运行时依赖，构造协调器所需的 `CoreServices`。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：测试桩需要快速获得与生产环境一致的 `CoreServices` 组合，
+///   以验证 Facade 迁移后仍能提供日志、指标与运维事件等依赖。
+/// - **逻辑 (How)**：
+///   1. 使用 [`CoreServices::with_observability_facade`] 统一填充运行时与缓冲池；
+///   2. 借由 [`DefaultObservabilityFacade`] 将四个观测句柄打包为 Facade；
+///   3. 复用空的 `HealthChecks`，强调本套测试不关注健康探针。
+/// - **契约 (What)**：
+///   - 输入：具备线程安全约束的运行时、日志、运维事件与指标句柄；
+///   - 前置：所有句柄需实现对应 Trait 并在测试生命周期内有效；
+///   - 后置：返回的 `CoreServices` 能被协调器复用，并允许通过 Facade 继续派生旧句柄。
+/// - **权衡 (Trade-offs)**：函数固定使用空缓冲池与默认健康探针，意味着若测试需要模拟
+///   缓冲枯竭或探针状态，需要在调用后自行替换相关字段。
 fn build_core_services(
     runtime: Arc<dyn AsyncRuntime>,
     logger: Arc<dyn Logger>,
     ops: Arc<dyn OpsEventBus>,
     metrics: Arc<dyn MetricsProvider>,
 ) -> CoreServices {
-    CoreServices {
+    CoreServices::with_observability_facade(
         runtime,
-        buffer_pool: Arc::new(NoopBufferPool),
-        metrics,
-        logger,
-        membership: None,
-        discovery: None,
-        ops_bus: ops,
-        health_checks: Arc::new(Vec::new()),
-    }
+        Arc::new(NoopBufferPool),
+        DefaultObservabilityFacade::new(logger, metrics, ops, Arc::new(Vec::new())),
+    )
 }
 
 /// 空缓冲池桩实现。

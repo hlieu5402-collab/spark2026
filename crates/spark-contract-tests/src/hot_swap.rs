@@ -6,8 +6,8 @@ use spark_core::buffer::{BufferPool, PipelineMessage, WritableBuffer};
 use spark_core::contract::{CallContext, CloseReason, Deadline};
 use spark_core::future::BoxFuture;
 use spark_core::observability::{
-    AttributeSet, Counter, EventPolicy, Gauge, Histogram, LogRecord, Logger, MetricsProvider,
-    OpsEvent, OpsEventBus, OpsEventKind, TraceContext, TraceFlags,
+    AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram, LogRecord,
+    Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, TraceContext, TraceFlags,
 };
 use spark_core::pipeline::channel::{ChannelState, WriteSignal};
 use spark_core::pipeline::controller::{
@@ -243,22 +243,24 @@ fn hot_swap_addition_during_inflight_dispatch_awaits_epoch_barrier() {
 /// - **意图 (Why)**：多条测试用例均需相同的控制器初始化流程，集中封装以保证依赖一致性并降低样板代码。
 /// - **逻辑 (How)**：创建无操作的运行时与观测组件，初始化 `CallContext` 与 `HotSwapController`，随后将控制器绑定到测试通道。
 /// - **契约 (What)**：返回 `(TestChannel, HotSwapController)` 的 `Arc` 元组，调用方需在生命周期结束前保持引用，以免控制器被提前释放。
+/// - **权衡 (Trade-offs)**：默认构造的缓冲池与健康探针均为空，实现目标是减少测试依赖；
+///   若想验证缓冲背压或健康检查逻辑，需要对返回的 `CoreServices` 进行二次配置。
 fn build_hot_swap_controller(channel_id: &str) -> (Arc<TestChannel>, Arc<HotSwapController>) {
     let runtime = Arc::new(NoopRuntime::new());
     let logger = Arc::new(NoopLogger);
     let ops = Arc::new(NoopOpsBus::default());
     let metrics = Arc::new(NoopMetrics);
 
-    let services = CoreServices {
-        runtime: runtime as Arc<dyn AsyncRuntime>,
-        buffer_pool: Arc::new(NoopBufferPool),
-        metrics: metrics as Arc<dyn MetricsProvider>,
-        logger: logger as Arc<dyn Logger>,
-        membership: None,
-        discovery: None,
-        ops_bus: ops as Arc<dyn OpsEventBus>,
-        health_checks: Arc::new(Vec::new()),
-    };
+    let services = CoreServices::with_observability_facade(
+        runtime as Arc<dyn AsyncRuntime>,
+        Arc::new(NoopBufferPool),
+        DefaultObservabilityFacade::new(
+            logger as Arc<dyn Logger>,
+            metrics as Arc<dyn MetricsProvider>,
+            ops as Arc<dyn OpsEventBus>,
+            Arc::new(Vec::new()),
+        ),
+    );
 
     let trace_context = TraceContext::new(
         [0x11; TraceContext::TRACE_ID_LENGTH],

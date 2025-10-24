@@ -17,8 +17,8 @@ use spark_core::host::{
     GracefulShutdownCoordinator, GracefulShutdownStatus, GracefulShutdownTarget,
 };
 use spark_core::observability::{
-    AttributeSet, Counter, EventPolicy, Gauge, Histogram, LogRecord, LogSeverity, Logger,
-    MetricAttributeValue, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
+    AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram, LogRecord,
+    LogSeverity, Logger, MetricAttributeValue, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
 };
 use spark_core::runtime::{
     AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
@@ -261,22 +261,31 @@ impl Histogram for NoopHistogram {
 }
 
 /// 构造用于测试的运行时服务集合。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：契约测试需要快速装配 `CoreServices`，以验证在 Facade 模式下，协调器能够拿到与生产环境一致的日志、
+///   指标与事件句柄。
+/// - **逻辑 (How)**：
+///   1. 调用 [`CoreServices::with_observability_facade`]，减少逐字段填写的重复；
+///   2. 使用 [`DefaultObservabilityFacade`] 组合传入句柄，保持旧代码与新 Facade 之间的一致语义；
+///   3. 注入空的健康探针向量，突出该测试关注停机流程而非探针健康度。
+/// - **契约 (What)**：
+///   - 输入：已经实现线程安全的运行时、日志、运维事件与指标桩对象；
+///   - 前置：所有句柄在测试期间有效，不会提前释放；
+///   - 后置：返回的 `CoreServices` 可被协调器克隆复用，并保持可观测性句柄一致。
+/// - **权衡 (Trade-offs)**：函数固定使用空缓冲池；若测试需验证缓冲租借或背压行为，
+///   请在调用后替换 `buffer_pool` 字段。
 fn build_core_services(
     runtime: Arc<dyn AsyncRuntime>,
     logger: Arc<dyn Logger>,
     ops: Arc<dyn OpsEventBus>,
     metrics: Arc<dyn MetricsProvider>,
 ) -> CoreServices {
-    CoreServices {
+    CoreServices::with_observability_facade(
         runtime,
-        buffer_pool: Arc::new(TestBufferPool::default()),
-        metrics,
-        logger,
-        membership: None,
-        discovery: None,
-        ops_bus: ops,
-        health_checks: Arc::new(Vec::new()),
-    }
+        Arc::new(TestBufferPool::default()),
+        DefaultObservabilityFacade::new(logger, metrics, ops, Arc::new(Vec::new())),
+    )
 }
 
 /// 当所有目标都能在截止时间内完成时，协调器应返回 `Completed` 状态且不触发硬关闭。

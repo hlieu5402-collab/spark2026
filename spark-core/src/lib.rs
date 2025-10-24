@@ -123,6 +123,8 @@ pub use limits::{
     LimitAction, LimitConfigError, LimitDecision, LimitMetricsHook, LimitPlan, LimitSettings,
     ResourceKind, config_error_to_spark, decision_queue_snapshot,
 };
+#[allow(deprecated)]
+pub use observability::LegacyObservabilityHandles;
 pub use observability::{
     ApplicationEvent, AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter,
     DefaultObservabilityFacade, EventPolicy, Gauge, HealthCheckProvider, HealthChecks, HealthState,
