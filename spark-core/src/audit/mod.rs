@@ -16,6 +16,7 @@
 //! - 事件链完整性依赖调用方保证所有写入都经过 [`AuditRecorder`]；若 Recorder 忽略错误，链式检测将失效。
 
 use alloc::borrow::Cow;
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt;

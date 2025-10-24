@@ -39,6 +39,28 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 readonly TARGET_CRATE="spark-core"
 
+# 教案级注释：新增的 API 基线文件路径与派生输出目录。
+# -----------------------------------------------------------------------------
+# Why (R1):
+#   * BASELINE_FILE 指向事先固化的 JSON 基线，用于比较“默认特性”场景下的公共 API。
+#     通过静态文件，我们可以识别新增导出，并针对增量做禁用前缀审查，避免每次全量 diff。
+#   * PUBLIC_API_LOG_DIR 是脚本执行期间存放临时输出的目录，保证默认特性与
+#     --no-default-features 场景彼此隔离，便于失败时定位问题。
+# How (R2):
+#   * mktemp -d 创建唯一目录，防止多个并行 CI job 互相覆盖；成功后 cleanup 负责释放。
+# What (R3):
+#   * BASELINE_FILE: JSON 文件，内容为 cargo public-api --simplified 输出的字符串数组。
+#   * PUBLIC_API_LOG_DIR: 目录路径，内部存放各变体的原始文本输出与调试资料。
+# Trade-offs (R4):
+#   * 使用 JSON 作为基线格式牺牲了人眼 diff 友好度，但换取了脚本计算新符号时的易解析性；
+#     如需直接阅读，可配合 jq 或转换工具。
+#   * 采用目录而非单个文件会多占几个 inode，但能存放多个变体的产物，提升扩展性。
+# Readability (R5):
+#   * 变量名与注释均采用“baseline/log_dir”直观命名，后续维护者无需额外查阅即可理解用途。
+# -----------------------------------------------------------------------------
+readonly BASELINE_FILE="${REPO_ROOT}/tools/baselines/spark-core.public-api.json"
+readonly PUBLIC_API_LOG_DIR="$(mktemp -d)"
+
 # 教案级注释：禁用前缀数组的存在意义与架构作用。
 # -----------------------------------------------------------------------------
 # Why (R1):
@@ -64,6 +86,21 @@ readonly BANNED_PREFIXES=(
   "serde::"
   "tracing::"
 )
+
+# 教案级注释：禁用前缀逗号串用于向 Python 子进程传递策略。
+# -----------------------------------------------------------------------------
+# Why (R1):
+#   * Python 子进程通过环境变量读取禁用前缀列表；在此先行拼接可避免跨语言解析数组的复杂度。
+# How (R2):
+#   * 通过 IFS=',' 将 Bash 数组展开为逗号连接的单行字符串，再传入 CHECK_PUBLIC_API_BANNED。
+# What (R3):
+#   * 字符串格式示例："tokio::,async_std::,..."，供 Python 按逗号拆分。
+# Trade-offs (R4):
+#   * 采用环境变量传递避免额外临时文件，虽然牺牲了少量注释篇幅。
+# Readability (R5):
+#   * 命名 BANNED_PREFIXES_JOINED 与 describe_banned_prefixes 保持一致，利于维护者快速检索。
+# -----------------------------------------------------------------------------
+readonly BANNED_PREFIXES_JOINED="$(IFS=','; echo "${BANNED_PREFIXES[*]}")"
 
 # 教案级注释：将策略层数组转译为正则表达式的函数。
 # -----------------------------------------------------------------------------
@@ -143,73 +180,203 @@ ensure_tool() {
   fi
 }
 
-# 教案级注释补充: 说明临时文件策略与故障排查路径。
+# 教案级注释：清理逻辑与输出保留策略的升级说明。
 # -----------------------------------------------------------------------------
-#   * Why (R1): 通过缓存 cargo public-api 的原始输出，开发者在 CI 失败时可以从生成的日志文件
-#     中定位违规符号以外的上下文（例如 API 所在模块、签名等），避免重复运行昂贵命令。
-#   * How (R2): mktemp 创建临时文件，将 public-api 输出 tee 到文件并交由后续 rg 分析；脚本成功
-#     时自动删除临时文件，失败时保留以便复盘。
-#   * What (R3): PUBLIC_API_LOG_FILE 是只读路径，生命周期受 trap 控制；违反禁令时输出违规行
-#     号并引用该文件。
-#   * Trade-offs (R4): 相比直接管道，增加一次磁盘写入换取调试便利。由于输出规模较小且运行频率
-#     低，该成本可接受；若未来输出超大可改为压缩或限制写入字段。
+# Why (R1):
+#   * cleanup 在脚本结束时统一管理 mktemp 目录，避免 CI 工作区残留大量日志；
+#     同时在失败场景下提示开发者保留路径，用于复盘具体变体的输出。
+# How (R2):
+#   * 通过 trap 捕获 EXIT，将退出码传入 cleanup；成功时递归删除目录，失败时仅打印提示。
+# What (R3):
+#   * 参数 $1：退出码；前置条件是 PUBLIC_API_LOG_DIR 已成功创建；后置条件为：
+#       - exit_code == 0：目录被删除；
+#       - exit_code != 0：目录保留并输出提示语，便于调试。
+# Trade-offs (R4):
+#   * 成功路径多了一次 rm -rf，但换取了执行完毕后干净的工作区；
+#   * 失败路径要求开发者手动清理目录，但能提供更多上下文。
+# Readability (R5):
+#   * 通过 printf 格式化输出，告知目录路径并指向具体文件，便于后续脚本扩展。
 # -----------------------------------------------------------------------------
-readonly PUBLIC_API_LOG_FILE="$(mktemp)"
-
 cleanup() {
-  # R1-R5: 解释 cleanup 在架构中的角色及调用契约。
-  #   * Why: CI 结束后清理临时文件，避免污染工作目录；当脚本失败时保留文件以供开发者调试。
-  #   * How: trap 捕获 EXIT，并把最终退出码传入；成功时 rm -f，失败时打印提示保留路径。
-  #   * What: 参数 $1 为退出码；前置条件是 PUBLIC_API_LOG_FILE 已创建；后置条件：
-  #           - 成功（0）时文件被删除；
-  #           - 失败时文件保留，同时在标准错误输出路径提示。
   local exit_code="$1"
+
   if [[ "${exit_code}" -eq 0 ]]; then
-    rm -f "${PUBLIC_API_LOG_FILE}"
+    rm -rf "${PUBLIC_API_LOG_DIR}"
     return
   fi
 
-  echo "[check_public_api_core] 公共 API 列表保留在 ${PUBLIC_API_LOG_FILE} 以供调试。" >&2
+  echo "[check_public_api_core] 公共 API 调试输出位于 ${PUBLIC_API_LOG_DIR}，请根据需要手动清理。" >&2
 }
 
 trap 'cleanup $?' EXIT
 
+# 教案级注释：确认基线文件存在，以免脚本在缺失配置时误判。
+# -----------------------------------------------------------------------------
+# Why (R1):
+#   * ensure_baseline_file 在执行 diff 前提前验证文件是否存在，避免 Python 脚本抛出难以理解的 I/O 异常。
+# How (R2):
+#   * 使用 test -f 判断文件存在性；若不存在则输出指引信息（提示运行基线生成命令）。
+# What (R3):
+#   * 无入参，读取全局 BASELINE_FILE；成功返回 0，失败直接 exit 1。
+# Trade-offs (R4):
+#   * 增加一次磁盘检查，可忽略；换取的是对配置缺失的显式报错。
+# -----------------------------------------------------------------------------
+ensure_baseline_file() {
+  if [[ ! -f "${BASELINE_FILE}" ]]; then
+    echo "[check_public_api_core] 未找到基线文件：${BASELINE_FILE}" >&2
+    echo "[check_public_api_core] 请先执行 cargo public-api 并同步 tools/baselines/spark-core.public-api.json 后再运行本脚本。" >&2
+    exit 1
+  fi
+}
+
+# 教案级注释：抽象执行 cargo public-api 的公共函数，复用在不同特性组合中。
+# -----------------------------------------------------------------------------
+# Why (R1):
+#   * run_public_api_variant 将重复的命令行拼装与错误处理集中在一处，确保默认特性与
+#     --no-default-features 场景遵循一致的日志策略。
+# How (R2):
+#   * 接收变体 key（用于输出文件命名）与人类可读描述，并接受额外 cargo public-api 参数；
+#     执行命令时强制添加 --simplified 与 --color never，输出写入对应的文本文件。
+#   * 若命令失败，立即打印日志内容并返回 1，交由上层处理。
+# What (R3):
+#   * 参数：variant_key、variant_label、其余为可选的 cargo public-api CLI 参数；
+#   * 返回值：在 stdout 打印生成的文本文件路径，供调用方 capture；
+#   * 前置条件：依赖工具已安装、工作目录在仓库根目录。
+# Trade-offs (R4):
+#   * 每个变体都创建独立文件，略微增加 I/O，但方便并行扩展更多特性组合。
+# -----------------------------------------------------------------------------
+run_public_api_variant() {
+  local variant_key="$1"
+  local variant_label="$2"
+  shift 2
+  local stdout_file="${PUBLIC_API_LOG_DIR}/${variant_key}.txt"
+  local stderr_file="${PUBLIC_API_LOG_DIR}/${variant_key}.stderr.txt"
+  local extra_args=()
+
+  if [[ "$#" -gt 0 ]]; then
+    extra_args=("$@")
+  fi
+
+  if ! cargo public-api -p "${TARGET_CRATE}" --simplified --color never "${extra_args[@]}" \
+    >"${stdout_file}" 2>"${stderr_file}"; then
+    echo "[check_public_api_core] ${variant_label} 执行 cargo public-api 失败，stderr 日志如下：" >&2
+    cat "${stderr_file}" >&2
+    echo "[check_public_api_core] 如需查看 stdout，请检查 ${stdout_file}。" >&2
+    return 1
+  fi
+
+  if [[ -s "${stderr_file}" ]]; then
+    echo "[check_public_api_core] ${variant_label} 运行产生的 stderr 已保存到 ${stderr_file}（可能包含编译告警）。" >&2
+  fi
+
+  printf '%s\n' "${stdout_file}"
+}
+
+# 教案级注释：对比默认特性输出与基线，聚焦新增符号的禁用前缀审查。
+# -----------------------------------------------------------------------------
+# Why (R1):
+#   * check_new_symbols_against_baseline 只审查“新增”的公共 API，避免历史遗留问题造成噪音；
+#     若新符号包含禁用前缀，立即阻止合并。
+# How (R2):
+#   * 调用 Python 读取 baseline JSON 与当前输出文本，计算差集并筛选包含禁用前缀的条目；
+#     同时输出新增符号列表供开发者确认。
+# What (R3):
+#   * 入参：variant_label（用于日志）、output_file（当前文本文件路径）。
+#   * 依赖：环境变量 BANNED_PREFIXES 提供逗号分隔的禁用前缀。
+#   * 返回：0 表示新增符号安全；若发现违规则打印列表并返回 1。
+# Trade-offs (R4):
+#   * 使用 Python 增加了运行时依赖，但换取了更清晰的集合操作语义与 UTF-8 处理能力。
+# -----------------------------------------------------------------------------
+check_new_symbols_against_baseline() {
+  local variant_label="$1"
+  local output_file="$2"
+
+  CHECK_PUBLIC_API_BANNED="${BANNED_PREFIXES_JOINED}" python3 - <<'PY' "${variant_label}" "${BASELINE_FILE}" "${output_file}"
+import json
+import os
+import sys
+from pathlib import Path
+
+variant_label, baseline_path, output_path = sys.argv[1:4]
+banned_prefixes = [p for p in os.environ.get("CHECK_PUBLIC_API_BANNED", "").split(",") if p]
+
+baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+current = Path(output_path).read_text(encoding="utf-8").splitlines()
+
+baseline_set = set(baseline)
+new_symbols = [line for line in current if line not in baseline_set]
+
+if new_symbols:
+    print(f"[check_public_api_core] {variant_label} 新增公共 API {len(new_symbols)} 项：")
+    for item in new_symbols:
+        print(f"  {item}")
+else:
+    print(f"[check_public_api_core] {variant_label} 未检测到新增公共 API。")
+
+violations = [item for item in new_symbols if any(prefix in item for prefix in banned_prefixes)]
+
+if violations:
+    print("[check_public_api_core] 以下新增符号包含禁用前缀，已拒绝本次提交：", file=sys.stderr)
+    for item in violations:
+        print(f"  {item}", file=sys.stderr)
+    print(f"[check_public_api_core] 禁止暴露的前缀列表：{', '.join(banned_prefixes)}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
+# 教案级注释：对整份公共 API 文本执行兜底扫描，防止漏网之鱼。
+# -----------------------------------------------------------------------------
+# Why (R1):
+#   * 全量扫描确保即便基线未覆盖的场景（如 --no-default-features）也不会引入禁用前缀。
+# How (R2):
+#   * 借助 ripgrep 的正则匹配能力，直接在输出文本中查找任何禁用前缀。
+# What (R3):
+#   * 入参：variant_label（日志用途）、output_file（文本文件路径）。
+#   * 返回：0 表示未命中；若命中则打印违规行与文件路径并返回 1。
+# Trade-offs (R4):
+#   * rg 运行两次（默认 / no-default）会增加数百毫秒，但换来兜底可靠性。
+# -----------------------------------------------------------------------------
+full_scan_for_banned_prefixes() {
+  local variant_label="$1"
+  local output_file="$2"
+  local banned_matches
+
+  if banned_matches=$(rg -n "${BANNED_PREFIX_PATTERN}" "${output_file}"); then
+    echo "[check_public_api_core] ${variant_label} 全量扫描命中禁用前缀：" >&2
+    echo "${banned_matches}" >&2
+    echo "[check_public_api_core] 禁止暴露的前缀列表：$(describe_banned_prefixes)。" >&2
+    echo "[check_public_api_core] 相关输出位于 ${output_file}，请修复后重试。" >&2
+    return 1
+  fi
+
+  echo "[check_public_api_core] ${variant_label} 全量扫描通过。"
+}
+
 main() {
   cd "${REPO_ROOT}" >/dev/null
 
-  # 教案级注释：在执行核心逻辑前确保依赖工具可用。
-  # ---------------------------------------------------------------------------
-  # Why (R1):
-  #   * main 函数在进入 cargo public-api 之前显式验证依赖，避免执行中途才失败。
-  # How (R2):
-  #   * 依次调用 ensure_tool 检查 cargo、cargo-public-api（二进制名）以及 rg。
-  # What (R3):
-  #   * 所有 ensure_tool 调用均无返回值；若任一失败，脚本立即退出，后续逻辑不再执行。
-  # Trade-offs (R4):
-  #   * 增加三次 PATH 查找，但换取失败时的直接提示，降低排障成本。
+  # 教案级注释：在执行核心逻辑前确保依赖工具与基线配置齐备。
   # ---------------------------------------------------------------------------
   ensure_tool cargo
   ensure_tool cargo-public-api
   ensure_tool rg
+  ensure_tool python3
+  ensure_baseline_file
 
-  # R2: 以 tee 将 cargo public-api 输出同时写入日志与后续 rg；stdout/stderr 合并到日志，便于分析。
-  if ! cargo public-api -p "${TARGET_CRATE}" 2>&1 | tee "${PUBLIC_API_LOG_FILE}" >/dev/null; then
-    echo "[check_public_api_core] cargo public-api 执行失败，详细日志如下：" >&2
-    cat "${PUBLIC_API_LOG_FILE}" >&2
-    return 1
+  local default_output
+  default_output="$(run_public_api_variant "default" "默认特性场景")" || return 1
+  check_new_symbols_against_baseline "默认特性场景" "${default_output}" || return 1
+  full_scan_for_banned_prefixes "默认特性场景" "${default_output}" || return 1
+
+  local no_default_output
+  if ! no_default_output="$(run_public_api_variant "no-default" "--no-default-features 场景" --no-default-features --features alloc)"; then
+    echo "[check_public_api_core] --no-default-features 场景构建失败，尝试启用 std 回退以完成公共 API 扫描。" >&2
+    no_default_output="$(run_public_api_variant "no-default-fallback" "--no-default-features+std 回退场景" --no-default-features --features alloc,std)" || return 1
   fi
+  full_scan_for_banned_prefixes "--no-default-features 检查" "${no_default_output}" || return 1
 
-  local banned_matches
-  if banned_matches=$(rg -n -E "${BANNED_PREFIX_PATTERN}" "${PUBLIC_API_LOG_FILE}"); then
-    echo "[check_public_api_core] 检测到以下违规第三方符号暴露在 spark-core 公共 API 中：" >&2
-    echo "${banned_matches}" >&2
-    echo "[check_public_api_core] 禁止暴露的前缀列表：$(describe_banned_prefixes)。" >&2
-    echo "[check_public_api_core] 完整 API 列表已保存在 ${PUBLIC_API_LOG_FILE}，用于进一步排查。" >&2
-    echo "[check_public_api_core] 请移除上述符号或通过自定义封装避免直接暴露第三方前缀。" >&2
-    return 1
-  fi
-
-  echo "[check_public_api_core] 检查通过：spark-core 公共 API 未暴露禁止的第三方前缀。"
+  echo "[check_public_api_core] 全部检查完成，spark-core 公共 API 保持零第三方前缀。"
 }
 
 main "$@"
+
