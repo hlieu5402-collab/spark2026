@@ -6,6 +6,7 @@ rust-version = "1.89"
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
 license = "Apache-2.0"
 description = "spark-core: 高性能、协议无关、分布式原生的异步通信框架核心契约"
+build = "build.rs"
 
 [lib]
 name = "spark_core"
@@ -21,6 +22,7 @@ alloc = []
 std = []
 loom-model = ["dep:loom"]
 std_json = ["dep:serde_json"]
+error_contract_doc = ["dep:toml"]
 
 [dependencies]
 async-trait = { version = "0.1", default-features = false }
@@ -31,6 +33,7 @@ loom = { version = "0.7", default-features = false, optional = true }
 spin = { version = "0.9", default-features = false, features = ["rwlock", "mutex", "spin_mutex"] }
 libm = { version = "0.2" }
 serde_json = { version = "1.0", optional = true }
+toml = { version = "0.8", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -117,3 +120,14 @@ path = "src/bin/cancel_deadline_slo.rs"
 required-features = ["std", "std_json"]
 bench = false
 test = false
+
+[[bin]]
+name = "gen_error_doc"
+path = "../tools/gen_error_doc.rs"
+required-features = ["std", "error_contract_doc"]
+bench = false
+test = false
+
+[build-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+toml = { version = "0.8" }

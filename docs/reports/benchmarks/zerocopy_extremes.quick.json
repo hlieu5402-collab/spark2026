@@ -15,6 +15,38 @@
           "kind": "encode",
           "samples": 128,
           "bufview_ns_per_iter": {
+            "p50": 10,
+            "p95": 20,
+            "p99": 25,
+            "mean": 11.915,
+            "min": 10,
+            "max": 48
+          },
+          "bufview_ns_per_kb": {
+            "p50": 10.0,
+            "p95": 20.0,
+            "p99": 25.00999999999999,
+            "mean": 11.915,
+            "min": 10.0,
+            "max": 48.0
+          },
+          "baseline_ns_per_iter": {
+            "p50": 5,
+            "p95": 10,
+            "p99": 13,
+            "mean": 5.86,
+            "min": 5,
+            "max": 14
+          },
+          "baseline_ns_per_kb": {
+            "p50": 5.0,
+            "p95": 10.0,
+            "p99": 13.0,
+            "mean": 5.86,
+            "min": 5.0,
+            "max": 14.0
+          },
+          "p99_overhead_pct": 92.38461538461532
             "p50": 6,
             "p95": 9,
             "p99": 14,
@@ -58,6 +90,38 @@
           "kind": "decode",
           "samples": 128,
           "bufview_ns_per_iter": {
+            "p50": 8,
+            "p95": 9,
+            "p99": 9,
+            "mean": 8.155,
+            "min": 8,
+            "max": 21
+          },
+          "bufview_ns_per_kb": {
+            "p50": 8.0,
+            "p95": 9.0,
+            "p99": 9.0,
+            "mean": 8.155,
+            "min": 8.0,
+            "max": 21.0
+          },
+          "baseline_ns_per_iter": {
+            "p50": 4,
+            "p95": 4,
+            "p99": 4,
+            "mean": 4.01,
+            "min": 4,
+            "max": 6
+          },
+          "baseline_ns_per_kb": {
+            "p50": 4.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "mean": 4.01,
+            "min": 4.0,
+            "max": 6.0
+          },
+          "p99_overhead_pct": 125.0
             "p50": 5,
             "p95": 6,
             "p99": 10,

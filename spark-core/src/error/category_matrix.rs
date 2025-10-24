@@ -1,3 +1,6 @@
+// @generated 自动生成文件，请勿手工修改。
+// 由 spark-core/build.rs 根据 contracts/error_matrix.toml 生成。
+
 use crate::{
     contract::BudgetKind,
     error::ErrorCategory,
@@ -9,10 +12,8 @@ use core::time::Duration;
 /// 默认错误分类矩阵的只读数据源，集中声明“错误码 → ErrorCategory → 自动响应动作”的三段映射。
 ///
 /// # 教案式背景说明（Why）
-/// - 评审指出“默认退避/背压策略散落在 `CoreError`、`ExceptionAutoResponder` 与文档中”，
-///   导致新增错误码时容易遗漏同步；
-/// - 本模块以只读表的方式建立单一事实来源（Single Source of Truth），
-///   让 `CoreError::category()`、Pipeline 默认处理器及文档/测试共享同一份数据。
+/// - 构建脚本从 `contracts/error_matrix.toml` 读取声明式数据，统一驱动代码、文档与测试；
+/// - 该模块作为框架内的单一事实来源（Single Source of Truth），确保新增错误码时无需手动同步多处文件。
 ///
 /// # 契约定义（What）
 /// - 对外暴露 [`entries`]、[`entry_for_code`]、[`default_autoresponse`] 三个只读查询接口；
@@ -20,12 +21,10 @@ use core::time::Duration;
 /// - **返回承诺**：表中提供对应的 [`ErrorCategory`] 与默认动作（重试/背压/关闭/取消/无动作）。
 ///
 /// # 实现思路（How）
-/// - 使用 [`CategoryMatrixEntry`] 结构承载错误码与 [`CategoryTemplate`]；
-/// - `CategoryTemplate` 负责按需构造 [`ErrorCategory`] 与 [`DefaultAutoResponse`]，
-///   避免在静态表中直接存放运行期对象（如 `RetryAdvice`）；
-/// - 静态常量 `MATRIX` 以 slice 形式导出，方便后续在测试中遍历校验；
-/// - 通过辅助枚举 [`BusyDisposition`] 与 [`BudgetDisposition`] 描述“繁忙主语义”与“预算类型”，
-///   以免跨模块直接依赖 `BusyReason` / `BudgetKind` 的内部细节。
+/// - 使用 [`CategoryMatrixEntry`] 承载错误码与 [`CategoryTemplate`]；
+/// - `CategoryTemplate` 负责按需构造 [`ErrorCategory`] 与 [`DefaultAutoResponse`]，避免在静态表中直接存放运行期对象；
+/// - 静态常量 `MATRIX` 由构建脚本生成，确保条目顺序稳定；
+/// - 通过辅助枚举 [`BusyDisposition`] 与 [`BudgetDisposition`] 描述“繁忙主语义”与“预算类型”，避免跨模块直接依赖内部细节。
 ///
 /// # 风险与权衡（Trade-offs & Gotchas）
 /// - 若未来扩展新的自动响应动作，需同步扩展 [`DefaultAutoResponse`] 及默认处理器；
