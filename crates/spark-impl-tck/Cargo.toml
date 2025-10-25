@@ -15,12 +15,21 @@ spark-core = { path = "../../spark-core" }
 
 [dev-dependencies]
 spark-transport-tcp = { path = "../spark-transport-tcp" }
-spark-transport-udp = { path = "../spark-transport-udp" }
+spark-transport-udp = { path = "../spark-transport-udp", features = ["batch-udp-unix"] }
 spark-transport-tls = { path = "../spark-transport-tls" }
 spark-transport-quic = { path = "../spark-transport-quic" }
-spark-codec-sip = { path = "../../spark-codec-sip" }
-spark-codec-sdp = { path = "../../spark-codec-sdp" }
-spark-codec-rtp = { path = "../../spark-codec-rtp" }
-spark-codec-rtcp = { path = "../../spark-codec-rtcp" }
 anyhow = "1.0"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
+quinn = "0.11"
+rustls-pki-types = "1.12"
+rustls = { version = "0.23", default-features = false, features = ["std"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"] }
+tokio-rustls = "0.26"
+rustls = "0.23"
+rcgen = "0.13"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[[bench]]
+name = "tcp_throughput"
+harness = false
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
