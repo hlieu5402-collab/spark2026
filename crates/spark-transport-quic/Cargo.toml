@@ -6,6 +6,8 @@ publish = false
 license = "Apache-2.0"
 
 [lib]
+# QUIC 传输当前仅提供单元测试。禁用 `cargo bench` 对该 crate 的回调，
+# 可避免 `--quick` 参数由 `libtest` 解析失败。
 bench = false
 
 [dependencies]

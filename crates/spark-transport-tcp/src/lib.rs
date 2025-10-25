@@ -2,25 +2,44 @@
 # spark-transport-tcp
 
 ## 设计动机（Why）
-- **定位**：该 crate 承担 Spark 在 TCP 传输通道上的最小实现外壳，后续将承载面向连接的字节流收发能力。
-- **架构角色**：处于“传输实现层”，向上暴露 `spark-core` 所定义的抽象契约，向下封装 `tokio` 的网络原语。
-- **设计理念**：坚持“宿主运行时适配”原则——业务侧通过泛化的传输接口与核心解耦，而运行时细节集中在此处治理。
+- **定位**：该 crate 提供 Spark 在 Tokio 运行时上的最小 TCP 通道实现，
+  封装监听、建连、读写与背压等底层细节。
+- **架构角色**：作为传输实现层的基础积木，对接 `spark-core` 的上下文与
+  错误契约，为后续 TLS/QUIC 实现提供语义参照。
+- **设计理念**：强调“上下文传递”与“错误分类”，所有网络操作均感知
+  [`CallContext`](spark_core::contract::CallContext) 的取消、截止与预算约束，
+  并在失败时映射为结构化的 [`CoreError`](spark_core::error::CoreError)。
 
 ## 核心契约（What）
-- **输入条件**：后续实现会接收 `spark-core` 描述的连接参数、管道配置等；当前占位版本尚未定义公开 API。
-- **输出/保障**：未来会保证 TCP 会话的生命周期管理、异常分类及错误语义的一致性；目前仅提供文档化的结构约定。
-- **前置约束**：调用方需在异步上下文（Tokio 多线程运行时）中使用该实现，以便复用 `tokio` 的 IO 驱动。
+- **输入条件**：调用方必须在 Tokio 运行时中使用本实现，并显式传递
+  `CallContext`/`ExecutionContext`；
+- **输出保障**：监听、通道读写、半关闭与背压检查均返回语义化结果，
+  出错时附带稳定错误码及 [`ErrorCategory`](spark_core::error::ErrorCategory)；
+- **前置约束**：当前版本仅实现单连接的直接操作，尚未与 Pipeline 控制器
+  集成；后续版本会继续对接 `spark-core::transport` 的泛型工厂。
 
 ## 实现策略（How）
-- **执行框架**：依赖 `tokio` 的 `net/io/time/macros/rt-multi-thread` 组件，为连接建立、读写超时和任务调度提供基础。
-- **扩展点**：可选特性 `batch-udp-unix`（启用 `socket2`）预留了在 Unix 平台上进行批量 UDP IO 的能力，即使当前 TCP 版本尚未实现，仍通过共享特性保持命名一致性以利未来共用代码片段。
-- **错误处理**：统一使用 `thiserror` 定义错误枚举，确保与上层契约解耦且易于序列化。
+- **执行框架**：完全依赖 Tokio 的 `TcpListener` 与 `TcpStream`，并通过
+  `tokio::select!` 将取消/超时与 IO Future 组合；
+- **上下文映射**：使用内部工具函数将 `Deadline` 转换为 Tokio 时间点，
+  并周期性轮询 `Cancellation` 以响应取消；
+- **背压治理**：在 `poll_ready` 中根据写缓冲的即时状态与 `WouldBlock`
+  频次映射为 `ReadyState::{Busy, RetryAfter}`，为上层调度提供信号。
 
 ## 风险与考量（Trade-offs）
-- **跨平台性**：`socket2` 相关功能默认关闭，以免在非 Unix 平台编译失败；未来启用时需结合 `cfg(unix)` 做细粒度控制。
-- **性能边界**：尚未接入真正的 IO 路径，因此不存在实时性能指标；待实现传输细节后需关注背压与零拷贝策略。
-- **TODO**：本占位版本缺少真实 API，后续合入时需补充握手管理、连接池以及 metrics。
+- **时间基准**：`Deadline` 被映射到本 crate 初始化时刻的单调时钟；若调用方
+  使用不同计时源构造 `MonotonicTimePoint`，可能产生轻微漂移。
+- **并发度**：当前实现通过 `tokio::sync::Mutex` 序列化读写；在高并发场景
+  可能需要进一步拆分读/写半部或引入无锁缓冲。
+- **扩展计划**：后续将引入连接工厂、管道集成及观测指标，当前版本着重
+  提供最小可测试能力。
 "#]
 
-// 当前为占位库，暂不暴露具体 API；后续实现将基于上述契约扩展。
-pub(crate) mod placeholder {}
+mod backpressure;
+mod channel;
+mod error;
+mod listener;
+mod util;
+
+pub use channel::{ShutdownDirection, TcpChannel};
+pub use listener::TcpListener;
