@@ -16,6 +16,7 @@ thiserror = "1.0"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
 quinn = "0.11"
 quinn-proto = "0.11"
+futures = "0.3"
 
 [features]
 default = []

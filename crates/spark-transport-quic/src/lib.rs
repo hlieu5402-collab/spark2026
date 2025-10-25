@@ -2,24 +2,35 @@
 # spark-transport-quic
 
 ## 设计动机（Why）
-- **定位**：实现基于 QUIC 的传输层，结合 UDP 的低延迟与 TLS 的安全性，为 Spark 提供可靠的多路复用能力。
-- **架构角色**：作为传输实现层成员之一，为上层提供 0-RTT 握手、流量控制及拥塞算法的统一接口。
-- **设计理念**：采纳 `quinn` 与 `quinn-proto` 组合，在纯 Rust 环境中构建 QUIC 协议栈，便于后续深度定制算法。
+- **统一传输接口**：为 Spark 框架提供基于 QUIC 的多路复用通道，实现与 TCP/UDP 实现一致
+  的 API 契约。
+- **面向实践**：封装 `quinn`/`quinn-proto` 的核心能力，提供监听、建连与流级背压治理，便于
+  上层快速集成。
+- **扩展友好**：内部模块化拆分（Endpoint、Channel、Backpressure、Util），方便未来接入
+  自定义拥塞控制或指标采样。
 
 ## 核心契约（What）
-- **输入条件**：未来 API 将接收终端信息、会话配置与 `spark-core` 的抽象上下文；当前仅保留架构约束。
-- **输出/保障**：预期提供多路复用流、拥塞控制指标和 TLS 证书验证；占位阶段不暴露实际函数，实现待补齐。
-- **前置约束**：依赖 Tokio 多线程运行时作为事件循环，且需具备 QUIC 兼容的网络环境（UDP + TLS）。
+- `QuicEndpoint`：负责 UDP Socket 绑定、监听与发起连接。
+- `QuicConnection`：表示一次 QUIC 连接，可打开/接受双向流。
+- `QuicChannel`：封装 `quinn::SendStream/RecvStream`，提供读写、半关闭与背压探测。
+- `ShutdownDirection`：定义半关闭方向。
 
 ## 实现策略（How）
-- **协议栈**：`quinn` 提供高阶连接管理，`quinn-proto` 暴露底层状态机，后续可按需自定义拥塞控制策略。
-- **运行时**：Tokio 的 `net/io/time` 支撑异步 UDP 套接字与定时器；`macros` 支持异步测试。
-- **扩展点**：沿用 `batch-udp-unix` 特性为未来批量 UDP IO 做准备，以便在高吞吐场景下降低 syscall 次数。
+- 通过 `run_with_context` 注入 `CallContext` 的取消/截止语义，确保 QUIC IO 与框架契约一致。
+- 使用 `QuicBackpressure` 将 `ConnectionStats` 映射到 `ReadyState::{Busy, RetryAfter}`。
+- `error` 模块统一维护错误码映射，所有失败以 `CoreError` 形式返回。
 
-## 风险与考量（Trade-offs）
-- **协议兼容性**：QUIC 仍在演进，后续需要根据 IETF 草案更新；`quinn` 版本升级需同步评估。
-- **性能调优**：拥塞算法与 TLS 证书加载可能成为瓶颈；需结合 `arc-swap` 等机制在后续版本引入热更新能力。
-- **TODO**：补全流管理 API、路径探测与 metrics 输出。
+## 风险与注意（Trade-offs）
+- 当前实现偏向单节点实验环境，证书管理需由调用侧提供；
+- 背压策略基于即时统计，极端场景可能需要更精细的指标采样；
+- `poll_ready` 采用空写探测，存在轻微系统调用开销，但换取语义一致性。
 "#]
 
-pub(crate) mod placeholder {}
+mod backpressure;
+mod channel;
+mod endpoint;
+mod error;
+mod util;
+
+pub use channel::{QuicChannel, ShutdownDirection};
+pub use endpoint::{QuicConnection, QuicEndpoint};
