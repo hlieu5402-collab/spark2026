@@ -15,7 +15,7 @@ spark-core = { path = "../../spark-core" }
 
 [dev-dependencies]
 spark-transport-tcp = { path = "../spark-transport-tcp" }
-spark-transport-udp = { path = "../spark-transport-udp" }
+spark-transport-udp = { path = "../spark-transport-udp", features = ["batch-udp-unix"] }
 spark-transport-tls = { path = "../spark-transport-tls" }
 spark-transport-quic = { path = "../spark-transport-quic" }
 anyhow = "1.0"
@@ -23,3 +23,11 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "ne
 tokio-rustls = "0.26"
 rustls = "0.23"
 rcgen = "0.12"
+tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[[bench]]
+name = "tcp_throughput"
+harness = false
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
