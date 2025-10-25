@@ -152,4 +152,138 @@ pub mod transport {
 
         Ok(())
     }
+
+    /// QUIC 多路复用流读写回环测试，验证流 → Channel 映射与背压信号。
+    pub mod quic_multiplex {
+        use super::{Result, TransportSocketAddr};
+        use anyhow::anyhow;
+        use quinn::{ClientConfig, ServerConfig};
+        use rcgen::generate_simple_self_signed;
+        use rustls::RootCertStore;
+        use rustls_pki_types::{CertificateDer, PrivateKeyDer};
+        use spark_core::{
+            context::ExecutionContext,
+            contract::CallContext,
+            error::CoreError,
+            status::ready::{ReadyCheck, ReadyState},
+        };
+        use spark_transport_quic::{QuicEndpoint, ShutdownDirection};
+        use std::{sync::Arc, task::Poll};
+
+        fn build_tls_configs() -> Result<(ServerConfig, ClientConfig)> {
+            let cert = generate_simple_self_signed(vec!["localhost".into()])?;
+            let cert_der_raw = cert.serialize_der()?;
+            let key_der_raw = cert.serialize_private_key_der();
+
+            let cert_der = CertificateDer::from_slice(&cert_der_raw).into_owned();
+            let mut roots = RootCertStore::empty();
+            roots.add(cert_der.clone())?;
+
+            let client_config = ClientConfig::with_root_certificates(Arc::new(roots))
+                .map_err(|err| anyhow!(err))?;
+
+            let key = PrivateKeyDer::try_from(key_der_raw.as_slice())
+                .map_err(|err| anyhow!(err))?
+                .clone_key();
+
+            let server_config = ServerConfig::with_single_cert(vec![cert_der.clone()], key)
+                .map_err(|err| anyhow!(err))?;
+
+            Ok((server_config, client_config))
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn bidirectional_streams() -> Result<()> {
+            let (server_cfg, client_cfg) = build_tls_configs()?;
+
+            let server_endpoint = QuicEndpoint::bind_server(
+                TransportSocketAddr::V4 {
+                    addr: [127, 0, 0, 1],
+                    port: 0,
+                },
+                server_cfg,
+                Some(client_cfg.clone()),
+            )
+            .await
+            .map_err(|err| anyhow!(err))?;
+            let server_addr = server_endpoint.local_addr();
+
+            let client_endpoint = QuicEndpoint::bind_client(
+                TransportSocketAddr::V4 {
+                    addr: [127, 0, 0, 1],
+                    port: 0,
+                },
+                client_cfg,
+            )
+            .await
+            .map_err(|err| anyhow!(err))?;
+
+            let server_handle = tokio::spawn({
+                let server = server_endpoint.clone();
+                async move {
+                    let connection = server.accept().await?;
+                    while let Some(channel) = connection.accept_bi().await? {
+                        let ctx = CallContext::builder().build();
+                        let mut buffer = vec![0u8; 1024];
+                        let size = channel.read(&ctx, &mut buffer).await?;
+                        let mut response = buffer[..size].to_vec();
+                        response
+                            .iter_mut()
+                            .for_each(|byte| *byte = byte.to_ascii_uppercase());
+                        channel.write(&ctx, &response).await?;
+                        channel.shutdown(&ctx, ShutdownDirection::Write).await?;
+                    }
+                    Ok::<(), CoreError>(())
+                }
+            });
+
+            let connection = client_endpoint
+                .connect(server_addr, "localhost")
+                .await
+                .map_err(|err| anyhow!(err))?;
+            let payloads = vec![b"alpha".as_ref(), b"bravo".as_ref(), b"charlie".as_ref()];
+            let mut responses = Vec::with_capacity(payloads.len());
+            for payload in &payloads {
+                let ctx = CallContext::builder().build();
+                let exec_ctx = ExecutionContext::from(&ctx);
+                let channel = connection.open_bi().await.map_err(|err| anyhow!(err))?;
+                match channel.poll_ready(&exec_ctx) {
+                    Poll::Ready(ReadyCheck::Ready(state)) => {
+                        assert!(matches!(state, ReadyState::Ready | ReadyState::Busy(_)));
+                    }
+                    Poll::Ready(ReadyCheck::Err(err)) => return Err(anyhow!(err)),
+                    Poll::Pending => panic!("poll_ready unexpectedly returned Pending"),
+                    Poll::Ready(other) => panic!("unexpected ReadyCheck variant: {other:?}"),
+                }
+                channel
+                    .write(&ctx, payload)
+                    .await
+                    .map_err(|err| anyhow!(err))?;
+                channel
+                    .shutdown(&ctx, ShutdownDirection::Write)
+                    .await
+                    .map_err(|err| anyhow!(err))?;
+                let mut buffer = vec![0u8; 1024];
+                let size = channel
+                    .read(&ctx, &mut buffer)
+                    .await
+                    .map_err(|err| anyhow!(err))?;
+                responses.push(buffer[..size].to_vec());
+            }
+
+            for (expected, actual) in payloads.iter().zip(responses.iter()) {
+                let uppercase: Vec<u8> = expected.iter().map(|b| b.to_ascii_uppercase()).collect();
+                assert_eq!(actual, &uppercase);
+            }
+
+            drop(connection);
+
+            server_handle
+                .await
+                .map_err(|err| anyhow!(err))?
+                .map_err(|err| anyhow!(err))?;
+
+            Ok(())
+        }
+    }
 }
