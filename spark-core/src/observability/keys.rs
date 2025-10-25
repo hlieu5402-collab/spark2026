@@ -10,6 +10,7 @@
 /// logging 键名分组（模块标识：logging）
 ///
 /// 该分组由 contracts/observability_keys.toml 自动生成。
+#[rustfmt::skip]
 pub mod logging {
 
     /// 弃用公告日志字段
@@ -98,6 +99,7 @@ pub mod logging {
 /// metrics 键名分组（模块标识：metrics）
 ///
 /// 该分组由 contracts/observability_keys.toml 自动生成。
+#[rustfmt::skip]
 pub mod metrics {
 
     /// Codec 域指标键
@@ -428,6 +430,7 @@ pub mod metrics {
 /// tracing 键名分组（模块标识：tracing）
 ///
 /// 该分组由 contracts/observability_keys.toml 自动生成。
+#[rustfmt::skip]
 pub mod tracing {
 
     /// Pipeline Trace 属性
