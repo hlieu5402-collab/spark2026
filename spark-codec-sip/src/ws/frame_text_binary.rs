@@ -1,3 +1,14 @@
+//! WebSocket 文本/二进制帧与 SIP 报文之间的映射工具集。
+//!
+//! # 教案级总览
+//! - **定位 (Why)**：负责在传输层与 SIP 编解码之间搬运“帧 ↔ 文本”转换，是 `spark-impl-tck`
+//!   验证互通性时的基准实现；
+//! - **流程 (How)**：封装帧解析、掩码解码、分片聚合与长度编码细节，并暴露 `ws_to_sip` / `sip_to_ws`
+//!   两个方向的高层函数；
+//! - **契约 (What)**：输入输出均采用拥有型 `Vec<u8>` 或零拷贝 `BufView`，要求调用方在 `alloc`
+//!   特性启用的环境中使用；
+//! - **风险提示**：实现以可读性优先，采用缓冲拷贝换取简化逻辑，重度实时场景需关注分配开销。
+
 use alloc::vec::Vec;
 use core::{fmt, mem, str};
 
@@ -96,21 +107,46 @@ impl SipMessage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WsSipError {
     /// 帧长度不足两个字节，无法解析基础头部。
-    FrameTooShort { actual: usize },
+    FrameTooShort {
+        /// 实际收到的总字节数，用于向上层报告缺失量估算。
+        actual: usize,
+    },
     /// 扩展长度字段或掩码键不完整。
-    IncompleteHeader { expected: usize, actual: usize },
+    IncompleteHeader {
+        /// 期望的最小头部长度（含扩展字段），供重试时预估缓冲大小。
+        expected: usize,
+        /// 实际可用的字节数，辅助判断数据截断或解码器错误。
+        actual: usize,
+    },
     /// payload 长度超出当前平台可表示范围。
-    PayloadLengthOverflow { declared: u64 },
+    PayloadLengthOverflow {
+        /// 帧宣称的 payload 长度，后续可记录到日志以排查协议兼容性问题。
+        declared: u64,
+    },
     /// 帧声明的 payload 长度与实际字节数不一致。
-    PayloadLengthMismatch { expected: usize, actual: usize },
+    PayloadLengthMismatch {
+        /// 头部中宣告的 payload 字节数。
+        expected: usize,
+        /// 根据缓冲长度推导出的实际 payload 字节数。
+        actual: usize,
+    },
     /// 控制帧被错误地拆分（RFC 6455 §5.5）。
-    FragmentedControl { opcode: u8 },
+    FragmentedControl {
+        /// 导致异常的 opcode，便于在日志中定位问题帧类型。
+        opcode: u8,
+    },
     /// 收到未知或不支持的 opcode。
-    UnsupportedOpcode { opcode: u8 },
+    UnsupportedOpcode {
+        /// 原始 opcode 数值，可帮助调用方快速定位需要扩展的帧类型。
+        opcode: u8,
+    },
     /// 在未开始数据帧的情况下收到 continuation 帧。
     UnexpectedContinuation,
     /// 在前一条消息尚未 FIN 的情况下收到新的数据帧。
-    MessageInterleaving { opcode: u8 },
+    MessageInterleaving {
+        /// 触发乱序的 opcode，结合日志可还原出问题序列。
+        opcode: u8,
+    },
     /// 输入结束时仍存在未完成的分片序列。
     DanglingFragment,
     /// 文本帧载荷未通过 UTF-8 校验。
@@ -371,8 +407,7 @@ fn parse_frame(view: &dyn BufView) -> Result<Frame, WsSipError> {
 /// 将 `BufView` 展平成连续缓冲，便于后续解析。
 fn flatten_view(view: &dyn BufView) -> Vec<u8> {
     let mut flat = Vec::with_capacity(view.len());
-    let mut chunks = view.as_chunks();
-    while let Some(chunk) = chunks.next() {
+    for chunk in view.as_chunks() {
         flat.extend_from_slice(chunk);
     }
     flat

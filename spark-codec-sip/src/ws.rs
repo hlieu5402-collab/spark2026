@@ -5,12 +5,16 @@
 //!   与传输实现之间的衔接层。
 //! - **职责**：提供 `ws_to_sip`、`sip_to_ws` 两个方向的转换函数，并定义帧视图与错误类型。
 //! - **扩展性**：通过 [`crate::ws::SipWebSocketFrame`] trait 允许调用方自定义帧载体，只要满足 `BufView`
-//!   契约即可实现零拷贝复用。
+//!   契约即可实现零拷贝复用；同时提供 `frame_text_binary` 子模块承载 WebSocket 文本/二进制帧的聚合
+//!   与拆分逻辑，便于 TCK 与传输实现共享同一套参考实现。
 
 #![allow(clippy::module_name_repetitions)]
 
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec::Vec};
+
+#[cfg(feature = "alloc")]
+pub mod frame_text_binary;
 
 use core::{fmt, str};
 

@@ -1001,8 +1001,6 @@ pub mod transport {
         }
     }
 }
-}
-
 /// RTP 相关契约测试集合。
 #[cfg(all(test, feature = "rtp-tests"))]
 pub mod rtp {
@@ -1010,9 +1008,8 @@ pub mod rtp {
 
     use spark_codec_rtp::{
         DtmfDecodeError, DtmfEncodeError, DtmfEvent, RTP_HEADER_MIN_LEN, RTP_VERSION, RtpHeader,
-        RtpPacketBuilder, decode_dtmf, encode_dtmf, parse_rtp, seq_less,
-        update_jitter, RtpHeader, RtpJitterState, RtpPacketBuilder, RTP_HEADER_MIN_LEN,
-        RTP_VERSION, parse_rtp, seq_less,
+        RtpJitterState, RtpPacketBuilder, decode_dtmf, encode_dtmf, parse_rtp, seq_less,
+        update_jitter,
     };
     use spark_core::buffer::{BufView, Chunks};
 

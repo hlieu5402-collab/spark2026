@@ -15,10 +15,6 @@ rtp-tests = []
 # `spark-impl-tck` 不提供基准测试入口，因此禁用基准运行以避免参数解析失败。
 bench = false
 
-[features]
-default = []
-transport-tests = []
-
 [dependencies]
 spark-core = { path = "../../spark-core" }
 spark-codec-sip = { path = "../../spark-codec-sip" }
@@ -36,7 +32,6 @@ tokio-rustls = "0.26"
 rcgen = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-spark-codec-sip = { path = "../../spark-codec-sip" }
 spark-codec-rtp = { path = "../../spark-codec-rtp" }
 spark-codec-sdp = { path = "../../spark-codec-sdp" }
 rustls = { version = "0.23", default-features = false, features = ["std"] }

@@ -40,15 +40,17 @@ pub use crate::{
         SenderReport, SourceDescription,
     },
     parse::{DEFAULT_COMPOUND_CAPACITY, parse_rtcp},
-    stats::{
-        NtpTime, ReceiverStatistics, ReceptionStatistics, RtpClock, SenderStatistics, build_rr,
-        build_sr,
-    },
 };
 
 #[cfg(feature = "std")]
 pub use crate::stats::{
-    BuildError, ReceiverStat, ReceptionStat, RtpClockMapper, SenderStat, build_rr, build_sr,
+    NtpTime, ReceiverStatistics, ReceptionStatistics, RtpClock, SenderStatistics, build_rr,
+    build_sr,
+};
+
+#[cfg(feature = "std")]
+pub use crate::stats::raw::{
+    BuildError, ReceiverStat, ReceptionStat, RtpClockMapper, SenderStat, build_rr_raw, build_sr_raw,
 };
 
 /// RTCP 编解码占位结构，约定控制平面实现入口。
