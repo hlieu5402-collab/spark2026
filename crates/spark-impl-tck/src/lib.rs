@@ -255,4 +255,95 @@ pub mod transport {
 
         Ok(())
     }
+
+    /// 针对 UDP 批量 IO 优化路径的集成测试。
+    pub mod udp_batch_io {
+        use super::{Context, Result, UdpSocket};
+        use spark_transport_udp::batch::{self, RecvBatchSlot, SendBatchSlot};
+
+        /// 验证批量收发在多报文场景下的正确性与契约保持。
+        ///
+        /// # 测试步骤（How）
+        /// 1. 客户端一次性发出三条报文，服务端调用 [`batch::recv_from`] 读取。
+        /// 2. 检查槽位是否正确填充、来源地址是否与客户端一致、未发生截断。
+        /// 3. 服务端构造对应响应，调用 [`batch::send_to`] 批量发回并校验写入长度。
+        /// 4. 客户端逐一接收响应，确认报文内容与顺序匹配。
+        #[tokio::test(flavor = "multi_thread")]
+        async fn round_trip() -> Result<()> {
+            let server = UdpSocket::bind("127.0.0.1:0")
+                .await
+                .context("服务端绑定失败")?;
+            let server_addr = server.local_addr().context("获取服务端地址失败")?;
+
+            let client = UdpSocket::bind("127.0.0.1:0")
+                .await
+                .context("客户端绑定失败")?;
+            let client_addr = client.local_addr().context("获取客户端地址失败")?;
+
+            let requests = [
+                "batch-one".as_bytes(),
+                "batch-two".as_bytes(),
+                "batch-three".as_bytes(),
+            ];
+            for payload in &requests {
+                client
+                    .send_to(payload, server_addr)
+                    .await
+                    .context("客户端批量发送请求失败")?;
+            }
+
+            let mut recv_buffers: Vec<Vec<u8>> = vec![vec![0u8; 128]; requests.len()];
+            let mut recv_slots: Vec<RecvBatchSlot<'_>> = recv_buffers
+                .iter_mut()
+                .map(|buf| RecvBatchSlot::new(buf.as_mut_slice()))
+                .collect();
+
+            let received = batch::recv_from(&server, &mut recv_slots)
+                .await
+                .context("服务端批量接收失败")?;
+            assert_eq!(received, requests.len(), "应读取到全部请求报文");
+
+            for (idx, slot) in recv_slots.iter().take(received).enumerate() {
+                assert_eq!(slot.addr(), Some(client_addr));
+                assert!(!slot.truncated(), "缓冲不应被截断");
+                assert_eq!(slot.payload(), requests[idx]);
+            }
+
+            let expected_texts: Vec<String> =
+                (0..received).map(|idx| format!("ack-{}", idx)).collect();
+            let response_buffers: Vec<Vec<u8>> = expected_texts
+                .iter()
+                .map(|text| text.as_bytes().to_vec())
+                .collect();
+            let mut send_slots: Vec<SendBatchSlot<'_>> = response_buffers
+                .iter()
+                .zip(recv_slots.iter())
+                .take(received)
+                .map(|(payload, slot)| {
+                    SendBatchSlot::new(payload.as_slice(), slot.addr().expect("应存在来源地址"))
+                })
+                .collect();
+
+            batch::send_to(&server, &mut send_slots)
+                .await
+                .context("服务端批量发送失败")?;
+
+            for (slot, payload) in send_slots.iter().zip(response_buffers.iter()) {
+                assert_eq!(slot.sent(), payload.len());
+            }
+
+            for expected in &expected_texts {
+                let mut buffer = vec![0u8; 128];
+                let (len, addr) = client
+                    .recv_from(&mut buffer)
+                    .await
+                    .context("客户端接收响应失败")?;
+                assert_eq!(addr, server_addr);
+                let text = std::str::from_utf8(&buffer[..len]).context("响应非 UTF-8")?;
+                assert_eq!(text, expected);
+            }
+
+            Ok(())
+        }
+    }
 }
