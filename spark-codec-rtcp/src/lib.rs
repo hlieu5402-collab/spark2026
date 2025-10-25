@@ -6,24 +6,39 @@
 //! ## 教案目的（Why）
 //! - **定位**：Real-time Transport Control Protocol (RTCP) 控制平面的编解码骨架，负责媒体质量反馈与会话控制消息。
 //! - **架构角色**：与 RTP 数据面配对，提供统计、拥塞控制和同步信息，保障实时会话体验。
-//! - **设计策略**：先行创建占位模块与依赖关系，确保在工作区内具备统一的命名与测试入口。
+//! - **设计策略**：在占位结构之上补充 RTCP 复合包解析能力，使 `spark-impl-tck` 可以加载真实测试载荷。
 //!
 //! ## 交互契约（What）
-//! - **依赖输入**：依托 `spark-core` 的 Codec trait，将处理从网络接收的 RTCP 包或生成反馈消息。
-//! - **输出职责**：后续会暴露用于构建 SR、RR、SDES、BYE 等报文的接口；当前仅保留结构占位。
-//! - **前置约束**：运行环境需具备与 RTP 相同的时钟/缓冲支持；占位阶段不做任何资源申请。
+//! - **依赖输入**：依托 `spark-core` 的 [`BufView`](spark_core::buffer::BufView) 实现，从零拷贝缓冲视图中提取字节流。
+//! - **输出职责**：提供 `parse_rtcp` 函数，将 SR/RR/SDES/BYE 等报文解析为结构化的 [`RtcpPacket`] 列表。
+//! - **前置约束**：运行环境需具备与 RTP 相同的时钟/缓冲支持；当 `no_std` 启用时必须提供 `alloc` 支持以保存解析结果。
 //!
 //! ## 实现策略（How）
 //! - **实施步骤**：
 //!   1. 通过 `RtcpCodecScaffold` 固定 API 入口；
-//!   2. 在 `spark-impl-tck` 中引入控制面测试用例，覆盖丢包统计、抖动估计等逻辑；
-//!   3. 待实现阶段将结合 `spark-core` 的错误模型提供详细诊断。
-//! - **技术考量**：沿用零尺寸结构，避免提前绑定内部状态；保留 `compat_v0` feature 以便未来做兼容层。
+//!   2. 新增 `packet`/`error`/`parse` 子模块，定义结构化报文模型与诊断错误；
+//!   3. 在解析过程中将 `BufView` 分片折叠为临时缓冲，并基于 RFC3550 的字段布局提取语义信息。
+//! - **技术考量**：解析流程遵守 32-bit 对齐、Padding 标志、Report Count 等协议约束，并在异常时返回精确错误类型。
 //!
 //! ## 风险提示（Trade-offs）
-//! - **功能缺口**：尚未实现任何统计或反馈逻辑，当前仅用于建立依赖。
-//! - **演进风险**：控制报文格式复杂，后续扩展需严谨验证字段长度与对齐。
-//! - **维护建议**：新增报文类型时务必同步更新测试与文档，防止协议偏差。
+//! - **内存权衡**：解析阶段需将分片复制到临时缓冲以便随机访问，牺牲部分内存以换取实现直观性与可维护性。
+//! - **演进风险**：控制报文格式复杂，后续扩展需严谨验证字段长度与对齐；当前仅覆盖常见的 SR/RR/SDES/BYE 报文。
+//! - **维护建议**：新增报文类型时务必同步更新测试与文档，防止协议偏差，同时补充 `RtcpError` 分支以便诊断。
+
+extern crate alloc;
+
+mod error;
+mod packet;
+mod parse;
+
+pub use crate::{
+    error::RtcpError,
+    packet::{
+        Goodbye, ReceiverReport, ReceptionReport, RtcpPacket, SdesChunk, SdesItem, SenderInfo,
+        SenderReport, SourceDescription,
+    },
+    parse::{DEFAULT_COMPOUND_CAPACITY, parse_rtcp},
+};
 
 /// RTCP 编解码占位结构，约定控制平面实现入口。
 ///
@@ -66,4 +81,24 @@ impl RtcpCodecScaffold {
     pub const fn new() -> Self {
         Self
     }
+}
+
+/// 构造解析返回值的小型向量。
+///
+/// ### 教案说明（Why）
+/// - 复合 RTCP 报文通常仅包含少量控制分组（SR、SDES、BYE 等），使用 `SmallVec` 能将前几个分组直接存储在栈上，避免频繁堆分配。
+/// - 与 `parse_rtcp` 返回类型共享，调用方可以统一引用该别名简化类型签名阅读。
+///
+/// ### 合同约束（What）
+/// - `RtcpPacketVec` 的容量与 `DEFAULT_COMPOUND_CAPACITY` 相同，确保至少容纳典型的 3~4 个分组。
+/// - 超过内联容量时自动回退至堆分配，语义与 `SmallVec` 一致。
+///
+/// ### 注意事项（Trade-offs）
+/// - 若未来复合包显著增多，需要酌情调整默认容量或改用 `Vec`。
+pub type RtcpPacketVec = smallvec::SmallVec<[RtcpPacket; DEFAULT_COMPOUND_CAPACITY]>;
+
+/// 构造空的 [`RtcpPacketVec`]，便于无调用方直接引用 `smallvec` 依赖。
+#[must_use]
+pub fn new_packet_vec() -> RtcpPacketVec {
+    smallvec::SmallVec::new()
 }
