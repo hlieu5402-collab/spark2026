@@ -123,7 +123,6 @@ pub struct DriftNodeSnapshot {
     #[doc = "- 前置条件：调用方需提供符合命名规范的数据；"]
     #[doc = "- 后置条件：事件序列化后保持原样，供审计回放。"]
     pub delta_score: u64,
-
 }
 
 #[doc = "事件 `配置校准请求`（代码：`configuration.calibration.requested`，家族：`calibration`）。"]
@@ -169,7 +168,6 @@ pub struct ConfigurationCalibrationRequested {
     #[doc = "- 前置条件：可选字段，缺省表示信息未知；"]
     #[doc = "- 后置条件：事件序列化后用于审计与演练校验。"]
     pub reason: Option<String>,
-
 }
 
 #[doc = "事件 `配置漂移检测`（代码：`configuration.drift.detected`，家族：`drift`）。"]
@@ -221,7 +219,6 @@ pub struct ConfigurationDriftDetected {
     #[doc = "- 前置条件：调用方必须提供该字段；"]
     #[doc = "- 后置条件：事件序列化后用于审计与演练校验。"]
     pub divergent_nodes: Vec<DriftNodeSnapshot>,
-
 }
 
 #[doc = "事件 `配置一致性恢复`（代码：`configuration.consistency.restored`，家族：`consistency`）。"]
@@ -267,15 +264,17 @@ pub struct ConfigurationConsistencyRestored {
     #[doc = "- 前置条件：可选字段，缺省表示信息未知；"]
     #[doc = "- 后置条件：事件序列化后用于审计与演练校验。"]
     pub source_event_id: Option<String>,
-
 }
 
 #[doc = "配置事件合约版本常量，用于运行时快速校验生成产物。"]
+#[rustfmt::skip]
 pub const CONFIGURATION_EVENTS_VERSION: &str = "1.0.0";
 
 #[doc = "配置事件合约摘要，便于 UI 或 CLI 展示总体说明。"]
+#[rustfmt::skip]
 pub const CONFIGURATION_EVENTS_SUMMARY: &str = "配置控制面与审计事件的统一契约：覆盖自动校准、漂移检测与一致性恢复信号。";
 
+#[rustfmt::skip]
 pub const CONFIGURATION_CALIBRATION_REQUESTED_FIELDS: &[EventFieldDescriptor] = &[
     EventFieldDescriptor {
         name: "profile_id",
@@ -309,6 +308,7 @@ pub const CONFIGURATION_CALIBRATION_REQUESTED_FIELDS: &[EventFieldDescriptor] = 
     },
 ];
 
+#[rustfmt::skip]
 pub const CONFIGURATION_CALIBRATION_REQUESTED_DRILLS: &[DrillDescriptor] = &[
     DrillDescriptor {
         title: "单节点手动校准演练",
@@ -319,6 +319,7 @@ pub const CONFIGURATION_CALIBRATION_REQUESTED_DRILLS: &[DrillDescriptor] = &[
     },
 ];
 
+#[rustfmt::skip]
 pub const CONFIGURATION_CALIBRATION_REQUESTED: ConfigurationEventDescriptor = ConfigurationEventDescriptor {
     ident: "ConfigurationCalibrationRequested",
     code: "configuration.calibration.requested",
@@ -336,6 +337,7 @@ pub const CONFIGURATION_CALIBRATION_REQUESTED: ConfigurationEventDescriptor = Co
     drills: CONFIGURATION_CALIBRATION_REQUESTED_DRILLS,
 };
 
+#[rustfmt::skip]
 pub const CONFIGURATION_DRIFT_DETECTED_FIELDS: &[EventFieldDescriptor] = &[
     EventFieldDescriptor {
         name: "profile_id",
@@ -375,6 +377,7 @@ pub const CONFIGURATION_DRIFT_DETECTED_FIELDS: &[EventFieldDescriptor] = &[
     },
 ];
 
+#[rustfmt::skip]
 pub const CONFIGURATION_DRIFT_DETECTED_DRILLS: &[DrillDescriptor] = &[
     DrillDescriptor {
         title: "十节点漂移聚合与审计演练",
@@ -385,6 +388,7 @@ pub const CONFIGURATION_DRIFT_DETECTED_DRILLS: &[DrillDescriptor] = &[
     },
 ];
 
+#[rustfmt::skip]
 pub const CONFIGURATION_DRIFT_DETECTED: ConfigurationEventDescriptor = ConfigurationEventDescriptor {
     ident: "ConfigurationDriftDetected",
     code: "configuration.drift.detected",
@@ -402,6 +406,7 @@ pub const CONFIGURATION_DRIFT_DETECTED: ConfigurationEventDescriptor = Configura
     drills: CONFIGURATION_DRIFT_DETECTED_DRILLS,
 };
 
+#[rustfmt::skip]
 pub const CONFIGURATION_CONSISTENCY_RESTORED_FIELDS: &[EventFieldDescriptor] = &[
     EventFieldDescriptor {
         name: "profile_id",
@@ -435,6 +440,7 @@ pub const CONFIGURATION_CONSISTENCY_RESTORED_FIELDS: &[EventFieldDescriptor] = &
     },
 ];
 
+#[rustfmt::skip]
 pub const CONFIGURATION_CONSISTENCY_RESTORED_DRILLS: &[DrillDescriptor] = &[
     DrillDescriptor {
         title: "漂移恢复闭环演练",
@@ -445,6 +451,7 @@ pub const CONFIGURATION_CONSISTENCY_RESTORED_DRILLS: &[DrillDescriptor] = &[
     },
 ];
 
+#[rustfmt::skip]
 pub const CONFIGURATION_CONSISTENCY_RESTORED: ConfigurationEventDescriptor = ConfigurationEventDescriptor {
     ident: "ConfigurationConsistencyRestored",
     code: "configuration.consistency.restored",
@@ -462,6 +469,7 @@ pub const CONFIGURATION_CONSISTENCY_RESTORED: ConfigurationEventDescriptor = Con
     drills: CONFIGURATION_CONSISTENCY_RESTORED_DRILLS,
 };
 
+#[rustfmt::skip]
 pub const CONFIGURATION_EVENTS: &[ConfigurationEventDescriptor] = &[
     CONFIGURATION_CALIBRATION_REQUESTED,
     CONFIGURATION_DRIFT_DETECTED,
