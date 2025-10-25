@@ -75,7 +75,3 @@ impl ListenerConfig {
         self.accept_backoff
     }
 }
-
-// 传输工厂的泛型与对象层接口已迁移至 `crate::transport::traits`：
-// - 泛型接口：`crate::transport::traits::generic::TransportFactory`
-// - 对象接口：`crate::transport::traits::object::DynTransportFactory`

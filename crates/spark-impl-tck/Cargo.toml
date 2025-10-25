@@ -15,10 +15,6 @@ rtp-tests = []
 # `spark-impl-tck` 不提供基准测试入口，因此禁用基准运行以避免参数解析失败。
 bench = false
 
-[features]
-default = []
-transport-tests = []
-
 [dependencies]
 spark-core = { path = "../../spark-core" }
 spark-codec-sip = { path = "../../spark-codec-sip" }
