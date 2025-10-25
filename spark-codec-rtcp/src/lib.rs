@@ -30,6 +30,8 @@ extern crate alloc;
 mod error;
 mod packet;
 mod parse;
+#[cfg(feature = "std")]
+mod stats;
 
 pub use crate::{
     error::RtcpError,
@@ -38,6 +40,11 @@ pub use crate::{
         SenderReport, SourceDescription,
     },
     parse::{DEFAULT_COMPOUND_CAPACITY, parse_rtcp},
+};
+
+#[cfg(feature = "std")]
+pub use crate::stats::{
+    BuildError, ReceiverStat, ReceptionStat, RtpClockMapper, SenderStat, build_rr, build_sr,
 };
 
 /// RTCP 编解码占位结构，约定控制平面实现入口。
