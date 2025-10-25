@@ -37,12 +37,17 @@ pub(crate) fn parse_headers<'a>(input: &'a str) -> Result<Vec<Header<'a>>, SipPa
     let mut last_line_end = 0usize;
 
     while offset < bytes.len() {
-        let line_end = match input[offset..].find("\r\n") {
-            Some(rel) => offset + rel,
-            None => return Err(SipParseError::UnexpectedEof),
+        let (line_end, has_crlf) = match input[offset..].find("\r\n") {
+            Some(rel) => (offset + rel, true),
+            None => (bytes.len(), false),
         };
         let line = &input[offset..line_end];
-        let next_offset = line_end + 2;
+        let next_offset = if has_crlf { line_end + 2 } else { bytes.len() };
+
+        // 教案级提示：SIP 报文最后一个头部允许直接跟随空行，这意味着 `split_headers_body`
+        // 切分后末尾可能缺少 `CRLF`。若不做额外处理，解析器会误判为 `UnexpectedEof`，
+        // 导致像本次测试中的 REGISTER 请求无法被接受。此处允许尾部无 `CRLF` 的最后一行，
+        // 以符合 RFC 3261 §7.3.1 对 header 折行的描述，同时保持对其他行的严格校验。
 
         if line.is_empty() {
             return Err(SipParseError::InvalidHeaderValue);
