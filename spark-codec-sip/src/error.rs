@@ -18,6 +18,30 @@
 
 use core::fmt;
 
+use spark_core::error::{self, ErrorCategory};
+
+/// 将 SIP 解析或事务错误映射为结构化的 [`ErrorCategory`]。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：框架的自动响应器依据 [`ErrorCategory`] 决定是触发取消、退避还是关闭。
+///   若解析层或事务层错误无法与错误矩阵对齐，将导致默认策略失效。
+/// - **实现 (How)**：各错误类型根据与矩阵中稳定错误码的对应关系，调用内部的
+///   `category_for_code` 查表函数得到分类；这样可以与 `contracts/error_matrix.toml`
+///   中的声明保持同步。
+/// - **契约 (What)**：实现者必须保证返回值稳定且无副作用；分类结果主要用于日志、指标与
+///   自动化处理器，调用方无需额外清理资源。
+pub trait ToErrorCategory {
+    /// 返回与错误码矩阵一致的分类信息。
+    fn to_error_category(&self) -> ErrorCategory;
+}
+
+/// 统一的错误码查表辅助函数。
+fn category_for_code(code: &str) -> ErrorCategory {
+    error::category_matrix::entry_for_code(code)
+        .map(error::category_matrix::CategoryMatrixEntry::category)
+        .unwrap_or(ErrorCategory::NonRetryable)
+}
+
 /// SIP 解析阶段可能出现的错误枚举。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SipParseError {
@@ -106,5 +130,61 @@ impl From<fmt::Error> for SipFormatError {
 impl From<core::str::Utf8Error> for SipFormatError {
     fn from(_: core::str::Utf8Error) -> Self {
         Self::NonUtf8Body
+    }
+}
+
+impl ToErrorCategory for SipParseError {
+    fn to_error_category(&self) -> ErrorCategory {
+        // 所有解析错误均映射到协议违规，驱动默认的关闭策略。
+        category_for_code("protocol.decode")
+    }
+}
+
+/// SIP 事务阶段可能出现的错误枚举。
+///
+/// # 教案式注释
+/// - **Why**：CANCEL 竞态会暴露“事务已终止”“最终响应冲突”等边界，若没有统一错误枚举，
+///   上层无法根据错误类型判断是否传播取消或回滚。
+/// - **Where**：位于编解码层，供 TCK 与实现共享，确保竞态处理分支保持一致。
+/// - **What**：`TransactionTerminated` 表示事务资源已释放；`FinalResponseConflict` 表示在 CANCEL
+///   生成 487 后仍尝试发送其它最终响应；`NoMatchingInvite` 则代表 CANCEL 无对应事务。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SipTransactionError {
+    /// CANCEL 无匹配的 INVITE 事务。
+    NoMatchingInvite,
+    /// 事务已终止，无法再处理 CANCEL 或最终响应。
+    TransactionTerminated,
+    /// 事务已生成最终响应（通常因 CANCEL 生成 487），但仍有新的响应写入。
+    FinalResponseConflict {
+        /// 已经登记的最终响应状态码。
+        existing: u16,
+        /// 试图再次写入的状态码。
+        attempted: u16,
+    },
+}
+
+impl fmt::Display for SipTransactionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoMatchingInvite => write!(f, "找不到与 CANCEL 对应的 INVITE 事务"),
+            Self::TransactionTerminated => write!(f, "事务已终止，禁止追加事件"),
+            Self::FinalResponseConflict {
+                existing,
+                attempted,
+            } => write!(f, "最终响应冲突：已记录 {existing}，拒绝新的 {attempted}",),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SipTransactionError {}
+
+impl ToErrorCategory for SipTransactionError {
+    fn to_error_category(&self) -> ErrorCategory {
+        match self {
+            Self::NoMatchingInvite => category_for_code("protocol.decode"),
+            Self::TransactionTerminated => category_for_code("runtime.shutdown"),
+            Self::FinalResponseConflict { .. } => category_for_code("runtime.shutdown"),
+        }
     }
 }

@@ -13,6 +13,9 @@
 
 pub(crate) mod placeholder {}
 
+/// SIP 相关 TCK 套件。
+pub mod sip;
+
 #[cfg(all(test, feature = "transport-tests"))]
 mod transport_graceful {
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};

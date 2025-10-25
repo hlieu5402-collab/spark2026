@@ -17,6 +17,7 @@ bench = false
 
 [dependencies]
 spark-core = { path = "../../spark-core" }
+spark-codec-sip = { path = "../../spark-codec-sip" }
 
 [dev-dependencies]
 spark-transport-tcp = { path = "../spark-transport-tcp" }
