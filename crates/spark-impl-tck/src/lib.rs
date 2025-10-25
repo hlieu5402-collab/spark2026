@@ -13,8 +13,8 @@
 
 pub(crate) mod placeholder {}
 
-#[cfg(test)]
-mod transport {
+#[cfg(all(test, feature = "transport-tests"))]
+mod transport_tcp_graceful {
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};
     use spark_transport_tcp::{ShutdownDirection, TcpChannel, TcpListener, TcpSocketConfig};
     use std::{net::SocketAddr, time::Duration};
@@ -114,8 +114,11 @@ mod transport {
             .expect("close graceful result");
 
         drop(client_channel);
+    }
+}
+
 /// 传输相关测试集合。
-#[cfg(test)]
+#[cfg(all(test, feature = "transport-tests"))]
 pub mod transport {
     use std::{
         net::SocketAddr,
@@ -533,6 +536,10 @@ pub mod transport {
                 .await
                 .map_err(|err| anyhow!(err))?
                 .map_err(|err| anyhow!(err))?;
+            Ok(())
+        }
+    }
+
     /// 确保 AWS-LC 作为 rustls 的全局加密后端。
     ///
     /// # 设计动机（Why）
@@ -801,6 +808,8 @@ pub mod transport {
         }
 
         Ok(())
+    }
+
     /// TLS 握手与读写行为验证。
     pub mod tls_handshake {
         use super::{
@@ -887,6 +896,10 @@ pub mod transport {
 
             assert_eq!(observation.server_name.as_deref(), Some("alpha.test"));
             assert_eq!(observation.alpn.as_deref(), Some(b"h2".as_ref()));
+            Ok(())
+        }
+    }
+
     /// 针对 UDP 批量 IO 优化路径的集成测试。
     pub mod udp_batch_io {
         use super::{Context, Result, UdpSocket};
@@ -985,7 +998,8 @@ pub mod rtp {
     use anyhow::Result;
 
     use spark_codec_rtp::{
-        RTP_HEADER_MIN_LEN, RTP_VERSION, RtpHeader, RtpPacketBuilder, parse_rtp, seq_less,
+        DtmfDecodeError, DtmfEncodeError, DtmfEvent, RTP_HEADER_MIN_LEN, RTP_VERSION, RtpHeader,
+        RtpPacketBuilder, decode_dtmf, encode_dtmf, parse_rtp, seq_less,
     };
     use spark_core::buffer::{BufView, Chunks};
 
@@ -1128,8 +1142,61 @@ pub mod rtp {
             assert!(!seq_less(0x8000, 0));
         }
     }
+
+    /// DTMF（RFC 4733）事件编解码测试集合。
+    pub mod dtmf {
+        use super::*;
+
+        /// 验证单个事件的编码后再解码能够完整还原字段。
+        #[test]
+        fn rfc4733_roundtrip() {
+            const PT: u8 = 101;
+            let event = DtmfEvent::new(5, true, 23, 960);
+
+            let mut buffer = [0u8; 4];
+            let written = encode_dtmf(PT, &event, &mut buffer).expect("encode must succeed");
+            assert_eq!(written, 4);
+            assert_eq!(buffer, [5, 0x40 | 23, 0x03, 0xC0]);
+
+            let decoded = decode_dtmf(PT, &buffer).expect("decode must succeed");
+            assert_eq!(decoded, event);
+        }
+
+        /// 当保留位被置位时必须拒绝解析，避免吞下不兼容格式。
+        #[test]
+        fn rfc4733_reject_reserved_bit() {
+            const PT: u8 = 101;
+            let payload = [1u8, 0x80, 0, 10];
+            let err = decode_dtmf(PT, &payload).expect_err("reserved bit must trigger error");
+            assert!(matches!(err, DtmfDecodeError::ReservedBitSet));
+        }
+
+        /// 当 payload 对齐或音量字段违规时应返回对应的编码/解码错误。
+        #[test]
+        fn rfc4733_contract_errors() {
+            const PT: u8 = 101;
+
+            let misaligned = [1u8, 0, 0];
+            let err = decode_dtmf(PT, &misaligned).expect_err("len=3 must fail");
+            assert!(matches!(
+                err,
+                DtmfDecodeError::PayloadTooShort | DtmfDecodeError::MisalignedPayload
+            ));
+
+            let mut buffer = [0u8; 3];
+            let event = DtmfEvent::new(1, false, 10, 80);
+            let encode_err = encode_dtmf(PT, &event, &mut buffer).expect_err("buffer=3 must fail");
+            assert!(matches!(encode_err, DtmfEncodeError::BufferTooSmall));
+
+            let mut buffer = [0u8; 4];
+            let loud_event = DtmfEvent::new(1, false, 80, 80);
+            let encode_err =
+                encode_dtmf(PT, &loud_event, &mut buffer).expect_err("volume>63 must fail");
+            assert!(matches!(encode_err, DtmfEncodeError::VolumeOutOfRange(80)));
+        }
+    }
 }
 
 /// RTCP 编解码契约测试集合。
-#[cfg(test)]
+#[cfg(all(test, feature = "transport-tests"))]
 pub mod rtcp;

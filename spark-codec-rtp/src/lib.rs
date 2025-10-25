@@ -28,10 +28,15 @@
 
 extern crate alloc;
 
+pub mod dtmf;
+
 use alloc::vec::Vec;
 use core::fmt;
 
 use spark_core::buffer::{BufView, Chunks};
+
+#[doc = "RFC 4733 电话事件编解码 API 的便捷导出。"]
+pub use dtmf::{DtmfDecodeError, DtmfEncodeError, DtmfEvent, decode_dtmf, encode_dtmf};
 
 /// RTP 固定版本号（RFC 3550 §5.1）。
 pub const RTP_VERSION: u8 = 2;
