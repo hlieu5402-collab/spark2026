@@ -153,3 +153,154 @@ pub mod transport {
         Ok(())
     }
 }
+
+/// RTP 相关契约测试集合。
+#[cfg(test)]
+pub mod rtp {
+    use anyhow::Result;
+
+    use spark_codec_rtp::{
+        RTP_HEADER_MIN_LEN, RTP_VERSION, RtpHeader, RtpPacketBuilder, parse_rtp, seq_less,
+    };
+    use spark_core::buffer::{BufView, Chunks};
+
+    /// 提供可复用的多分片 `BufView`，用于验证零拷贝解析在非连续缓冲下的行为。
+    ///
+    /// - **Why**：RTP 报文往往来自底层网络栈的 scatter/gather 缓冲，测试需覆盖多分片场景。
+    /// - **How**：持有若干指向原始缓冲的切片指针，每次 `as_chunks` 时复制指针集合构造 `Chunks`。
+    struct MultiChunkView<'a> {
+        chunks: &'a [&'a [u8]],
+        total_len: usize,
+    }
+
+    impl<'a> MultiChunkView<'a> {
+        fn new(chunks: &'a [&'a [u8]]) -> Self {
+            let total_len = chunks.iter().map(|chunk| chunk.len()).sum();
+            Self { chunks, total_len }
+        }
+    }
+
+    impl BufView for MultiChunkView<'_> {
+        fn as_chunks(&self) -> Chunks<'_> {
+            let slices: Vec<&[u8]> = self.chunks.to_vec();
+            Chunks::from_vec(slices)
+        }
+
+        fn len(&self) -> usize {
+            self.total_len
+        }
+    }
+
+    /// RTP 头解析相关测试。
+    pub mod header_parse {
+        use super::*;
+        use core::ptr;
+
+        /// 解析带有 CSRC、扩展与 padding 的 RTP 报文，并验证零拷贝窗口。
+        #[test]
+        fn csrc_extension_padding_roundtrip() -> Result<()> {
+            let mut header = RtpHeader::default();
+            header.marker = true;
+            header.payload_type = 96;
+            header.sequence_number = 0xfffe;
+            header.timestamp = 0x1122_3344;
+            header.ssrc = 0x5566_7788;
+            header.extension = true;
+            header.padding = true;
+            header
+                .set_csrcs(&[0x0102_0304, 0x0506_0708])
+                .expect("CSRC 设置失败");
+
+            let payload: &[u8] = b"media-payload-demo";
+            let extension_bytes = [0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x22, 0x33, 0x44];
+
+            let builder = RtpPacketBuilder::new(header.clone())
+                .payload_view(&payload)
+                .extension_bytes(0x1001, &extension_bytes)
+                .expect("扩展配置失败")
+                .padding(4);
+
+            let mut packet_bytes = vec![0u8; RTP_HEADER_MIN_LEN + 64];
+            let used = builder
+                .encode_into(&mut packet_bytes)
+                .expect("RTP 编码失败");
+            packet_bytes.truncate(used);
+
+            // 刻意拆分为多分片，覆盖零拷贝解析。
+            let chunk_a = &packet_bytes[..5];
+            let chunk_b = &packet_bytes[5..20];
+            let chunk_c = &packet_bytes[20..];
+            let chunks: [&[u8]; 3] = [chunk_a, chunk_b, chunk_c];
+            let view = MultiChunkView::new(&chunks);
+
+            let packet = parse_rtp(&view).expect("RTP 解析失败");
+
+            let parsed = packet.header();
+            assert_eq!(parsed.version, RTP_VERSION);
+            assert!(parsed.marker);
+            assert_eq!(parsed.payload_type, 96);
+            assert_eq!(parsed.sequence_number, 0xfffe);
+            assert_eq!(parsed.timestamp, 0x1122_3344);
+            assert_eq!(parsed.ssrc, 0x5566_7788);
+            assert_eq!(parsed.csrcs(), &[0x0102_0304, 0x0506_0708]);
+
+            let extension = packet.extension().expect("解析结果缺少 header 扩展视图");
+            assert_eq!(extension.profile, 0x1001);
+            let ext_data: Vec<u8> =
+                extension
+                    .data
+                    .as_chunks()
+                    .fold(Vec::new(), |mut acc, chunk| {
+                        acc.extend_from_slice(chunk);
+                        acc
+                    });
+            assert_eq!(ext_data, extension_bytes);
+
+            let payload_section = packet.payload();
+            assert_eq!(payload_section.len(), payload.len());
+            let payload_chunks: Vec<&[u8]> = payload_section.as_chunks().collect();
+            assert_eq!(payload_chunks.len(), 1, "payload 预计为单片");
+
+            let payload_start = packet_bytes.len() - packet.padding_len() as usize - payload.len();
+            let payload_slice = &packet_bytes[payload_start..payload_start + payload.len()];
+            assert!(ptr::eq(payload_chunks[0].as_ptr(), payload_slice.as_ptr()));
+            assert_eq!(payload_chunks[0], payload);
+
+            assert_eq!(packet.padding_len(), 4);
+
+            Ok(())
+        }
+
+        /// 当 header 与 builder 配置不一致时应返回错误，避免输出非法报文。
+        #[test]
+        fn builder_rejects_mismatched_flags() {
+            let mut header = RtpHeader::default();
+            header.padding = false;
+            let builder = RtpPacketBuilder::new(header).padding(4);
+            let mut buffer = vec![0u8; 64];
+            let err = builder
+                .encode_into(&mut buffer)
+                .expect_err("padding 契约应触发错误");
+            assert!(matches!(
+                err,
+                spark_codec_rtp::RtpEncodeError::HeaderMismatch(_)
+            ));
+        }
+    }
+
+    /// 序列号回绕比较测试。
+    pub mod seq_wrap_around {
+        use super::*;
+
+        /// 验证常规递增场景与回绕场景的比较结果。
+        #[test]
+        fn ordering_rules() {
+            assert!(seq_less(10, 11));
+            assert!(!seq_less(11, 11));
+            assert!(seq_less(0xFFFE, 0xFFFF));
+            assert!(seq_less(0xFFFF, 0));
+            assert!(!seq_less(0, 0x8000));
+            assert!(!seq_less(0x8000, 0));
+        }
+    }
+}
