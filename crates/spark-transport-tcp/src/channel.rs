@@ -127,6 +127,27 @@ pub struct TcpChannel {
     inner: Arc<TcpChannelInner>,
 }
 
+/// 将通道拆解为裸 `TcpStream` 与地址元数据的结果结构。
+///
+/// # 教案级注释
+///
+/// ## 意图（Why）
+/// - 支持 TLS/QUIC 等更高层协议在握手阶段直接控制底层 `TcpStream`。
+/// - 保留本地与对端地址，使握手完成后重建的加密通道仍能复用原有元数据。
+///
+/// ## 契约（What）
+/// - `stream`：原始 Tokio `TcpStream`；
+/// - `local_addr`：监听端地址；
+/// - `peer_addr`：远端地址；
+/// - **前置条件**：调用方已经放弃对原 `TcpChannel` 的其他克隆；
+/// - **后置条件**：所有权完全转移至该结构体，由上层决定后续处理方式。
+#[derive(Debug)]
+pub struct TcpChannelParts {
+    pub stream: TokioTcpStream,
+    pub local_addr: TransportSocketAddr,
+    pub peer_addr: TransportSocketAddr,
+}
+
 impl TcpChannel {
     pub(crate) fn from_parts(
         stream: TokioTcpStream,
@@ -360,6 +381,40 @@ impl TcpChannel {
     /// 获取本地地址。
     pub fn local_addr(&self) -> TransportSocketAddr {
         self.inner.local_addr
+    }
+
+    /// 将通道尝试拆解为 [`TcpChannelParts`]。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - TLS 握手阶段需要直接操作底层 `TcpStream`，通过本方法可在保持连接连续性的同时交由
+    ///   上层协议驱动；
+    /// - 若拆解失败（例如通道已被克隆），返回原始 `TcpChannel`，调用方可决定是否降级或延后
+    ///   握手，避免出现“半拆解”导致的资源泄露。
+    ///
+    /// ## 逻辑（How）
+    /// - 使用 `Arc::try_unwrap` 检查是否存在唯一所有者；
+    /// - 成功时获取内部互斥锁并调用 `into_inner` 取得 `TcpStream`；
+    /// - 将地址字段连同 `TcpStream` 一并返回，便于 TLS 层继续记录观测数据。
+    ///
+    /// ## 契约（What）
+    /// - 返回 `Ok(parts)` 表示拆解成功，原通道不再可用；
+    /// - 返回 `Err(self)` 表示仍有其他持有者，调用方仍可继续以明文方式使用通道；
+    /// - **前置条件**：调用方必须确保没有未完成的读写操作；
+    /// - **后置条件**：成功拆解后，内部互斥锁与背压状态将被丢弃。
+    pub fn try_into_parts(self) -> Result<TcpChannelParts, Self> {
+        match Arc::try_unwrap(self.inner) {
+            Ok(inner) => {
+                let stream = inner.stream.into_inner();
+                Ok(TcpChannelParts {
+                    stream,
+                    local_addr: inner.local_addr,
+                    peer_addr: inner.peer_addr,
+                })
+            }
+            Err(inner) => Err(Self { inner }),
+        }
     }
 
     /// 检查写通道的即时背压状态。
