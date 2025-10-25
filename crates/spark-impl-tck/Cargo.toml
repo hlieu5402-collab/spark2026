@@ -5,6 +5,9 @@ edition = "2024"
 publish = false
 license = "Apache-2.0"
 
+[lib]
+bench = false
+
 [dependencies]
 spark-core = { path = "../../spark-core" }
 
@@ -13,3 +16,5 @@ spark-transport-tcp = { path = "../spark-transport-tcp" }
 spark-transport-udp = { path = "../spark-transport-udp" }
 spark-transport-tls = { path = "../spark-transport-tls" }
 spark-transport-quic = { path = "../spark-transport-quic" }
+anyhow = "1.0"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
