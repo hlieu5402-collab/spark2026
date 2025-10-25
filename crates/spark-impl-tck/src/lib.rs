@@ -14,6 +14,186 @@
 pub(crate) mod placeholder {}
 
 #[cfg(test)]
+mod observability {
+    //! 观测契约守门测试模块。
+    //!
+    //! # 教案式说明
+    //!
+    //! - **意图（Why）**：以单元测试形式确保 `spark-core` 导出的传输层可观测性键名
+    //!   与合约源文件 `contracts/observability_keys.toml` 完全一致，防止开发者在修改
+    //!   合约或代码时产生漂移，破坏单一事实来源（Single Source of Truth）。
+    //! - **体系定位（Where）**：该模块位于实现 TCK 的 crate 内，与传输实现相关测试并列，
+    //!   通过 `cargo test -p spark-impl-tck -- observability::keys::transport` 专项校验键名。
+    //! - **方法论（How）**：运行时读取 TOML 合约，解析出 `metrics.transport` 分组，
+    //!   与 `spark_core::observability::keys::metrics::transport` 中的常量一一比对。
+    //! - **契约说明（What）**：若检测到缺失或错配，测试会给出详细断言信息，提示生成脚本
+    //!   或常量列表需要同步更新；测试不依赖网络或外部环境，保证在 CI 本地均可执行。
+    //! - **风险提示（Trade-offs）**：解析 TOML 需依赖 `serde` 与 `toml`，这会增加少量编译时间，
+    //!   但换取在代码评审前即可捕获键名漂移；若未来合约结构发生重大调整，需要同步更新解析逻辑。
+
+    pub(super) mod keys {
+        //! 传输域键名一致性测试集合。
+        //!
+        //! # 教案级注释
+        //!
+        //! - **目标（Why）**：验证 `metrics.transport` 分组内的所有键名/枚举值在代码中均有对应常量；
+        //! - **架构关系（Where）**：该模块仅在测试构建中编译，不会影响运行时代码体积；
+        //! - **实现思路（How）**：
+        //!   1. 读取合约 TOML，筛选出 `path = ["metrics", "transport"]` 分组；
+        //!   2. 构造期望的常量列表，直接引用 `spark-core` 自动生成的常量值；
+        //!   3. 对比两者的键集合与取值，确保“无遗漏、无额外”；
+        //! - **契约（What）**：若任一键缺失或取值不符，测试以 panic 形式阻断 CI，提示运行生成脚本或更新常量；
+        //! - **风险与注意事项（Trade-offs）**：
+        //!   - 合约文件路径通过 `CARGO_MANIFEST_DIR` 相对定位，若仓库结构调整需同步更新；
+        //!   - 当前实现假定 `ident` 唯一，若未来允许重复键需调整数据结构与断言逻辑。
+
+        use std::{
+            collections::BTreeMap,
+            fs,
+            path::{Path, PathBuf},
+        };
+
+        use serde::Deserialize;
+        use spark_core::observability::keys::metrics::transport as transport_keys;
+
+        /// 观测键合约的最小解析结果。
+        ///
+        /// # 教案级说明
+        ///
+        /// - **职责（Why）**：将 TOML 中的 `groups` 节点映射为 Rust 结构，便于在测试中进行遍历与筛选；
+        /// - **整体关系（Where）**：仅在测试路径中使用，不会被编译进生产代码；
+        /// - **解析逻辑（How）**：结合 `serde` 的派生反序列化能力，直接将嵌套表映射为结构体；
+        /// - **契约（What）**：字段均对应合约中的同名键；`items` 缺省时默认为空数组，防止解构失败；
+        /// - **注意事项（Trade-offs）**：合约新增字段不会破坏现有解析（`serde` 默认忽略未知字段），
+        ///   但若字段类型发生变化需同步调整结构定义。
+        #[derive(Debug, Deserialize)]
+        struct ContractDocument {
+            groups: Vec<Group>,
+        }
+
+        /// `groups` 数组中的单个分组定义。
+        #[derive(Debug, Deserialize)]
+        struct Group {
+            path: Vec<String>,
+            #[serde(default)]
+            items: Vec<GroupItem>,
+        }
+
+        /// 分组下的具体键名条目。
+        #[derive(Debug, Deserialize)]
+        struct GroupItem {
+            ident: String,
+            value: String,
+        }
+
+        /// 读取并解析 `metrics.transport` 分组。
+        ///
+        /// # 教案式注释
+        ///
+        /// - **意图（Why）**：将合约中的传输层键名映射为 `BTreeMap`，方便后续按标识符查找与断言；
+        /// - **流程（How）**：
+        ///   1. 基于 `CARGO_MANIFEST_DIR` 推导仓库根路径，再定位到合约文件；
+        ///   2. 读取文件内容并使用 `toml::from_str` 反序列化为结构体；
+        ///   3. 定位 `path == ["metrics", "transport"]` 的分组，将其中 `ident -> value` 收集进有序映射；
+        /// - **契约（What）**：返回值保证 `ident` 唯一；若找不到目标分组则直接 panic，提示合约结构可能已变更；
+        /// - **风险提示（Trade-offs）**：当仓库结构或文件命名调整时，路径计算需同步更新；若 TOML 解析失败，
+        ///   错误消息会指向具体原因，方便开发者排查格式问题。
+        fn load_transport_items() -> BTreeMap<String, String> {
+            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let contract_path = manifest_dir.join("../../contracts/observability_keys.toml");
+            ensure_file_exists(&contract_path);
+            let raw = fs::read_to_string(&contract_path)
+                .unwrap_or_else(|err| panic!("读取可观测性合约失败：{contract_path:?}: {err}"));
+            let document: ContractDocument = toml::from_str(&raw)
+                .unwrap_or_else(|err| panic!("解析可观测性合约 TOML 失败：{err}"));
+
+            let group = document
+                .groups
+                .into_iter()
+                .find(|group| group.path.iter().map(String::as_str).eq(["metrics", "transport"]))
+                .unwrap_or_else(|| panic!("合约缺少 metrics.transport 分组，请同步 contracts/observability_keys.toml"));
+
+            group
+                .items
+                .into_iter()
+                .map(|item| (item.ident, item.value))
+                .collect()
+        }
+
+        /// 确认合约文件存在，提前给出人类友好的错误信息。
+        ///
+        /// # 教案式注释
+        ///
+        /// - **意图（Why）**：在尝试读取文件前显式校验其存在性，避免 `read_to_string` 直接给出生硬的 ENOENT 错误；
+        /// - **契约（What）**：若文件缺失则 panic 并提示运行 `tools/ci/check_observability_keys.sh`；
+        /// - **风险（Trade-offs）**：仅在测试中使用，带来的额外 IO 可忽略不计。
+        fn ensure_file_exists(path: &Path) {
+            if !path.exists() {
+                panic!(
+                    "未找到可观测性合约文件：{path:?}。请运行 tools/ci/check_observability_keys.sh 同步生成产物。"
+                );
+            }
+        }
+
+        /// 返回期望的传输层键名常量映射。
+        ///
+        /// # 教案式注释
+        ///
+        /// - **意图（Why）**：集中列出代码中的常量定义，便于与合约进行一对一对比；
+        /// - **契约（What）**：每个条目以 `(标识符, 常量值)` 形式出现，标识符与合约 `ident` 保持一致；
+        /// - **注意事项（Trade-offs）**：若未来新增键名，只需在此处追加条目即可，测试会确保合约同步更新。
+        fn expected_transport_constants() -> [(&'static str, &'static str); 10] {
+            [
+                ("ATTR_PROTOCOL", transport_keys::ATTR_PROTOCOL),
+                ("ATTR_LISTENER_ID", transport_keys::ATTR_LISTENER_ID),
+                ("ATTR_PEER_ROLE", transport_keys::ATTR_PEER_ROLE),
+                ("ATTR_RESULT", transport_keys::ATTR_RESULT),
+                ("ATTR_ERROR_KIND", transport_keys::ATTR_ERROR_KIND),
+                ("ATTR_SOCKET_FAMILY", transport_keys::ATTR_SOCKET_FAMILY),
+                ("RESULT_SUCCESS", transport_keys::RESULT_SUCCESS),
+                ("RESULT_FAILURE", transport_keys::RESULT_FAILURE),
+                ("ROLE_CLIENT", transport_keys::ROLE_CLIENT),
+                ("ROLE_SERVER", transport_keys::ROLE_SERVER),
+            ]
+        }
+
+        /// 校验 `contracts/observability_keys.toml` 与代码常量之间的“一一对应”关系。
+        ///
+        /// # 教案级注释
+        ///
+        /// - **实验目的（Why）**：守护传输层可观测性键名的单一事实来源，防止在合约或代码调整时遗漏同步。
+        /// - **实验步骤（How）**：
+        ///   1. 加载合约条目并转换为 `BTreeMap`；
+        ///   2. 构造期望常量数组；
+        ///   3. 逐项比较键集合大小与对应值是否一致；
+        /// - **契约结果（What）**：当且仅当所有键完全匹配时测试通过；否则给出详细断言信息。
+        /// - **风险提示（Trade-offs）**：测试不会尝试自动修复差异，必须人工运行生成脚本并提交。
+        #[test]
+        fn transport() {
+            let contract_items = load_transport_items();
+            let expected = expected_transport_constants();
+
+            assert_eq!(
+                contract_items.len(),
+                expected.len(),
+                "传输层键名数量与代码期望不符：{contract_items:?}"
+            );
+
+            for (ident, constant) in expected {
+                let Some(contract_value) = contract_items.get(ident) else {
+                    panic!("可观测性合约缺少键：{ident}. 请同步生成代码与文档。");
+                };
+                assert_eq!(
+                    constant,
+                    contract_value,
+                    "键 {ident} 的取值不一致：代码 `{constant}` vs 合约 `{contract_value}`"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod transport {
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};
     use spark_transport_tcp::{ShutdownDirection, TcpChannel, TcpListener, TcpSocketConfig};
@@ -114,6 +294,9 @@ mod transport {
             .expect("close graceful result");
 
         drop(client_channel);
+    }
+}
+
 /// 传输相关测试集合。
 #[cfg(test)]
 pub mod transport {
