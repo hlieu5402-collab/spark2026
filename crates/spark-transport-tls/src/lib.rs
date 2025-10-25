@@ -22,4 +22,6 @@
 - **TODO**：后续补全会话缓存、客户端/服务端双角色支持以及遥测指标。
 "#]
 
-pub(crate) mod placeholder {}
+mod hot_reload;
+
+pub use hot_reload::{HotReloadingServerConfig, TlsHandshakeError};
