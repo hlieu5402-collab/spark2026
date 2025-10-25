@@ -11,3 +11,4 @@
 //! - 新增测试专题时，请同步在此处 `pub mod`，并为 README/文档补充上下文说明。
 
 pub mod parse_compound;
+pub mod stats;

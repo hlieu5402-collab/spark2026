@@ -114,6 +114,8 @@ mod transport {
             .expect("close graceful result");
 
         drop(client_channel);
+    }
+}
 /// 传输相关测试集合。
 #[cfg(test)]
 pub mod transport {
