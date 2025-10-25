@@ -36,6 +36,8 @@ extern crate alloc;
 pub mod error;
 pub mod fmt;
 pub mod parse;
+/// INVITE 事务状态机模型与 CANCEL 竞态辅助工具。
+pub mod transaction;
 pub mod types;
 pub mod ws;
 
@@ -44,6 +46,9 @@ pub use crate::parse::{parse_request, parse_response};
 pub use crate::types::{
     CSeqHeader, ContactHeader, Header, HeaderName, MaxForwardsHeader, Method, NameAddr,
     RequestLine, SipMessage, SipUri, StatusLine, ViaHeader, ViaParamRport,
+};
+pub use transaction::{
+    CancelOutcome, FinalResponseDisposition, InviteServerTransaction, InviteServerTransactionState,
 };
 
 /// SIP 编解码骨架类型，维持与上一迭代兼容的构造入口。
