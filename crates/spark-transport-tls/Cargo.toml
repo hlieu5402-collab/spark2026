@@ -6,6 +6,8 @@ publish = false
 license = "Apache-2.0"
 
 [lib]
+# TLS 传输同样暂无基准测试目标，为避免 `cargo bench -- --quick` 传递
+# 非法参数至 `libtest`，直接关闭基准运行。
 bench = false
 
 [dependencies]
