@@ -39,6 +39,7 @@ pub mod parse;
 /// INVITE 事务状态机模型与 CANCEL 竞态辅助工具。
 pub mod transaction;
 pub mod types;
+pub mod ws;
 
 pub use crate::error::{SipFormatError, SipParseError};
 pub use crate::parse::{parse_request, parse_response};
