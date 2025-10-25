@@ -37,6 +37,7 @@ pub mod error;
 pub mod fmt;
 pub mod parse;
 pub mod types;
+pub mod ws;
 
 pub use crate::error::{SipFormatError, SipParseError};
 pub use crate::parse::{parse_request, parse_response};

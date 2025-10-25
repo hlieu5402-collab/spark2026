@@ -14,7 +14,7 @@
 pub(crate) mod placeholder {}
 
 #[cfg(test)]
-mod transport {
+mod transport_graceful {
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};
     use spark_transport_tcp::{ShutdownDirection, TcpChannel, TcpListener, TcpSocketConfig};
     use std::{net::SocketAddr, time::Duration};
@@ -114,6 +114,9 @@ mod transport {
             .expect("close graceful result");
 
         drop(client_channel);
+    }
+}
+
 /// 传输相关测试集合。
 #[cfg(test)]
 pub mod transport {
