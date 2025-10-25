@@ -1,0 +1,19 @@
+[package]
+name = "spark-transport-udp"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+
+[dependencies]
+spark-core = { path = "../../spark-core" }
+thiserror = "1.0"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
+
+[features]
+default = []
+batch-udp-unix = ["socket2"]
+
+[dependencies.socket2]
+version = "0.5"
+optional = true
