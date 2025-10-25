@@ -2,26 +2,33 @@
 # spark-transport-tls
 
 ## 设计动机（Why）
-- **定位**：提供基于 TLS 的安全传输通道，负责证书校验、密钥协商与会话复用，是 Spark 安全体系的重要一环。
-- **架构角色**：位于传输实现层，与 `spark-transport-tcp` 协同，通过 `spark-core` 契约向上层屏蔽握手与密钥管理细节。
-- **设计理念**：通过 `rustls` + `tokio-rustls` 组合实现纯 Rust TLS 栈，避免本地 OpenSSL 依赖带来的部署复杂度。
+- **安全入口**：为 `spark-transport-tcp` 接入层提供 TLS1.3 加密包装，确保链路机密性与完整性；
+- **可运维性**：通过显式的错误分类（Security / ResourceExhausted / Retryable）与握手元数据（SNI、ALPN），方便路由、审计与自愈策略；
+- **热更新**：依托 `ArcSwap` 在不中断现有连接的情况下替换证书或密码套件配置。
 
 ## 核心契约（What）
-- **输入条件**：未来 API 将接收证书源、会话策略以及 `spark-core` 定义的传输上下文；当前版本仅保留架构注释。
-- **输出/保障**：目标是保证链路保密性、完整性与可靠错误分类；在占位阶段强调未来接口契约而不提供实现。
-- **前置约束**：调用方需运行在 Tokio 多线程运行时，并提供可信的证书/密钥存储；否则握手流程无法启动。
+- [`TlsAcceptor`]：接收 `TcpChannel` 与 [`CallContext`](spark_core::contract::CallContext)，执行 TLS 握手并返回 [`TlsChannel`]；
+- [`TlsChannel`]：封装加密后的读写接口，同时暴露协商出的 SNI 与 ALPN，供上层协议栈决策；
+- 错误分类遵循 `Security`（证书/握手违规）、`ResourceExhausted`（资源不足或通道不可用）与 `Retryable`（可重试的瞬时故障）。
 
 ## 实现策略（How）
-- **运行时能力**：依赖 `tokio` 的网络与时间原语处理异步握手；`rustls` 负责加密逻辑，`tokio-rustls` 承担 Tokio I/O 与 TLS 状态机的粘合层。
-- **共享工具**：`arc-swap` 将用于动态热更新证书或会话配置，以避免全局锁；`thiserror` 统一错误语义。
-- **扩展点**：保留与其他传输一致的 `batch-udp-unix` 特性，使后续如 DTLS/QUIC 共用批量 IO 选项时保持一致命名；默认关闭以兼容所有平台。
+- 使用 `rustls` + `tokio-rustls` 完成异步握手与数据加解密；
+- `run_with_context` 复用 `spark-core` 的取消/截止契约，确保 TLS 层尊重 `CallContext`；
+- 通过 `TcpChannel::try_into_parts` 拆解原始 `TcpStream`，避免重复建立 TCP 连接。
 
 ## 风险与考量（Trade-offs）
-- **安全性**：证书热更新与密钥存储需确保线程安全与访问控制；`arc-swap` 提供无锁读性能，但写入需评估可见性。
-- **兼容性**：`rustls` 默认禁用不安全算法，若需兼容遗留系统可能需要额外配置；需谨慎评估。
-- **TODO**：后续补全会话缓存、客户端/服务端双角色支持以及遥测指标。
+- 握手时若 `TcpChannel` 被多处持有，将视作资源耗尽并拒绝进入 TLS 阶段；
+- 轮询式取消存在毫秒级延迟，但能在 Tokio 上保持实现简单；
+- 当前实现聚焦服务端接入，后续若需客户端支持或会话缓存，可在现有结构上扩展。
 "#]
 
 mod hot_reload;
 
 pub use hot_reload::{HotReloadingServerConfig, TlsHandshakeError};
+mod acceptor;
+mod channel;
+mod error;
+mod util;
+
+pub use acceptor::TlsAcceptor;
+pub use channel::TlsChannel;

@@ -2,6 +2,10 @@
 members = [
     "spark-core",
     "spark-codec-line",
+    "spark-codec-sip",
+    "spark-codec-sdp",
+    "spark-codec-rtp",
+    "spark-codec-rtcp",
     "crates/spark-macros",
     "crates/spark-otel",
     "tools/deprecation-lint",

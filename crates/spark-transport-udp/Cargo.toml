@@ -17,8 +17,14 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "ne
 
 [features]
 default = []
-batch-udp-unix = ["socket2"]
+batch-udp-unix = ["socket2", "nix"]
 
 [dependencies.socket2]
 version = "0.5"
 optional = true
+
+[target.'cfg(target_os = "linux")'.dependencies.nix]
+version = "0.28"
+optional = true
+default-features = false
+features = ["socket", "net", "uio"]

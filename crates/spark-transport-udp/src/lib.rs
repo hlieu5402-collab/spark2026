@@ -26,6 +26,8 @@ use spark_core::transport::TransportSocketAddr;
 use thiserror::Error;
 use tokio::net::UdpSocket;
 
+pub mod batch;
+
 /// 表示 UDP 传输层在处理 SIP 报文时的 `rport` 状态。
 ///
 /// # 设计动机（Why）
