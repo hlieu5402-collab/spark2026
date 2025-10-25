@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- |
 | 代码风格与文档 | `Lints & docs (MSRV)` | `rustc 1.89.0`（`rustfmt`、`clippy`） | `make ci-lints`、`cargo doc --workspace --no-deps` | 任一命令非 0 即 fail |
 | 构建矩阵 | `Builds & benches (MSRV)` | `rustc 1.89.0` | `make ci-zc-asm`、`make ci-no-std-alloc`、`make ci-doc-warning`、`make ci-bench-smoke` | 任一命令非 0 即 fail |
-| 语义版本兼容性 | `SemVer compatibility (MSRV)` | `rustc 1.89.0` | `cargo semver-checks --manifest-path spark-core/Cargo.toml --baseline-root spark-core` | 检测到破坏性变更即 fail |
+| 语义版本兼容性 | `SemVer compatibility (MSRV)` | `rustc 1.89.0` | `cargo semver-checks --manifest-path crates/spark-core/Cargo.toml --baseline-root crates/spark-core` | 检测到破坏性变更即 fail |
 | 许可证与安全 | `License & advisory audit` | `rustc 1.89.0` | `cargo deny check advisories bans licenses sources` | 触发 deny 规则即 fail |
 | Miri 抽样 | `Miri smoke tests` | `nightly-2024-12-31`（含 `miri`） | `cargo +nightly-2024-12-31 miri setup/test` | 任一命令非 0 即 fail |
 | Loom 抽样 | `Loom model checks (MSRV)` | `rustc 1.89.0` | `RUSTFLAGS="--cfg loom" cargo test --features loom-model,std --lib --tests` | 任一命令非 0 即 fail |
@@ -51,13 +51,13 @@ make ci-zc-asm
 make ci-no-std-alloc
 make ci-doc-warning
 make ci-bench-smoke
-cargo semver-checks --manifest-path spark-core/Cargo.toml --baseline-root spark-core
+cargo semver-checks --manifest-path crates/spark-core/Cargo.toml --baseline-root crates/spark-core
 cargo deny check advisories bans licenses sources
 # 额外抽样（可选，遇到差异请按照 CI 的 nightly / cfg 设置）
 cargo +nightly-2024-12-31 miri setup
-cargo +nightly-2024-12-31 miri test --manifest-path spark-core/Cargo.toml --features std
+cargo +nightly-2024-12-31 miri test --manifest-path crates/spark-core/Cargo.toml --features std
 RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=2 \
-  cargo test --manifest-path spark-core/Cargo.toml --features loom-model,std --lib --tests
+  cargo test --manifest-path crates/spark-core/Cargo.toml --features loom-model,std --lib --tests
 ```
 
 ## 4. 维护提示

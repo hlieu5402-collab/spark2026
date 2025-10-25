@@ -2,7 +2,7 @@
 #
 # 教案式说明（Why）：
 # - 避免错误分类的代码实现、文档与测试之间出现漂移；
-# - 为生成 `spark-core/src/error/category_matrix.rs` 与 `docs/error-category-matrix.md` 提供结构化输入；
+# - 为生成 `crates/spark-core/src/error/category_matrix.rs` 与 `docs/error-category-matrix.md` 提供结构化输入；
 # - 使治理与运维团队能够直接审核 TOML 数据，确认新增错误码的默认策略。
 #
 # 契约定义（What）：

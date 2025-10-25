@@ -6,11 +6,11 @@
 /docs/governance/                       @spark-rs/arch-board @spark-rs/core-maintainers
 
 # 核心运行时代码
-/spark-core/                            @spark-rs/runtime-owners @spark-rs/core-maintainers
-/spark-core/Cargo.toml                  @spark-rs/runtime-owners @spark-rs/release-engineering
+/crates/spark-core/                     @spark-rs/runtime-owners @spark-rs/core-maintainers
+/crates/spark-core/Cargo.toml           @spark-rs/runtime-owners @spark-rs/release-engineering
 
 # 编解码相关模块
-/spark-codec-line/                      @spark-rs/codec-team @spark-rs/core-maintainers
+/crates/codecs/spark-codec-line/        @spark-rs/codec-team @spark-rs/core-maintainers
 
 # 构建与工具链
 /tools/                                 @spark-rs/tooling

@@ -18,7 +18,7 @@ default = []
 test-util = ["dep:futures-util"]
 
 [dependencies]
-spark-core = { path = "../../spark-core" }
+spark-core = { path = "../spark-core" }
 opentelemetry = { version = "0.22", default-features = false, features = ["trace"] }
 opentelemetry-sdk = { package = "opentelemetry_sdk", version = "0.22", default-features = false, features = ["trace"] }
 tracing = "0.1"

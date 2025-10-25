@@ -1,20 +1,20 @@
 [workspace]
 members = [
-    "spark-core",
-    "spark-codec-line",
-    "spark-codec-sip",
-    "spark-codec-sdp",
-    "spark-codec-rtp",
-    "spark-codec-rtcp",
+    "crates/spark-core",
+    "crates/codecs/spark-codec-line",
+    "crates/codecs/spark-codec-sip",
+    "crates/codecs/spark-codec-sdp",
+    "crates/codecs/spark-codec-rtp",
+    "crates/codecs/spark-codec-rtcp",
     "crates/spark-macros",
     "crates/spark-otel",
     "tools/deprecation-lint",
     "crates/spark-contract-tests",
     "crates/spark-contract-tests-macros",
-    "crates/spark-transport-tcp",
-    "crates/spark-transport-udp",
-    "crates/spark-transport-tls",
-    "crates/spark-transport-quic",
+    "crates/transport/spark-transport-tcp",
+    "crates/transport/spark-transport-udp",
+    "crates/transport/spark-transport-tls",
+    "crates/transport/spark-transport-quic",
     "crates/spark-impl-tck",
 ]
 exclude = ["fuzz"]
@@ -30,6 +30,6 @@ authors = ["Gemini 架构组 <architecture@gemini.example>"]
 tokio = { version = "1.48.0", default-features = false }
 
 [patch.crates-io]
-spark-core = { path = "spark-core" }
+spark-core = { path = "crates/spark-core" }
 spark-contract-tests = { path = "crates/spark-contract-tests" }
 spark-contract-tests-macros = { path = "crates/spark-contract-tests-macros" }

@@ -53,7 +53,7 @@ unlock(mutation)                              observe epoch via Controller::epoc
 ## 5. 验证工具
 
 - **单元测试**：`cargo test -p spark-core -- tests::pipeline::hot_swap::*` 覆盖了常规插入场景与 Loom 并发模型。
-- **代码审计**：`rg -n '\bepoch\(\)' spark-core/src/pipeline` 可快速定位所有使用 epoch 的位置，核对是否遵循
+- **代码审计**：`rg -n '\bepoch\(\)' crates/spark-core/src/pipeline` 可快速定位所有使用 epoch 的位置，核对是否遵循
   “先更新快照，再 bump” 的顺序。
 
 以上流程确保 Pipeline 在不中断流量的前提下完成 Handler 的热插拔，并提供可复用的验证手段。

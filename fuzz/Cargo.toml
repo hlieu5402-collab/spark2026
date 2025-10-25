@@ -12,11 +12,11 @@ libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
 arbitrary = { version = "1", features = ["derive"] }
 
 [dependencies.spark-core]
-path = "../spark-core"
+path = "../crates/spark-core"
 features = ["std"]
 
 [dependencies.spark-codec-line]
-path = "../spark-codec-line"
+path = "../crates/codecs/spark-codec-line"
 features = ["std"]
 
 [[bin]]

@@ -63,7 +63,7 @@ runtime:
 
 | 用例 | 位置 | 场景 | 期望 |
 | --- | --- | --- | --- |
-| `default_plan_matches_resource` | `spark-core/src/limits.rs` | 校验默认上限与策略 | 连接默认排队、内存默认降级、句柄默认拒绝。 |
+| `default_plan_matches_resource` | `crates/spark-core/src/limits.rs` | 校验默认上限与策略 | 连接默认排队、内存默认降级、句柄默认拒绝。 |
 | `evaluate_queue_allows_until_capacity` | 同上 | 队列策略容量处理 | 队列未满时返回 `Queued`，达到容量后拒绝。 |
 | `metrics_hook_records_drop_and_usage` | 同上 | 指标打点 | 达到限额时统计 `hit`、`drop` 并更新使用量 Gauge。 |
 | `settings_parse_overrides` | 同上 | 配置解析 | YAML/Layer 覆盖 action/limit 后结果正确。 |

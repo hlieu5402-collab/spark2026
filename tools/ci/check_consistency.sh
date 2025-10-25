@@ -349,7 +349,7 @@ check_generic_layer_tokio_spawn() {
     local files
     local matches=()
 
-    mapfile -t files < <(git ls-files 'spark-core/src/**/traits/generic.rs')
+    mapfile -t files < <(git ls-files 'crates/spark-core/src/**/traits/generic.rs')
 
     for file in "${files[@]}"; do
         [[ -z "$file" ]] && continue
@@ -376,7 +376,7 @@ check_generic_layer_tokio_spawn() {
 # - **执行策略 (How)**：
 #   1. 遍历所有位于 `*/src/` 的 Rust 文件；
 #   2. 使用正则捕获名称中包含 `Ready`/`Busy`/`Backpressure` 的 `enum` 定义；
-#   3. 将合法枚举（`ReadyState`、`ReadyCheck`、`BusyReason`）限定在 `spark-core/src/status/ready.rs`，其他命中视为违规。
+#   3. 将合法枚举（`ReadyState`、`ReadyCheck`、`BusyReason`）限定在 `crates/spark-core/src/status/ready.rs`，其他命中视为违规。
 # - **契约 (What)**：
 #   - **输入**：仓库内所有源代码枚举定义；
 #   - **输出**：违规枚举的文件、行号与名称；
@@ -394,9 +394,9 @@ from pathlib import Path
 import re
 
 ALLOWED = {
-    (Path('spark-core/src/status/ready.rs'), 'ReadyState'),
-    (Path('spark-core/src/status/ready.rs'), 'ReadyCheck'),
-    (Path('spark-core/src/status/ready.rs'), 'BusyReason'),
+    (Path('crates/spark-core/src/status/ready.rs'), 'ReadyState'),
+    (Path('crates/spark-core/src/status/ready.rs'), 'ReadyCheck'),
+    (Path('crates/spark-core/src/status/ready.rs'), 'BusyReason'),
 }
 
 pattern = re.compile(r'^\s*(?:pub\s+)?enum\s+([A-Za-z0-9_]*(?:Ready|Busy|Backpressure)[A-Za-z0-9_]*)')
@@ -845,12 +845,12 @@ PY
 ## 检查六：generic 层禁止直接调用 `tokio::spawn`
 # - **意图 (Why)**：`TaskExecutor::spawn` 已强制绑定 `CallContext`，若在泛型 Handler 层直接调用
 #   `tokio::spawn` 会绕过上下文传播，导致取消/截止信号丢失。
-# - **执行策略 (How)**：使用 `rg` 定位 `spark-core/src/service/traits/generic.rs` 中的 `tokio::spawn(`；
+# - **执行策略 (How)**：使用 `rg` 定位 `crates/spark-core/src/service/traits/generic.rs` 中的 `tokio::spawn(`；
 #   若命中则立即报错并提醒改用运行时注入的执行器。
 # - **契约 (What)**：仅检查泛型层源文件，避免误报测试或文档。
 check_generic_no_tokio_spawn() {
     local matches
-    mapfile -t matches < <(rg --color=never -n 'tokio::spawn\(' spark-core/src/service/traits/generic.rs || true)
+    mapfile -t matches < <(rg --color=never -n 'tokio::spawn\(' crates/spark-core/src/service/traits/generic.rs || true)
     if ((${#matches[@]} > 0)); then
         printf '错误：generic 层禁止直接调用 `tokio::spawn`，请改用 `TaskExecutor::spawn` 以确保上下文传播。\n' >&2
         printf '位置：\n' >&2
@@ -866,7 +866,7 @@ check_generic_no_tokio_spawn() {
 #   2. 将“文档同步”前置到 CI，可避免在合入后补写文档的惯性拖延，实现语义与文档双闭环。
 # - **所在位置 (Where)**：位于所有语义守卫之后，作为最终的治理关卡，聚焦“变更是否配套文档”。
 # - **执行策略 (How)**：
-#   1. 枚举状态机关键哨兵文件（`spark-core/src/status/ready.rs`、`spark-core/src/status/mod.rs`、`spark-core/src/service/simple.rs` 等）；
+#   1. 枚举状态机关键哨兵文件（`crates/spark-core/src/status/ready.rs`、`crates/spark-core/src/status/mod.rs`、`crates/spark-core/src/service/simple.rs` 等）；
 #   2. 若本次改动触及任一哨兵，则要求同时修改：
 #      - `docs/state_machines.md`（研发态视角的状态机文档）；
 #      - `docs/runbook/` 目录下至少一个文件（运维态 Runbook）。
@@ -884,10 +884,10 @@ check_generic_no_tokio_spawn() {
 #   - 若文档更新通过脚本生成，请确保在执行前已 `git add`，否则仍会被判定缺失。
 check_state_machine_docs_synced() {
     local -a sentinels=(
-        'spark-core/src/status/ready.rs'
-        'spark-core/src/status/mod.rs'
-        'spark-core/src/service/simple.rs'
-        'spark-core/src/service/traits/generic.rs'
+        'crates/spark-core/src/status/ready.rs'
+        'crates/spark-core/src/status/mod.rs'
+        'crates/spark-core/src/service/simple.rs'
+        'crates/spark-core/src/service/traits/generic.rs'
     )
 
     local -a touched_sentinels=()

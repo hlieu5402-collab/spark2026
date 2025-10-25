@@ -6,7 +6,7 @@
 
 ## 详细白名单
 
-### spark-core/src/pipeline/controller.rs
+### crates/spark-core/src/pipeline/controller.rs
 - **位置**：`HotSwapContext` 模块级 `#![allow(unsafe_code)]`、`unsafe impl Send/Sync` 以及 `controller()` 与 `forward_read()` 中的裸指针访问。
 - **目的**：向 Handler 提供只读的 `PipelineContext`，同时允许其在链路中继续调用控制器完成后续调度，而不额外复制控制器结构。
 - **安全性说明**：
@@ -15,7 +15,7 @@
   - `controller()` 与 `forward_read()` 的 `unsafe` 块仅在同步路径下解引用指针，`snapshot`、`trace` 等参数均通过 `Arc`/clone 保障所有权。
 - **验证途径**：由 `make ci-lints`、`cargo test -p spark-contract-tests` 等 CI 任务间接覆盖，确保 Handler 调度流程经常被执行；后续可通过 `make ci-no-std-alloc` 的集成测试验证。
 
-### spark-core/src/service/simple.rs
+### crates/spark-core/src/service/simple.rs
 - **位置**：模块级 `#![allow(unsafe_code)]`、`GuardedFuture::poll` 内 `get_unchecked_mut` 与 `Pin::new_unchecked` 调用。
 - **目的**：在过程宏展开的顺序服务中，以零额外分配的方式包装业务 Future，同时保证协调器守卫在完成或 Drop 时正确释放。
 - **安全性说明**：

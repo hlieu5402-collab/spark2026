@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-spark-core = { path = "../../spark-core", features = ["std"] }
+spark-core = { path = "../../crates/spark-core", features = ["std"] }
 
 [[bin]]
 name = "codec_limits"

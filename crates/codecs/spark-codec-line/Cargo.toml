@@ -1,0 +1,26 @@
+[package]
+name = "spark-codec-line"
+version = "0.1.0"
+rust-version = "1.89"
+edition = "2024"
+authors = ["Gemini 架构组 <architecture@gemini.example>"]
+license = "Apache-2.0"
+description = "Line-delimited text codec extension for spark-core"
+
+[lib]
+bench = false
+
+[features]
+default = ["std"]
+alloc = ["spark-core/alloc"]
+std = ["alloc", "spark-core/std"]
+compat_v0 = ["spark-core/compat_v0"]
+
+[dependencies]
+spark-core = { path = "../../spark-core", default-features = false }
+
+[dev-dependencies]
+# Tests rely on std utilities only when `std` feature is active via default features.
+
+[package.metadata.docs.rs]
+all-features = true

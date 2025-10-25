@@ -20,6 +20,6 @@ alloc = ["std"]
 
 [dependencies]
 spark-core = { version = "0.1.0" }
-spark-codec-line = { path = "../../spark-codec-line" }
+spark-codec-line = { path = "../codecs/spark-codec-line" }
 spark-contract-tests-macros = { version = "0.1.0" }
 parking_lot = "0.12"

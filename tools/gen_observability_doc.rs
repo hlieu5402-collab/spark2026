@@ -25,10 +25,10 @@ use serde::Deserialize;
 /// 3. 写入目标文档，供 CI 与人工评审校验。
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let contract_path = manifest_dir.join("../contracts/observability_keys.toml");
+    let contract_path = manifest_dir.join("../../contracts/observability_keys.toml");
     let contract = read_contract(&contract_path);
     let markdown = render_markdown(&contract);
-    let doc_path = manifest_dir.join("../docs/observability-contract.md");
+    let doc_path = manifest_dir.join("../../docs/observability-contract.md");
     fs::write(&doc_path, markdown).expect("写入 docs/observability-contract.md");
 }
 
@@ -121,7 +121,7 @@ fn render_markdown(contract: &ObservabilityKeysContract) -> String {
     buf.push_str("# 可观测性键名契约（Observability Keys Contract）\n\n");
     buf.push_str("> 目标：指标/日志/追踪键名统一管理，避免代码与仪表盘漂移。\n");
     buf.push_str("> 来源：`contracts/observability_keys.toml`（单一事实来源）。\n");
-    buf.push_str("> 产物：生成 `spark-core/src/observability/keys.rs` 与本文档。\n\n");
+    buf.push_str("> 产物：生成 `crates/spark-core/src/observability/keys.rs` 与本文档。\n\n");
 
     buf.push_str("## 阅读指引\n\n");
     buf.push_str("- **键类型**：区分指标/日志键、标签枚举值、日志字段与追踪字段；\n");

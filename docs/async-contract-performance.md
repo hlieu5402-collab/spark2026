@@ -7,7 +7,7 @@
 ## 2. 测试环境
 - 工具链：`rustc 1.89`（仓库指定 `rust-toolchain`）。
 - 命令：`cargo bench --workspace -- --quick`。
-- 关键基准：`spark-core/benches/async_contract_overhead.rs`。
+- 关键基准：`crates/spark-core/benches/async_contract_overhead.rs`。
 
 ## 3. 结果摘要
 | 项目 | 迭代次数 (`--quick`) | 内联实现平均耗时 | Box 实现平均耗时 | 相对差异 |

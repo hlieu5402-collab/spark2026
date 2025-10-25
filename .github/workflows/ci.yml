@@ -173,10 +173,10 @@ jobs:
       - name: Run cargo-semver-checks
         env:
           SEMVER_BASELINE_DIR: ${{ steps.semver_baseline.outputs.dir }}
-        run: cargo semver-checks --manifest-path spark-core/Cargo.toml --baseline-root "$SEMVER_BASELINE_DIR/spark-core"
+        run: cargo semver-checks --manifest-path crates/spark-core/Cargo.toml --baseline-root "$SEMVER_BASELINE_DIR/crates/spark-core"
 
       - name: Run cargo-semver-checks check-release
-        working-directory: spark-core
+        working-directory: crates/spark-core
         run: cargo semver-checks check-release
 
       - name: Cleanup SemVer baseline worktree

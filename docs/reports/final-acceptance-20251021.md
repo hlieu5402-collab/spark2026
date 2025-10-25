@@ -2,13 +2,13 @@
 
 ## 一致性
 
-### 命令：`rg -nEI "enum\s+PollReady" --glob 'spark-core/**'`
+### 命令：`rg -nEI "enum\s+PollReady" --glob 'crates/spark-core/**'`
 
 ```
 rg: error parsing flag -E: grep config error: unknown encoding: I
 ```
 
-### 命令：`rg -nEI "\bBackpressureReason\b" --glob 'spark-core/**'`
+### 命令：`rg -nEI "\bBackpressureReason\b" --glob 'crates/spark-core/**'`
 
 ```
 rg: error parsing flag -E: grep config error: unknown encoding: I
@@ -20,15 +20,15 @@ rg: error parsing flag -E: grep config error: unknown encoding: I
 rg: error parsing flag -E: grep config error: unknown encoding: I
 ```
 
-### 命令：`rg -n "fn .*\\(.*&ExecutionContext" spark-core/src/transport/traits`
+### 命令：`rg -n "fn .*\\(.*&ExecutionContext" crates/spark-core/src/transport/traits`
 
 ```
-spark-core/src/transport/traits/generic.rs:60:    fn local_addr(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
-spark-core/src/transport/traits/generic.rs:140:    fn scheme(&self, ctx: &ExecutionContext<'_>) -> &'static str;
-spark-core/src/transport/traits/object.rs:54:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
-spark-core/src/transport/traits/object.rs:110:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
-spark-core/src/transport/traits/object.rs:160:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str;
-spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str {
+crates/spark-core/src/transport/traits/generic.rs:60:    fn local_addr(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
+crates/spark-core/src/transport/traits/generic.rs:140:    fn scheme(&self, ctx: &ExecutionContext<'_>) -> &'static str;
+crates/spark-core/src/transport/traits/object.rs:54:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
+crates/spark-core/src/transport/traits/object.rs:110:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
+crates/spark-core/src/transport/traits/object.rs:160:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str;
+crates/spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str {
 ```
 
 ## DevX
@@ -36,25 +36,25 @@ spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &Exe
 ### 命令：`rg -n "\bhuman\(\)|\bhint\(\)" spark-core`
 
 ```
-spark-core/src/error.rs:283:        self.core.human()
-spark-core/src/error.rs:299:        self.core.hint()
-spark-core/src/error.rs:583:        self.core.human()
-spark-core/src/error.rs:589:    /// - 在域层封装 `hint()`，可让业务同学快速找到排障手册，而无需了解框架内部结构。
-spark-core/src/error.rs:599:        self.core.hint()
-spark-core/src/error.rs:659:/// - 若新增错误码，需要同步更新此表、文档以及集成测试，否则 `hint()` 将返回 `None`。
-spark-core/tests/errors_human_hint.rs:1://! 集成测试：确保 `human()` / `hint()` 行为与文档对齐。
-spark-core/tests/errors_human_hint.rs:4://! - 框架 DoD 要求“新人 30 分钟内按 hint() 修复样例”，因此必须锁定常见错误码的提示文案。
-spark-core/tests/errors_human_hint.rs:23:    // human() 应返回静态摘要，hint() 返回详细操作指引。
-spark-core/tests/errors_human_hint.rs:24:    assert_eq!(core_error.human(), "传输层超时：请求在约定时限内未获得响应");
-spark-core/tests/errors_human_hint.rs:26:        core_error.hint().as_deref(),
-spark-core/tests/errors_human_hint.rs:33:        spark_error.human(),
-spark-core/tests/errors_human_hint.rs:37:        spark_error.hint().as_deref(),
-spark-core/tests/errors_human_hint.rs:43:        domain_error.human(),
-spark-core/tests/errors_human_hint.rs:47:        domain_error.hint().as_deref(),
-spark-core/tests/errors_human_hint.rs:52:/// 未备案的错误码应回退到 message()，同时不提供 hint()，确保调用方感知待补充文档。
-spark-core/tests/errors_human_hint.rs:58:    // human() 回退到原始消息，hint() 为 None。
-spark-core/tests/errors_human_hint.rs:59:    assert_eq!(core_error.human(), "raw implementation detail");
-spark-core/tests/errors_human_hint.rs:60:    assert!(core_error.hint().is_none());
+crates/spark-core/src/error.rs:283:        self.core.human()
+crates/spark-core/src/error.rs:299:        self.core.hint()
+crates/spark-core/src/error.rs:583:        self.core.human()
+crates/spark-core/src/error.rs:589:    /// - 在域层封装 `hint()`，可让业务同学快速找到排障手册，而无需了解框架内部结构。
+crates/spark-core/src/error.rs:599:        self.core.hint()
+crates/spark-core/src/error.rs:659:/// - 若新增错误码，需要同步更新此表、文档以及集成测试，否则 `hint()` 将返回 `None`。
+crates/spark-core/tests/errors_human_hint.rs:1://! 集成测试：确保 `human()` / `hint()` 行为与文档对齐。
+crates/spark-core/tests/errors_human_hint.rs:4://! - 框架 DoD 要求“新人 30 分钟内按 hint() 修复样例”，因此必须锁定常见错误码的提示文案。
+crates/spark-core/tests/errors_human_hint.rs:23:    // human() 应返回静态摘要，hint() 返回详细操作指引。
+crates/spark-core/tests/errors_human_hint.rs:24:    assert_eq!(core_error.human(), "传输层超时：请求在约定时限内未获得响应");
+crates/spark-core/tests/errors_human_hint.rs:26:        core_error.hint().as_deref(),
+crates/spark-core/tests/errors_human_hint.rs:33:        spark_error.human(),
+crates/spark-core/tests/errors_human_hint.rs:37:        spark_error.hint().as_deref(),
+crates/spark-core/tests/errors_human_hint.rs:43:        domain_error.human(),
+crates/spark-core/tests/errors_human_hint.rs:47:        domain_error.hint().as_deref(),
+crates/spark-core/tests/errors_human_hint.rs:52:/// 未备案的错误码应回退到 message()，同时不提供 hint()，确保调用方感知待补充文档。
+crates/spark-core/tests/errors_human_hint.rs:58:    // human() 回退到原始消息，hint() 为 None。
+crates/spark-core/tests/errors_human_hint.rs:59:    assert_eq!(core_error.human(), "raw implementation detail");
+crates/spark-core/tests/errors_human_hint.rs:60:    assert!(core_error.hint().is_none());
 ```
 
 ## 测试/生产
@@ -147,14 +147,14 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Doc-tests spark_core
 
 running 8 tests
-test spark-core/src/buffer/pool.rs - buffer::pool::BufferPool (line 32) ... ok
-test spark-core/src/buffer/message.rs - buffer::message::PipelineMessage (line 122) ... ok
-test spark-core/src/cluster/flow_control.rs - cluster::flow_control::SubscriptionStream (line 145) ... ignored
-test spark-core/src/buffer/pool.rs - buffer::pool::PoolStats (line 216) ... ok
-test spark-core/src/error.rs - error::CoreError::new (line 67) ... ok
-test spark-core/src/observability/events.rs - observability::events::OpsEventBus::set_event_policy (line 391) ... ignored
-test spark-core/src/security/policy.rs - security::policy (line 9) ... ignored
-test spark-core/src/observability/events.rs - observability::events::CoreUserEvent (line 111) ... ok
+test crates/spark-core/src/buffer/pool.rs - buffer::pool::BufferPool (line 32) ... ok
+test crates/spark-core/src/buffer/message.rs - buffer::message::PipelineMessage (line 122) ... ok
+test crates/spark-core/src/cluster/flow_control.rs - cluster::flow_control::SubscriptionStream (line 145) ... ignored
+test crates/spark-core/src/buffer/pool.rs - buffer::pool::PoolStats (line 216) ... ok
+test crates/spark-core/src/error.rs - error::CoreError::new (line 67) ... ok
+test crates/spark-core/src/observability/events.rs - observability::events::OpsEventBus::set_event_policy (line 391) ... ignored
+test crates/spark-core/src/security/policy.rs - security::policy (line 9) ... ignored
+test crates/spark-core/src/observability/events.rs - observability::events::CoreUserEvent (line 111) ... ok
 
 test result: ok. 5 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
