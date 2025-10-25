@@ -18,3 +18,10 @@ spark-transport-tcp = { path = "../spark-transport-tcp" }
 spark-transport-udp = { path = "../spark-transport-udp" }
 spark-transport-tls = { path = "../spark-transport-tls" }
 spark-transport-quic = { path = "../spark-transport-quic" }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[[bench]]
+name = "tcp_throughput"
+harness = false
