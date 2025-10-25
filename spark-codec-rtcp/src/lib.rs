@@ -40,6 +40,10 @@ pub use crate::{
         SenderReport, SourceDescription,
     },
     parse::{DEFAULT_COMPOUND_CAPACITY, parse_rtcp},
+    stats::{
+        NtpTime, ReceiverStatistics, ReceptionStatistics, RtpClock, SenderStatistics, build_rr,
+        build_sr,
+    },
 };
 
 #[cfg(feature = "std")]
