@@ -12,7 +12,7 @@ bench = false
 
 [dependencies]
 spark-core = { path = "../../spark-core" }
-thiserror = "1.0"
+spark-transport-tcp = { path = "../spark-transport-tcp" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
 rustls = "0.23"
 tokio-rustls = "0.26"
