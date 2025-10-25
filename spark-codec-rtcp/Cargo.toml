@@ -19,6 +19,7 @@ compat_v0 = ["spark-core/compat_v0"]
 
 [dependencies]
 spark-core = { path = "../spark-core", default-features = false }
+smallvec = { version = "1.13", default-features = false, features = ["const_generics", "union"] }
 
 [dev-dependencies]
 
