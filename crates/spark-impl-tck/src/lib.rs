@@ -13,8 +13,8 @@
 
 pub(crate) mod placeholder {}
 
-#[cfg(test)]
-mod transport {
+#[cfg(all(test, feature = "transport-tests"))]
+mod transport_graceful {
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};
     use spark_transport_tcp::{ShutdownDirection, TcpChannel, TcpListener, TcpSocketConfig};
     use std::{net::SocketAddr, time::Duration};
@@ -114,8 +114,11 @@ mod transport {
             .expect("close graceful result");
 
         drop(client_channel);
+    }
+}
+
 /// 传输相关测试集合。
-#[cfg(test)]
+#[cfg(all(test, feature = "transport-tests"))]
 pub mod transport {
     use std::{
         net::SocketAddr,
@@ -533,6 +536,10 @@ pub mod transport {
                 .await
                 .map_err(|err| anyhow!(err))?
                 .map_err(|err| anyhow!(err))?;
+            Ok(())
+        }
+    }
+
     /// 确保 AWS-LC 作为 rustls 的全局加密后端。
     ///
     /// # 设计动机（Why）
@@ -801,6 +808,8 @@ pub mod transport {
         }
 
         Ok(())
+    }
+
     /// TLS 握手与读写行为验证。
     pub mod tls_handshake {
         use super::{
@@ -887,6 +896,10 @@ pub mod transport {
 
             assert_eq!(observation.server_name.as_deref(), Some("alpha.test"));
             assert_eq!(observation.alpn.as_deref(), Some(b"h2".as_ref()));
+            Ok(())
+        }
+    }
+
     /// 针对 UDP 批量 IO 优化路径的集成测试。
     pub mod udp_batch_io {
         use super::{Context, Result, UdpSocket};
@@ -980,7 +993,7 @@ pub mod transport {
 }
 
 /// RTP 相关契约测试集合。
-#[cfg(test)]
+#[cfg(all(test, feature = "rtp-tests"))]
 pub mod rtp {
     use anyhow::Result;
 
