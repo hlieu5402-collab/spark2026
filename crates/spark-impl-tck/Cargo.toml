@@ -18,3 +18,5 @@ spark-transport-tcp = { path = "../spark-transport-tcp" }
 spark-transport-udp = { path = "../spark-transport-udp" }
 spark-transport-tls = { path = "../spark-transport-tls" }
 spark-transport-quic = { path = "../spark-transport-quic" }
+anyhow = "1.0"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
