@@ -29,6 +29,19 @@ extern crate alloc;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+
+/// Offer/Answer 能力协商与媒体属性解析模块。
+///
+/// ### 设计定位（Why）
+/// - 将 RFC 3264 Offer/Answer 与 RFC 4733 DTMF 事件的最小实现集中在独立模块中，
+///   避免核心 SDP 结构体被业务逻辑污染；
+/// - 为 `spark-impl-tck` 的互操作测试提供具名入口，确保未来扩展（如多编解码器、方向属性）
+///   有明确的代码落点。
+///
+/// ### 契约约束（What）
+/// - 暴露 `apply_offer_answer` 等函数，输入为解析后的 `SessionDesc`，输出为回答计划；
+/// - 模块内部默认依赖 `alloc`，遵守 `no_std` 约束。
+pub mod offer_answer;
 use core::fmt;
 
 /// SDP 编解码骨架，明确媒体协商入口位置。

@@ -31,7 +31,7 @@ extern crate alloc;
 pub mod dtmf;
 
 use alloc::vec::Vec;
-use core::fmt;
+use core::{fmt, time::Duration};
 
 use spark_core::buffer::{BufView, Chunks};
 
@@ -331,6 +331,151 @@ pub fn parse_rtp<'a>(buffer: &'a dyn BufView) -> Result<RtpPacket<'a>, RtpParseE
 pub fn seq_less(a: u16, b: u16) -> bool {
     let diff = b.wrapping_sub(a);
     diff != 0 && diff < 0x8000
+}
+
+/// RTP 抖动（Interarrival Jitter）估算状态。
+///
+/// ## 意图（Why）
+/// - **核心目标**：封装 RFC 3550 附录 A.8 的抖动估算中间值，避免在业务代码中重复维护 `prev_transit`
+///   与 `jitter` 两个变量。
+/// - **体系位置**：位于 `spark-codec-rtp` 基础编解码 crate 内，作为更高层实现（如 RTCP SR/RR
+///   生成逻辑）的数据来源，使其能直接查询最新的抖动估算值。
+/// - **设计思想**：以不可变查询接口暴露状态，只允许通过专用更新函数调整内部字段，确保所有
+///   调整都遵循标准算法。
+///
+/// ## 契约（What）
+/// - **字段含义**：
+///   - `last_transit`：上一包的传输时延（到达时刻与 RTP 时间戳之差，单位为采样周期）。
+///   - `jitter`：指数滑动平均后的抖动估算值，同样以采样周期为单位。
+/// - **前置条件**：调用方需保证在 `update_jitter` 前提供严格单调递增的接收时刻；该结构本身不
+///   执行时序校验，仅负责保持算法状态。
+/// - **后置条件**：一旦调用 `update_jitter` 成功更新，`jitter()` 会返回最新的浮点估算值，可在
+///   需要时转换为 RTCP 报告字段。
+///
+/// ## 设计考量（Trade-offs）
+/// - **浮点表示**：内部使用 `f64` 保存 `transit` 与 `jitter`，以避免因整数除法造成精度不足；
+///   在导出到 RTCP 前再执行取整即可。
+/// - **惰性初始化**：首包仅记录 `last_transit` 而不更新 `jitter`，符合 RFC 3550 提示并避免突兀
+///   的初值尖峰。
+#[derive(Debug, Clone, Copy)]
+pub struct RtpJitterState {
+    last_transit: Option<f64>,
+    jitter: f64,
+}
+
+impl RtpJitterState {
+    /// 构建初始状态。
+    ///
+    /// - **Why**：提供零开销的常量构造函数，方便在数据流初始化时创建状态。
+    /// - **What**：初始状态下尚未观测到任何报文，因此 `last_transit` 为 `None`、`jitter` 为 `0.0`。
+    /// - **How**：调用方既可以使用 `RtpJitterState::new()`，也可以依赖 `Default` 实现。
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            last_transit: None,
+            jitter: 0.0,
+        }
+    }
+
+    /// 返回指数滑动平均后的抖动估算值。
+    ///
+    /// - **Why**：上层组件（例如 RTCP 汇报器）需要以采样周期为单位读取当前抖动，用于填充
+    ///   `interarrival jitter` 字段。
+    /// - **What**：返回值为 `f64`，单调非负；若尚未计算过抖动，结果为 `0.0`。
+    /// - **How**：直接读取内部存储，不会触发额外计算，保证查询开销恒定。
+    #[must_use]
+    pub const fn jitter(&self) -> f64 {
+        self.jitter
+    }
+
+    /// 返回上一包记录的传输时延（若已存在）。
+    ///
+    /// - **Why**：在调试或单元测试场景，调用方往往需要验证 `update_jitter` 是否正确更新过
+    ///   `transit` 值。
+    /// - **What**：若尚未接收过报文返回 `None`，否则返回以采样周期表示的 `f64` 值。
+    /// - **How**：状态只读访问，不会修改内部记录。
+    #[must_use]
+    pub const fn last_transit(&self) -> Option<f64> {
+        self.last_transit
+    }
+
+    /// 重置抖动状态，使其回到初始态。
+    ///
+    /// - **Why**：当媒体会话重建或回绕时，需要丢弃历史观测，避免旧数据污染新的流。
+    /// - **What**：调用后 `last_transit` 变为 `None`，`jitter` 清零。
+    /// - **How**：直接覆盖字段，不会分配或释放额外资源。
+    pub fn reset(&mut self) {
+        self.last_transit = None;
+        self.jitter = 0.0;
+    }
+}
+
+impl Default for RtpJitterState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 基于 RFC 3550 附录 A.8 更新 RTP 抖动估算。
+///
+/// ## 意图（Why）
+/// - **核心任务**：将新的到达时刻与 RTP 时间戳折算为传输时延差值，并套用标准算法更新抖动
+///   估计，确保最终结果可直接上报到 RTCP 报文。
+/// - **架构角色**：作为 `RtpJitterState` 唯一的写入入口，强制所有更新遵循 RFC 算法，避免上层
+///   误用导致统计偏差。
+///
+/// ## 契约（What）
+/// - `state`：必须为同一媒体流持久复用的状态引用；函数会就地修改其 `last_transit` 与 `jitter`。
+/// - `arrival_ts`：媒体包的接收时间，使用 `Duration` 表示相对于任意参考起点的单调时间；
+///   函数会转换为采样周期单位。
+/// - `rtp_ts`：对应报文头中的 RTP 时间戳（32-bit），同样以采样周期为单位。
+/// - `clock_rate`：媒体时钟频率（Hz）。若传入 0，则无法定义采样周期，函数会直接返回而不修改状态。
+/// - **前置条件**：调用方需保证 `arrival_ts` 单调递增、`clock_rate` 与 `rtp_ts` 均为合法值。
+/// - **后置条件**：若这是首个报文，仅记录 `last_transit`；随后报文会根据 `|D|` 与当前抖动值
+///   更新指数滑动平均，且 `jitter()` 始终保持非负。
+///
+/// ## 算法说明（How）
+/// 1. 将接收时间 `R` 转换为采样单位：`R' = arrival_ts * clock_rate`；
+/// 2. 计算当前传输时延：`transit = R' - rtp_ts`；
+/// 3. 若存在上一包的 `transit_prev`，则 `D = transit - transit_prev`，并取绝对值；
+/// 4. 按照 RFC 算法更新抖动：`jitter += (|D| - jitter) / 16`；
+/// 5. 存储本次 `transit` 以供下一次迭代使用。
+///
+/// ## 风险提示（Trade-offs & Gotchas）
+/// - **浮点累计误差**：算法使用 `f64` 进行换算与指数平均，足以覆盖语音/视频常见的时钟频率；如需
+///   导出整数值，请在外层执行四舍五入。
+/// - **首包处理**：为了避免无意义的初始跳变，首包不会更新 `jitter`，这是 RFC 推荐的行为。
+/// - **零频率防护**：当 `clock_rate == 0` 时返回早退，以免出现除零或 NaN。
+pub fn update_jitter(
+    state: &mut RtpJitterState,
+    arrival_ts: Duration,
+    rtp_ts: u32,
+    clock_rate: u32,
+) {
+    // 若缺少有效的时钟频率，则无法将到达时间换算至采样单位。直接返回可确保状态保持一致，
+    // 调用方在上层应记录该异常配置。
+    if clock_rate == 0 {
+        return;
+    }
+
+    // 步骤 1：将到达时间换算为采样周期单位。`Duration::as_secs_f64` 会同时包含秒与纳秒部分，
+    // 可避免整数换算导致的精度损失。
+    let arrival_in_units = arrival_ts.as_secs_f64() * f64::from(clock_rate);
+    // 步骤 2：计算当前报文的传输时延。若到达时间早于 RTP 时间戳，该值可能为负数。
+    let transit = arrival_in_units - f64::from(rtp_ts);
+
+    if let Some(prev) = state.last_transit {
+        // 步骤 3：计算相邻报文的传输时延差并取绝对值，映射到 RFC 中的 |D|。
+        let mut delta = transit - prev;
+        if delta < 0.0 {
+            delta = -delta;
+        }
+        // 步骤 4：使用 1/16 的平滑因子更新抖动估算，等价于指数滑动平均。
+        state.jitter += (delta - state.jitter) / 16.0;
+    }
+
+    // 步骤 5：记录最新的传输时延，为下一次更新提供基线。
+    state.last_transit = Some(transit);
 }
 
 /// 将指定区间映射为零拷贝分片。
