@@ -18,9 +18,4 @@ spark-transport-tcp = { path = "../spark-transport-tcp" }
 spark-transport-udp = { path = "../spark-transport-udp" }
 spark-transport-tls = { path = "../spark-transport-tls" }
 spark-transport-quic = { path = "../spark-transport-quic" }
-spark-codec-sip = { path = "../../spark-codec-sip" }
-spark-codec-sdp = { path = "../../spark-codec-sdp" }
-spark-codec-rtp = { path = "../../spark-codec-rtp" }
-spark-codec-rtcp = { path = "../../spark-codec-rtcp" }
-anyhow = "1.0"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }

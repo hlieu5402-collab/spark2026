@@ -39,6 +39,10 @@ pub(crate) const SHUTDOWN: OperationKind = OperationKind {
     code: "spark.transport.tcp.shutdown_failed",
     message: "tcp shutdown",
 };
+pub(crate) const CONFIGURE: OperationKind = OperationKind {
+    code: "spark.transport.tcp.configure_failed",
+    message: "tcp configure",
+};
 pub(crate) const POLL_READY: OperationKind = OperationKind {
     code: "spark.transport.tcp.poll_ready_failed",
     message: "tcp poll_ready",
