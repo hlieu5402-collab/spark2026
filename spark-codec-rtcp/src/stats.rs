@@ -20,6 +20,7 @@
 
 use alloc::vec::Vec;
 use core::{cmp, time::Duration};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{ReceiverReport, ReceptionReport, RtcpPacket, RtcpPacketVec, SenderInfo, SenderReport};
 
@@ -276,11 +277,15 @@ fn reception_from_stats(stats: &ReceptionStatistics) -> ReceptionReport {
     }
 }
 
-const MIN_CUMULATIVE_LOST: i32 = -0x80_0000; // -8_388_608
-const MAX_CUMULATIVE_LOST: i32 = 0x7F_FFFF; // 8_388_607
+const RTCP_VERSION: u8 = 2;
+const RTCP_SR_PACKET_TYPE: u8 = 200;
+const RTCP_RR_PACKET_TYPE: u8 = 201;
+const NTP_UNIX_EPOCH_DELTA_SECS: u64 = 2_208_988_800;
+const CUMULATIVE_LOST_MIN: i32 = -0x80_0000; // -8_388_608
+const CUMULATIVE_LOST_MAX: i32 = 0x7F_FFFF; // 8_388_607
 
 fn clamp_cumulative_lost(value: i32) -> i32 {
-    value.clamp(MIN_CUMULATIVE_LOST, MAX_CUMULATIVE_LOST)
+    value.clamp(CUMULATIVE_LOST_MIN, CUMULATIVE_LOST_MAX)
 }
 
 fn encode_delay_since_last_sr(delay: Duration) -> u32 {
@@ -292,52 +297,7 @@ fn encode_delay_since_last_sr(delay: Duration) -> u32 {
     let total = coarse.saturating_add(fine);
 
     cmp::min(total, u32::MAX as u64) as u32
-//! RTCP 统计报文（SR/RR）生成工具。
-//!
-//! # 教案定位（Why）
-//! - 发送端需要周期性构造 Sender Report (SR) 与 Receiver Report (RR) 以同步时钟并反馈网络质量。
-//! - TCK 在本阶段通过 `build_sr`/`build_rr` 验证报文编码的契约，确保实现者能正确理解 RFC3550 §6.3.1 / §6.4.1。
-//!
-//! # 接口职责（What）
-//! - `RtpClockMapper`：封装 NTP ↔ RTP 的时间映射，统一管理采样起点、时钟频率与回绕规则。
-//! - `SenderStat`/`ReceiverStat`：以结构化方式描述待上报的统计数据，避免在调用处拼接裸字节。
-//! - `build_sr`/`build_rr`：根据输入统计生成符合协议的 RTCP 报文并写入缓冲区。
-//!
-//! # 实现策略（How）
-//! - 采用整数运算完成 NTP 时间戳与 RTP tick 的换算，杜绝浮点累计误差；
-//! - 在写入报文前进行契约校验（报告块数量、Profile 扩展对齐、累计丢包范围等），提前捕获编码错误；
-//! - 统一以 `Vec<u8>` 作为输出缓冲，方便与后续复合报文生成器对接。
-//!
-//! # 风险提示（Trade-offs）
-//! - 当前实现依赖 `std::time::SystemTime`；在 `no_std`/`alloc` 构建下该模块会被禁用，调用方需自行提供替代实现；
-//! - RTP 时间戳只进行 32-bit 回绕处理，若长时间运行需由上层逻辑维护额外的回绕上下文。
-
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-use alloc::vec::Vec;
-
-/// RTCP 的固定版本号（RFC3550 §6.1）。
-const RTCP_VERSION: u8 = 2;
-
-/// RTCP Sender Report 的分组类型常量（RFC3550 §6.4.1）。
-const RTCP_SR_PACKET_TYPE: u8 = 200;
-
-/// RTCP Receiver Report 的分组类型常量（RFC3550 §6.4.2）。
-const RTCP_RR_PACKET_TYPE: u8 = 201;
-
-/// NTP 时间戳与 Unix 纪元之间的秒差（1970-01-01 与 1900-01-01 的间隔）。
-const NTP_UNIX_EPOCH_DELTA_SECS: u64 = 2_208_988_800;
-
-/// 当累计丢包超出 24-bit 表示范围时返回的错误。
-const CUMULATIVE_LOST_MIN: i32 = -0x80_0000;
-const CUMULATIVE_LOST_MAX: i32 = 0x7F_FFFF;
-
-/// 构造 RTCP 统计报文过程中可能出现的错误。
-///
-/// ### Why
-/// - 发送/接收报告的编码存在多处协议约束，直接 `panic` 会给上层带来不可控的崩溃风险。
-/// - 将错误枚举化后，调用方可以在调试阶段快速定位违反协议的根因。
-///
+}
 /// ### What
 /// - 每个变体对应一类契约违规：报告块数量超限、扩展字段未按 32-bit 对齐、时间回退等。
 /// - 错误在 `build_sr`/`build_rr` 中返回，调用方可据此选择回滚或丢弃统计。
@@ -527,7 +487,7 @@ pub struct ReceptionStat {
 /// ### 后置条件
 /// - `out` 追加完整的 SR 报文，长度等于 `(length + 1) * 4`；
 /// - 输出缓冲未进行清空操作，允许调用方复用同一个 `Vec` 生成多个报文。
-pub fn build_sr(
+pub fn build_sr_raw(
     clock: &RtpClockMapper,
     sender_stat: &SenderStat<'_>,
     out: &mut Vec<u8>,
@@ -560,7 +520,7 @@ pub fn build_sr(
 /// - 校验报告块数量与扩展字段对齐；
 /// - 无需进行 NTP/RTP 映射；
 /// - 输出缓冲追加完整 RR 报文。
-pub fn build_rr(recv_stat: &ReceiverStat<'_>, out: &mut Vec<u8>) -> Result<(), BuildError> {
+pub fn build_rr_raw(recv_stat: &ReceiverStat<'_>, out: &mut Vec<u8>) -> Result<(), BuildError> {
     validate_report_constraints(recv_stat.reports, recv_stat.profile_extensions)?;
     let report_count = recv_stat.reports.len();
     let payload_len = 4 // reporter_ssrc
