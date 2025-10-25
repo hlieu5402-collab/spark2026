@@ -1,24 +1,25 @@
 [workspace]
 members = [
-    "crates/spark-core",
     "crates/codecs/spark-codec-line",
-    "crates/codecs/spark-codec-sip",
-    "crates/codecs/spark-codec-sdp",
-    "crates/codecs/spark-codec-rtp",
     "crates/codecs/spark-codec-rtcp",
-    "crates/spark-macros",
-    "crates/spark-otel",
-    "tools/deprecation-lint",
+    "crates/codecs/spark-codec-rtp",
+    "crates/codecs/spark-codec-sdp",
+    "crates/codecs/spark-codec-sip",
     "crates/spark-contract-tests",
     "crates/spark-contract-tests-macros",
-    "crates/transport/spark-transport-tcp",
-    "crates/transport/spark-transport-udp",
-    "crates/transport/spark-transport-tls",
-    "crates/transport/spark-transport-quic",
+    "crates/spark-core",
     "crates/spark-impl-tck",
+    "crates/spark-macros",
+    "crates/spark-otel",
+    "crates/transport/spark-transport-quic",
+    "crates/transport/spark-transport-tcp",
+    "crates/transport/spark-transport-tls",
+    "crates/transport/spark-transport-udp",
+    "examples/tck-mock-transport",
+    "tools/deprecation-lint",
 ]
 exclude = ["fuzz"]
-resolver = "3"
+resolver = "2"
 
 [workspace.package]
 edition = "2024"
@@ -27,7 +28,45 @@ license = "Apache-2.0"
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
 
 [workspace.dependencies]
+anyhow = "1.0"
+arc-swap = "1.7"
+async-trait = { version = "0.1", default-features = false }
+criterion = "0.5"
+futures = "0.3"
+futures-util = { version = "0.3", default-features = false }
+hex = "0.4"
+libfuzzer-sys = "0.4"
+libm = "0.2"
+loom = { version = "0.7", default-features = false }
+opentelemetry = { version = "0.22", default-features = false, features = ["trace"] }
+opentelemetry-sdk = { package = "opentelemetry_sdk", version = "0.22", default-features = false, features = ["trace"] }
+parking_lot = "0.12"
+proc-macro2 = "1.0"
+proptest = "1.5"
+quote = "1.0"
+quinn = "0.11"
+quinn-proto = "0.11"
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false }
+rustls-pki-types = "1.12"
+serde = { version = "1.0", default-features = false }
+serde_json = "1.0"
+sha2 = { version = "0.10", default-features = false }
+spin = { version = "0.9", default-features = false, features = ["rwlock", "mutex", "spin_mutex"] }
+socket2 = "0.6"
+spark-contract-tests = { path = "crates/spark-contract-tests" }
+spark-contract-tests-macros = { path = "crates/spark-contract-tests-macros" }
+spark-core = { path = "crates/spark-core" }
+spark-macros = { path = "crates/spark-macros" }
+spark-otel = { path = "crates/spark-otel" }
+thiserror = "1.0"
 tokio = { version = "1.48.0", default-features = false }
+tokio-rustls = "0.26"
+toml = "0.8"
+tracing = "0.1"
+tracing-opentelemetry = "0.23"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-test = "0.2"
 
 [patch.crates-io]
 spark-core = { path = "crates/spark-core" }
