@@ -41,6 +41,6 @@ mod error;
 mod listener;
 mod util;
 
+pub use channel::TcpSocketConfig;
 pub use channel::{ShutdownDirection, TcpChannel, TcpChannelParts};
-pub use channel::{ShutdownDirection, TcpChannel, TcpSocketConfig};
 pub use listener::TcpListener;
