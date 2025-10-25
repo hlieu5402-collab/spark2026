@@ -96,21 +96,46 @@ impl SipMessage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WsSipError {
     /// 帧长度不足两个字节，无法解析基础头部。
-    FrameTooShort { actual: usize },
+    FrameTooShort {
+        /// 实际观测到的帧字节数，帮助定位截断来源。
+        actual: usize,
+    },
     /// 扩展长度字段或掩码键不完整。
-    IncompleteHeader { expected: usize, actual: usize },
+    IncompleteHeader {
+        /// 解析头部所需的完整字节数（含扩展长度与掩码键）。
+        expected: usize,
+        /// 实际可用的头部字节数，用于诊断截断位置。
+        actual: usize,
+    },
     /// payload 长度超出当前平台可表示范围。
-    PayloadLengthOverflow { declared: u64 },
+    PayloadLengthOverflow {
+        /// 帧声明的 payload 长度，超过平台 `usize` 范围。
+        declared: u64,
+    },
     /// 帧声明的 payload 长度与实际字节数不一致。
-    PayloadLengthMismatch { expected: usize, actual: usize },
+    PayloadLengthMismatch {
+        /// 帧头部声明的 payload 长度。
+        expected: usize,
+        /// 实际可用的 payload 字节数。
+        actual: usize,
+    },
     /// 控制帧被错误地拆分（RFC 6455 §5.5）。
-    FragmentedControl { opcode: u8 },
+    FragmentedControl {
+        /// 触发违规的控制帧 opcode 值。
+        opcode: u8,
+    },
     /// 收到未知或不支持的 opcode。
-    UnsupportedOpcode { opcode: u8 },
+    UnsupportedOpcode {
+        /// 收到的未知 opcode，便于实现者加白名单。
+        opcode: u8,
+    },
     /// 在未开始数据帧的情况下收到 continuation 帧。
     UnexpectedContinuation,
     /// 在前一条消息尚未 FIN 的情况下收到新的数据帧。
-    MessageInterleaving { opcode: u8 },
+    MessageInterleaving {
+        /// 在旧消息未完成时尝试发送的新 opcode。
+        opcode: u8,
+    },
     /// 输入结束时仍存在未完成的分片序列。
     DanglingFragment,
     /// 文本帧载荷未通过 UTF-8 校验。
@@ -371,8 +396,7 @@ fn parse_frame(view: &dyn BufView) -> Result<Frame, WsSipError> {
 /// 将 `BufView` 展平成连续缓冲，便于后续解析。
 fn flatten_view(view: &dyn BufView) -> Vec<u8> {
     let mut flat = Vec::with_capacity(view.len());
-    let mut chunks = view.as_chunks();
-    while let Some(chunk) = chunks.next() {
+    for chunk in view.as_chunks() {
         flat.extend_from_slice(chunk);
     }
     flat
