@@ -1,3 +1,14 @@
+//! WebSocket 文本/二进制帧与 SIP 报文之间的映射工具集。
+//!
+//! # 教案级总览
+//! - **定位 (Why)**：负责在传输层与 SIP 编解码之间搬运“帧 ↔ 文本”转换，是 `spark-impl-tck`
+//!   验证互通性时的基准实现；
+//! - **流程 (How)**：封装帧解析、掩码解码、分片聚合与长度编码细节，并暴露 `ws_to_sip` / `sip_to_ws`
+//!   两个方向的高层函数；
+//! - **契约 (What)**：输入输出均采用拥有型 `Vec<u8>` 或零拷贝 `BufView`，要求调用方在 `alloc`
+//!   特性启用的环境中使用；
+//! - **风险提示**：实现以可读性优先，采用缓冲拷贝换取简化逻辑，重度实时场景需关注分配开销。
+
 use alloc::vec::Vec;
 use core::{fmt, mem, str};
 
@@ -97,43 +108,45 @@ impl SipMessage {
 pub enum WsSipError {
     /// 帧长度不足两个字节，无法解析基础头部。
     FrameTooShort {
+        /// 实际收到的总字节数，用于向上层报告缺失量估算。
         /// 实际观测到的帧字节数，帮助定位截断来源。
         actual: usize,
     },
     /// 扩展长度字段或掩码键不完整。
     IncompleteHeader {
-        /// 解析头部所需的完整字节数（含扩展长度与掩码键）。
+        /// 期望的最小头部长度（含扩展字段），供重试时预估缓冲大小。
         expected: usize,
-        /// 实际可用的头部字节数，用于诊断截断位置。
+        /// 实际可用的字节数，辅助判断数据截断或解码器错误。
+        /// 解析头部所需的完整字节数（含扩展长度与掩码键）。
         actual: usize,
     },
     /// payload 长度超出当前平台可表示范围。
     PayloadLengthOverflow {
-        /// 帧声明的 payload 长度，超过平台 `usize` 范围。
+        /// 帧宣称的 payload 长度，后续可记录到日志以排查协议兼容性问题。
         declared: u64,
     },
     /// 帧声明的 payload 长度与实际字节数不一致。
     PayloadLengthMismatch {
-        /// 帧头部声明的 payload 长度。
+        /// 头部中宣告的 payload 字节数。
         expected: usize,
-        /// 实际可用的 payload 字节数。
+        /// 根据缓冲长度推导出的实际 payload 字节数。
         actual: usize,
     },
     /// 控制帧被错误地拆分（RFC 6455 §5.5）。
     FragmentedControl {
-        /// 触发违规的控制帧 opcode 值。
+        /// 导致异常的 opcode，便于在日志中定位问题帧类型。
         opcode: u8,
     },
     /// 收到未知或不支持的 opcode。
     UnsupportedOpcode {
-        /// 收到的未知 opcode，便于实现者加白名单。
+        /// 原始 opcode 数值，可帮助调用方快速定位需要扩展的帧类型。
         opcode: u8,
     },
     /// 在未开始数据帧的情况下收到 continuation 帧。
     UnexpectedContinuation,
     /// 在前一条消息尚未 FIN 的情况下收到新的数据帧。
     MessageInterleaving {
-        /// 在旧消息未完成时尝试发送的新 opcode。
+        /// 触发乱序的 opcode，结合日志可还原出问题序列。
         opcode: u8,
     },
     /// 输入结束时仍存在未完成的分片序列。

@@ -49,6 +49,7 @@ pub use crate::stats::{
 };
 
 #[cfg(feature = "std")]
+pub use crate::stats::raw::{
 pub use crate::stats::{
     BuildError, ReceiverStat, ReceptionStat, RtpClockMapper, SenderStat, build_rr_raw, build_sr_raw,
 };
