@@ -5,10 +5,19 @@ edition = "2024"
 publish = false
 license = "Apache-2.0"
 
+[features]
+default = []
+transport-tests = []
+rtp-tests = []
+
 [lib]
 # `cargo bench -- --quick` 会向所有基于 `libtest` 的单元测试传递额外参数，
 # `spark-impl-tck` 不提供基准测试入口，因此禁用基准运行以避免参数解析失败。
 bench = false
+
+[features]
+default = []
+transport-tests = []
 
 [dependencies]
 spark-core = { path = "../../spark-core" }
@@ -21,14 +30,17 @@ spark-transport-quic = { path = "../spark-transport-quic" }
 anyhow = "1.0"
 quinn = "0.11"
 rustls-pki-types = "1.12"
-rustls = { version = "0.23", default-features = false, features = ["std"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"] }
 tokio-rustls = "0.26"
 rcgen = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+spark-codec-rtp = { path = "../../spark-codec-rtp" }
+spark-codec-sdp = { path = "../../spark-codec-sdp" }
+rustls = { version = "0.23", default-features = false, features = ["std"] }
+hex = "0.4"
+spark-codec-rtcp = { path = "../../spark-codec-rtcp" }
 
 [[bench]]
 name = "tcp_throughput"
 harness = false
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
