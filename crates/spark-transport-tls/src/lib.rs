@@ -22,6 +22,9 @@
 - 当前实现聚焦服务端接入，后续若需客户端支持或会话缓存，可在现有结构上扩展。
 "#]
 
+mod hot_reload;
+
+pub use hot_reload::{HotReloadingServerConfig, TlsHandshakeError};
 mod acceptor;
 mod channel;
 mod error;
