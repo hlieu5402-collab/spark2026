@@ -114,6 +114,8 @@ mod transport {
             .expect("close graceful result");
 
         drop(client_channel);
+    }
+}
 /// 传输相关测试集合。
 #[cfg(test)]
 pub mod transport {
@@ -533,6 +535,9 @@ pub mod transport {
                 .await
                 .map_err(|err| anyhow!(err))?
                 .map_err(|err| anyhow!(err))?;
+
+            Ok(())
+        }
     /// 确保 AWS-LC 作为 rustls 的全局加密后端。
     ///
     /// # 设计动机（Why）
@@ -801,6 +806,8 @@ pub mod transport {
         }
 
         Ok(())
+    }
+
     /// TLS 握手与读写行为验证。
     pub mod tls_handshake {
         use super::{
@@ -887,6 +894,10 @@ pub mod transport {
 
             assert_eq!(observation.server_name.as_deref(), Some("alpha.test"));
             assert_eq!(observation.alpn.as_deref(), Some(b"h2".as_ref()));
+
+            Ok(())
+        }
+
     /// 针对 UDP 批量 IO 优化路径的集成测试。
     pub mod udp_batch_io {
         use super::{Context, Result, UdpSocket};
@@ -978,6 +989,7 @@ pub mod transport {
         }
     }
 }
+}
 
 /// RTP 相关契约测试集合。
 #[cfg(test)]
@@ -985,7 +997,8 @@ pub mod rtp {
     use anyhow::Result;
 
     use spark_codec_rtp::{
-        RTP_HEADER_MIN_LEN, RTP_VERSION, RtpHeader, RtpPacketBuilder, parse_rtp, seq_less,
+        update_jitter, RtpHeader, RtpJitterState, RtpPacketBuilder, RTP_HEADER_MIN_LEN,
+        RTP_VERSION, parse_rtp, seq_less,
     };
     use spark_core::buffer::{BufView, Chunks};
 
@@ -1128,6 +1141,79 @@ pub mod rtp {
             assert!(!seq_less(0x8000, 0));
         }
     }
+
+    /// RFC 3550 附录 A.8 抖动估算测试。
+    pub mod jitter_a8 {
+        use super::*;
+        use core::time::Duration;
+
+        /// 当到达时间与 RTP 时间戳完全匹配时，抖动估算应保持为零。
+        #[test]
+        fn perfectly_spaced_packets_keep_zero_jitter() {
+            let clock_rate = 90_000u32;
+            let mut state = RtpJitterState::new();
+
+            let schedule = [
+                (Duration::from_millis(0), 0u32),
+                (Duration::from_millis(20), 1_800u32),
+                (Duration::from_millis(40), 3_600u32),
+                (Duration::from_millis(60), 5_400u32),
+            ];
+
+            for (arrival, ts) in schedule {
+                update_jitter(&mut state, arrival, ts, clock_rate);
+            }
+
+            assert!(state.jitter().abs() < 1e-6, "均匀流应保持零抖动");
+            let last = state.last_transit().expect("最后一次 transit 应存在");
+            assert!(last.abs() < 1e-6, "完美对齐的流 transit 应为零");
+        }
+
+        /// 验证单次突发延迟后抖动值按标准公式逐步收敛。
+        #[test]
+        fn jitter_tracks_delay_variation() {
+            let clock_rate = 90_000u32;
+            let mut state = RtpJitterState::new();
+
+            update_jitter(&mut state, Duration::from_millis(0), 0, clock_rate);
+            update_jitter(&mut state, Duration::from_millis(20), 1_800, clock_rate);
+            assert!(state.jitter().abs() < 1e-6, "前两包应保持零抖动");
+
+            update_jitter(&mut state, Duration::from_millis(45), 3_600, clock_rate);
+            let expected_after_spike = 450.0 / 16.0;
+            assert!(
+                (state.jitter() - expected_after_spike).abs() < 1e-6,
+                "单次抖动应乘以 1/16 平滑"
+            );
+            assert!(
+                (state.last_transit().unwrap() - 450.0).abs() < 1e-6,
+                "需记录最新 transit 以供下一次迭代"
+            );
+
+            update_jitter(&mut state, Duration::from_millis(65), 5_400, clock_rate);
+            let expected_decay = expected_after_spike + (0.0 - expected_after_spike) / 16.0;
+            assert!(
+                (state.jitter() - expected_decay).abs() < 1e-6,
+                "后续报文应让抖动值逐渐回落"
+            );
+        }
+
+        /// clock rate 为 0 时算法应短路，避免生成非法状态。
+        #[test]
+        fn zero_clock_rate_is_noop() {
+            let mut state = RtpJitterState::new();
+            update_jitter(
+                &mut state,
+                Duration::from_millis(10),
+                1_000,
+                0, // clock_rate == 0 视为配置错误
+            );
+
+            assert!(state.last_transit().is_none(), "零频率时不应更新 transit");
+            assert!(state.jitter().abs() < f64::EPSILON, "抖动保持初始值 0");
+        }
+    }
+}
 }
 
 /// RTCP 编解码契约测试集合。
