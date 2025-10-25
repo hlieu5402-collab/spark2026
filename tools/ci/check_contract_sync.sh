@@ -2,18 +2,18 @@
 # 教案级注释：ReadyState / ErrorCategory / ObservabilityContract / BufView 契约同步守门脚本
 #
 # 目标 (Why)：
-# - 核心目的：当 PR 在 `spark-core/src` 中改动 ReadyState、ErrorCategory、ObservabilityContract 或 BufView 契约实现时，强制要求作者同步更新
+# - 核心目的：当 PR 在 `crates/spark-core/src` 中改动 ReadyState、ErrorCategory、ObservabilityContract 或 BufView 契约实现时，强制要求作者同步更新
 #   `docs/` 目录下的正式文档或仪表盘说明，确保核心契约变化能第一时间传达到运行与治理团队；同时，针对错误分类矩阵（代码 + SOT 文档）
 #   提供双向守门，避免业务契约与知识库出现“只改其一”的偏差。
 # - 在整体流程中的定位：该脚本作为 CI Lints & docs 阶段的早期守门人，位于编译/测试之前快速阻断缺少文档的契约变更，降低回滚成本。
-# - 设计理念：通过 `git diff` 精确定位 `spark-core/src` 目录内涉及关键契约的改动，再校验是否伴随至少一项 `docs/*` 更新，以最小成本获得治理信号。
+# - 设计理念：通过 `git diff` 精确定位 `crates/spark-core/src` 目录内涉及关键契约的改动，再校验是否伴随至少一项 `docs/*` 更新，以最小成本获得治理信号。
 #
 # 逻辑解析 (How)：
 # 1. 仅在 Pull Request 事件下执行：push 到主分支的提交已经通过评审，此处无需重复守门。
 # 2. 自动解析对比基线：优先使用 PR 基线 SHA；若缺失则回退到目标分支或 `origin/main`，保证 fork 与分支均可运行。
-# 3. 限定扫描范围：只分析 `spark-core/src/**/*.rs` 的 diff，过滤测试/文档噪声；随后匹配四个关键契约的标识符。
+# 3. 限定扫描范围：只分析 `crates/spark-core/src/**/*.rs` 的 diff，过滤测试/文档噪声；随后匹配四个关键契约的标识符。
 # 4. 收集触发契约：若 diff 中包含 `ReadyState|ErrorCategory|ObservabilityContract|BufView`，记录涉及的源文件列表。
-# 5. 错误分类矩阵 SOT 守门：要求 `spark-core/src/error/category_matrix.rs` 与 `docs/error-category-matrix.md` 必须同步改动，防止代码与文档分离。
+# 5. 错误分类矩阵 SOT 守门：要求 `crates/spark-core/src/error/category_matrix.rs` 与 `docs/error-category-matrix.md` 必须同步改动，防止代码与文档分离。
 # 6. 校验文档更新：检查本次提交是否修改了任意 `docs/` 前缀的文件；若缺失则输出详细指引并失败退出。
 #
 # 契约说明 (What)：
@@ -28,7 +28,7 @@
 #
 # 设计权衡与注意事项 (Trade-offs & Gotchas)：
 # - 关键字匹配 VS AST：选择关键字匹配以降低实现复杂度与运行时间；可能出现极少数同名符号导致的“误报”，此时需要人工确认是否应更新文档。
-# - 扫描范围：限定 `spark-core/src` 避免测试或外部 crate 的噪声；若未来将契约迁移至其他 crate，需要同步扩展 `SCOPE_PATHSPEC`。
+# - 扫描范围：限定 `crates/spark-core/src` 避免测试或外部 crate 的噪声；若未来将契约迁移至其他 crate，需要同步扩展 `SCOPE_PATHSPEC`。
 # - 文档检查宽松：仅要求任意 `docs/` 变更，允许作者在最合适的文件中补充说明；治理团队可在评审中进一步确认内容质量。
 # - SOT 守门：针对错误分类矩阵额外执行一对一同步检查，优先保障易遗忘的知识库对齐；该约束是对通用文档检查的增强且仅影响特定文件。
 # - 性能：`git diff` 和 `grep` 的成本极低，脚本不修改工作区，也不会生成临时文件，确保在 CI 中运行稳定。
@@ -83,13 +83,13 @@ resolve_base_commit() {
 
 readonly BASE_COMMIT="$(resolve_base_commit "$BASE_SHA_ENV" "$BASE_REF_ENV")"
 
-# 限定扫描范围：使用 GIT pathspec 的 glob 语法，仅关注 spark-core/src 下的 Rust 文件。
-readonly SCOPE_PATHSPEC=':(glob)spark-core/src/**/*.rs'
+# 限定扫描范围：使用 GIT pathspec 的 glob 语法，仅关注 crates/spark-core/src 下的 Rust 文件。
+readonly SCOPE_PATHSPEC=':(glob)crates/spark-core/src/**/*.rs'
 readonly CONTRACT_REGEX='\b(ReadyState|ErrorCategory|ObservabilityContract|BufView)\b'
-readonly CATEGORY_MATRIX_SOURCE='spark-core/src/error/category_matrix.rs'
+readonly CATEGORY_MATRIX_SOURCE='crates/spark-core/src/error/category_matrix.rs'
 readonly CATEGORY_MATRIX_DOC='docs/error-category-matrix.md'
 readonly CATEGORY_MATRIX_CONTRACT='contracts/error_matrix.toml'
-readonly CONFIG_EVENTS_SOURCE='spark-core/src/configuration/events.rs'
+readonly CONFIG_EVENTS_SOURCE='crates/spark-core/src/configuration/events.rs'
 readonly CONFIG_EVENTS_DOC='docs/configuration-events.md'
 readonly CONFIG_EVENTS_CONTRACT='contracts/config_events.toml'
 readonly CONFIG_EVENTS_SCHEMA_JSON='schemas/configuration-events.schema.json'
@@ -97,9 +97,9 @@ readonly CONFIG_EVENTS_ASYNCAPI_JSON='schemas/configuration-events.asyncapi.json
 readonly PYTHON_SDK_PATHSPEC=':(glob)sdk/python/**'
 readonly JAVA_SDK_PATHSPEC=':(glob)sdk/java/**'
 readonly CATEGORY_SURFACE_PATHS=(
-  'spark-core/src/error.rs'
-  'spark-core/src/error/category_matrix.rs'
-  'spark-core/src/pipeline/default_handlers.rs'
+  'crates/spark-core/src/error.rs'
+  'crates/spark-core/src/error/category_matrix.rs'
+  'crates/spark-core/src/pipeline/default_handlers.rs'
 )
 
 # 教案级注释：错误分类矩阵 SOT 守门（Why / How / What / Trade-offs）

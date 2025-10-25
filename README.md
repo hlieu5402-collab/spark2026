@@ -2,12 +2,12 @@
 
 [📘 最小上手路径](docs/getting-started.md) · [⚠️ 十大常见陷阱](docs/pitfalls.md)
 
-Spark 2026 是面向高性能、协议无关场景的异步通信契约集合。本仓库同时提供核心接口 (`spark-core`) 与示例扩展 (`spark-codec-line`)，帮助团队验证兼容性与扩展能力。
+Spark 2026 是面向高性能、协议无关场景的异步通信契约集合。本仓库同时提供核心接口 (`crates/spark-core`) 与示例扩展 (`crates/codecs/spark-codec-line`)，帮助团队验证兼容性与扩展能力。
 
 ## 仓库亮点
 
 - **契约优先：** 通过 `spark-core` 定义传输、路由、配置、运行时等核心接口，支持 `no_std + alloc` 场景。
-- **可扩展样例：** `spark-codec-line` 演示如何在不修改核心库的前提下实现行分隔文本编解码器。
+- **可扩展样例：** `crates/codecs/spark-codec-line` 演示如何在不修改核心库的前提下实现行分隔文本编解码器。
 - **文档完备：** `docs/` 下包含治理、观测、配置、异步调度等专题说明，辅以本次新增的快速上手与避坑指南。
 
 ## 快速开始

@@ -11,10 +11,10 @@ members = []
 
 [dev-dependencies]
 async-std = { version = "1.12", features = ["attributes"] }
-spark-core = { path = "../../spark-core" }
+spark-core = { path = "../../crates/spark-core" }
 spark-contract-tests = { path = "../../crates/spark-contract-tests" }
 
 [patch.crates-io]
-spark-core = { path = "../../spark-core" }
+spark-core = { path = "../../crates/spark-core" }
 spark-contract-tests = { path = "../../crates/spark-contract-tests" }
 spark-contract-tests-macros = { path = "../../crates/spark-contract-tests-macros" }

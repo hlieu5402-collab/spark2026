@@ -2,26 +2,26 @@ T00 基线检查输出
 ================
 
 
-$ rg -n -i 'enum\s+PollReady' --glob 'spark-core/**'
+$ rg -n -i 'enum\s+PollReady' --glob 'crates/spark-core/**'
 
-$ rg -n -i '\bBackpressureReason\b' --glob 'spark-core/**'
+$ rg -n -i '\bBackpressureReason\b' --glob 'crates/spark-core/**'
 
 $ rg -n -i 'Busy\s*\(\s*.*Budget'
 tools/ci/check_consistency.sh:289:#   2. 发现 `Busy(` 后跟踪括号深度，仅在该调用作用域内搜寻 `Budget`/`BudgetExhausted`；
 tools/ci/check_consistency.sh:299:#   - 若业务使用 `let budget = ...; ReadyState::Busy(budget.into())` 且 `into` 内部才引用 `Budget`，
 
-$ rg -n "fn .*\\(.*&ExecutionContext" spark-core/src/transport/traits
-spark-core/src/transport/traits/object.rs:54:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
-spark-core/src/transport/traits/object.rs:110:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
-spark-core/src/transport/traits/object.rs:160:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str;
-spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str {
-spark-core/src/transport/traits/generic.rs:60:    fn local_addr(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
-spark-core/src/transport/traits/generic.rs:140:    fn scheme(&self, ctx: &ExecutionContext<'_>) -> &'static str;
+$ rg -n "fn .*\\(.*&ExecutionContext" crates/spark-core/src/transport/traits
+crates/spark-core/src/transport/traits/object.rs:54:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
+crates/spark-core/src/transport/traits/object.rs:110:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
+crates/spark-core/src/transport/traits/object.rs:160:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str;
+crates/spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str {
+crates/spark-core/src/transport/traits/generic.rs:60:    fn local_addr(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
+crates/spark-core/src/transport/traits/generic.rs:140:    fn scheme(&self, ctx: &ExecutionContext<'_>) -> &'static str;
 
 $ cargo fmt --all --check
 
 $ cargo clippy --workspace --all-targets -- -D warnings
-    Checking spark-core v0.1.0 (/workspace/spark2026/spark-core)
+    Checking spark-core v0.1.0 (/workspace/spark2026/crates/spark-core)
     Checking spark-deprecation-lint v0.1.0 (/workspace/spark2026/tools/deprecation-lint)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.67s
 
@@ -35,8 +35,8 @@ $ cargo clippy --workspace --all-targets -D warnings
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.34s
 
 $ cargo test --workspace
-   Compiling spark-core v0.1.0 (/workspace/spark2026/spark-core)
-   Compiling spark-codec-line v0.1.0 (/workspace/spark2026/spark-codec-line)
+   Compiling spark-core v0.1.0 (/workspace/spark2026/crates/spark-core)
+   Compiling spark-codec-line v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-line)
    Compiling spark-contract-tests-macros v0.1.0 (/workspace/spark2026/crates/spark-contract-tests-macros)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 5.38s
      Running unittests src/lib.rs (target/debug/deps/spark_codec_line-a842a357da99f91c)
@@ -220,14 +220,14 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Doc-tests spark_core
 
 running 8 tests
-test spark-core/src/buffer/pool.rs - buffer::pool::BufferPool (line 32) ... ok
-test spark-core/src/buffer/message.rs - buffer::message::PipelineMessage (line 122) ... ok
-test spark-core/src/cluster/flow_control.rs - cluster::flow_control::SubscriptionStream (line 145) ... ignored
-test spark-core/src/buffer/pool.rs - buffer::pool::PoolStats (line 216) ... ok
-test spark-core/src/error.rs - error::CoreError::new (line 71) ... ok
-test spark-core/src/observability/events.rs - observability::events::OpsEventBus::set_event_policy (line 391) ... ignored
-test spark-core/src/security/policy.rs - security::policy (line 9) ... ignored
-test spark-core/src/observability/events.rs - observability::events::CoreUserEvent (line 111) ... ok
+test crates/spark-core/src/buffer/pool.rs - buffer::pool::BufferPool (line 32) ... ok
+test crates/spark-core/src/buffer/message.rs - buffer::message::PipelineMessage (line 122) ... ok
+test crates/spark-core/src/cluster/flow_control.rs - cluster::flow_control::SubscriptionStream (line 145) ... ignored
+test crates/spark-core/src/buffer/pool.rs - buffer::pool::PoolStats (line 216) ... ok
+test crates/spark-core/src/error.rs - error::CoreError::new (line 71) ... ok
+test crates/spark-core/src/observability/events.rs - observability::events::OpsEventBus::set_event_policy (line 391) ... ignored
+test crates/spark-core/src/security/policy.rs - security::policy (line 9) ... ignored
+test crates/spark-core/src/observability/events.rs - observability::events::CoreUserEvent (line 111) ... ok
 
 test result: ok. 5 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
@@ -245,10 +245,10 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 
 $ cargo doc --workspace
- Documenting spark-core v0.1.0 (/workspace/spark2026/spark-core)
+ Documenting spark-core v0.1.0 (/workspace/spark2026/crates/spark-core)
  Documenting spark-otel v0.1.0 (/workspace/spark2026/crates/spark-otel)
  Documenting spark-contract-tests v0.1.0 (/workspace/spark2026/crates/spark-contract-tests)
- Documenting spark-codec-line v0.1.0 (/workspace/spark2026/spark-codec-line)
+ Documenting spark-codec-line v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-line)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.70s
    Generated /workspace/spark2026/target/doc/spark_codec_line/index.html and 7 other files
 

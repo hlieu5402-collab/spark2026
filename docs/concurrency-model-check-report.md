@@ -9,7 +9,7 @@
 - **工具链**：`cargo +nightly miri test -p spark-core --test concurrency_primitives`、`RUSTFLAGS="--cfg spark_loom" cargo test --features loom-model,std --test loom_concurrency`
 
 ## Loom 模型检查
-- **测试入口**：`spark-core/tests/loom_concurrency.rs`
+- **测试入口**：`crates/spark-core/tests/loom_concurrency.rs`
 - **覆盖要点**：
   - **取消信号可见性**：验证 `Cancellation::cancel` 的释放语义与子节点可见性，避免遗漏 `Ordering` 导致的自旋。
   - **额度竞争**：在 `Budget::try_consume` / `refund` 的交错序列下，保证剩余额度不会出现下溢或超限。
@@ -26,11 +26,11 @@
 
 ## 发现与修复
 - **`Arc` 与互斥实现分离**：
-  - 在 `spark-core/src/contract.rs` 中固定 `Arc` 的具体类型以保留 `Eq/Hash` 派生，避免 Loom 条件编译导致的 trait 派生失败。【F:spark-core/src/contract.rs†L1-L16】
+  - 在 `crates/spark-core/src/contract.rs` 中固定 `Arc` 的具体类型以保留 `Eq/Hash` 派生，避免 Loom 条件编译导致的 trait 派生失败。【F:crates/spark-core/src/contract.rs†L1-L16】
 - **通道竞态守护**：
-  - `spark-core/tests/loom_concurrency.rs` 增补通道关闭场景，覆盖优雅/强制关闭的竞态收敛。【F:spark-core/tests/loom_concurrency.rs†L1-L139】
+  - `crates/spark-core/tests/loom_concurrency.rs` 增补通道关闭场景，覆盖优雅/强制关闭的竞态收敛。【F:crates/spark-core/tests/loom_concurrency.rs†L1-L139】
 - **Miri 抽样入口统一**：
-  - 新增 `spark-core/tests/concurrency_primitives.rs`，集中取消、预算与通道的跨线程场景，供 Miri 聚焦执行。【F:spark-core/tests/concurrency_primitives.rs†L1-L208】
+  - 新增 `crates/spark-core/tests/concurrency_primitives.rs`，集中取消、预算与通道的跨线程场景，供 Miri 聚焦执行。【F:crates/spark-core/tests/concurrency_primitives.rs†L1-L208】
 
 ## 后续建议
 1. **扩展预算场景**：增加失败重试、组合额度等模型测试，覆盖更多竞争模式。

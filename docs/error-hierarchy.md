@@ -6,9 +6,9 @@
 
 | 层级 | 类型 | 作用 | `source()` 语义 | 常见消费方 |
 | --- | --- | --- | --- | --- |
-| 核心层 | [`CoreError`](../spark-core/src/error.rs) | 对外暴露的稳定错误域，携带稳定错误码与跨组件可观察上下文。 | 指向域层或实现层的原因（若存在）。 | 应用路由、Pipeline、运行时任务调度。 |
-| 域层 | [`DomainError`](../spark-core/src/error.rs) | 以业务域划分语义，并负责向核心层汇总消息、错误码。 | 指向实现层错误。 | 集群、路由、传输等领域契约。 |
-| 实现层 | [`ImplError`](../spark-core/src/error.rs) | 记录最细粒度的实现细节、底层原因与调试信息。 | 指向更底层的 `ErrorCause`。 | 具体驱动、协议适配器、缓冲池实现。 |
+| 核心层 | [`CoreError`](../crates/spark-core/src/error.rs) | 对外暴露的稳定错误域，携带稳定错误码与跨组件可观察上下文。 | 指向域层或实现层的原因（若存在）。 | 应用路由、Pipeline、运行时任务调度。 |
+| 域层 | [`DomainError`](../crates/spark-core/src/error.rs) | 以业务域划分语义，并负责向核心层汇总消息、错误码。 | 指向实现层错误。 | 集群、路由、传输等领域契约。 |
+| 实现层 | [`ImplError`](../crates/spark-core/src/error.rs) | 记录最细粒度的实现细节、底层原因与调试信息。 | 指向更底层的 `ErrorCause`。 | 具体驱动、协议适配器、缓冲池实现。 |
 
 ### 1.1 映射接口
 
@@ -43,7 +43,7 @@
 
 ## 3. 核心错误码列表
 
-`CoreError` 的 `code` 字段必须引用 [`codes`](../spark-core/src/error.rs) 模块中的常量或遵循 `<域>.<语义>` 约定。常用码值如下：
+`CoreError` 的 `code` 字段必须引用 [`codes`](../crates/spark-core/src/error.rs) 模块中的常量或遵循 `<域>.<语义>` 约定。常用码值如下：
 
 - 传输：`transport.io`、`transport.timeout`
 - 协议：`protocol.decode`、`protocol.negotiation`、`protocol.budget_exceeded`、`protocol.type_mismatch`
@@ -55,7 +55,7 @@
 
 ## 4. Round-trip 契约测试摘要
 
-参考 [`impl_to_domain_to_core_roundtrip_preserves_message_and_cause`](../spark-core/src/error.rs) 单元测试：
+参考 [`impl_to_domain_to_core_roundtrip_preserves_message_and_cause`](../crates/spark-core/src/error.rs) 单元测试：
 
 1. 构造带有 `ImplErrorKind::BufferExhausted` 的实现层错误，并附带更底层的 `CoreError` 原因。
 2. 使用 `IntoDomainError` 映射为 `DomainErrorKind::Buffer`，指定核心错误码 `protocol.budget_exceeded`。

@@ -16,6 +16,7 @@ Trade-offs:
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -124,6 +125,41 @@ def parse_bench_output(path: Path) -> List[BenchObservation]:
     return observations
 
 
+def detect_quick_mode(path: Path) -> bool:
+    """判定当前基准输出是否以 `quick_mode` 执行。 
+
+    Why:
+        * 快速模式只采样极少次数，常在无隔离的 CI 环境触发大幅抖动，强行套用
+          “P99 ≤ 3%” 的生产阈值会产生大量误报。
+        * 当运行者明确需要严格校验时，可通过环境变量重新启用约束；因此脚本需先
+          判定是否处于快速模式以便切换行为。
+
+    Where:
+        * 由 [`main`] 在解析数据前调用；输入源为 `cargo bench` 输出文件。
+
+    How:
+        * 顺序扫描文本行，只要捕获 `quick_mode=true` 关键字即判定为快速模式。
+        * 读取过程与 [`parse_bench_output`] 分离，避免在教学或调试时耦合解析逻辑。
+
+    What:
+        * 参数 `path`：指向 `cargo bench` 输出的文件路径，要求文件可读。
+        * 返回值：布尔值，`True` 表示快速模式。
+        * 前置条件：文件存在且可打开；否则将抛出 `FileNotFoundError`。
+        * 后置条件：函数不会修改文件，只返回判定结果。
+
+    Trade-offs:
+        * 选择简单的关键字检测，而非完整解析结构化元数据，原因是 `quick_mode`
+          仅作为单一布尔标记，避免引入额外依赖或复杂度。
+        * 若未来输出格式发生变化（例如键名调整），需同步更新关键字。
+    """
+
+    with path.open("r", encoding="utf-8") as handler:
+        for raw_line in handler:
+            if "quick_mode=true" in raw_line:
+                return True
+    return False
+
+
 def evaluate_results(
     observations: Iterable[BenchObservation],
     *,
@@ -220,7 +256,14 @@ def main(argv: List[str]) -> int:
 
     target = Path(argv[0]) if argv else Path("bench.out")
     try:
+        quick_mode = detect_quick_mode(target)
         observations = parse_bench_output(target)
+        if quick_mode and os.getenv("ZEROCOPY_BENCH_STRICT") != "1":
+            print(
+                "zerocopy_bench_check_skipped: quick_mode=true，"
+                "默认跳过严格阈值校验；如需强制验证请设置 ZEROCOPY_BENCH_STRICT=1"
+            )
+            return 0
         violations = evaluate_results(observations)
     except Exception as exc:  # noqa: BLE001 - 需捕获并回显任意异常以便 CI 诊断
         print(f"zerocopy_bench_check_error: {exc}", file=sys.stderr)

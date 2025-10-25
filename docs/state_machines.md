@@ -77,7 +77,7 @@ stateDiagram-v2
 
 > **目的**：确保“无灰区”——任何 Pending 都必须伴随可追踪的唤醒事件，且所有转换均为显式允许的边。
 
-- **性质一（无不可达状态）**：利用 `spark-core/tests/state_machine_properties.rs` 中的 proptest 影子模型，
+- **性质一（无不可达状态）**：利用 `crates/spark-core/tests/state_machine_properties.rs` 中的 proptest 影子模型，
   生成任意合法事件序列并断言每一步转换都能被 ReadyState 接受，不会进入文档未定义的节点；若序列尝试触发禁止转换，模型将返回 `InvalidTransition` 并定位边。
 - **性质二（Pending 必有唤醒）**：同一影子模型记录每个 Pending 区间的唤醒集合，验证任何 Pending 在返回前都观察到了合法唤醒源。
 - **性质三（唤醒有序可见）**：当启用 `--features loom-model` 时，Loom 场景会模拟 Pending 注册与唤醒的并发交错，

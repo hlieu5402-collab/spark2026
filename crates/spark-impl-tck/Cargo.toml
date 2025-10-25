@@ -16,14 +16,14 @@ rtp-tests = []
 bench = false
 
 [dependencies]
-spark-core = { path = "../../spark-core" }
-spark-codec-sip = { path = "../../spark-codec-sip" }
+spark-core = { path = "../spark-core" }
+spark-codec-sip = { path = "../codecs/spark-codec-sip" }
 
 [dev-dependencies]
-spark-transport-tcp = { path = "../spark-transport-tcp" }
-spark-transport-udp = { path = "../spark-transport-udp", features = ["batch-udp-unix"] }
-spark-transport-tls = { path = "../spark-transport-tls" }
-spark-transport-quic = { path = "../spark-transport-quic" }
+spark-transport-tcp = { path = "../transport/spark-transport-tcp" }
+spark-transport-udp = { path = "../transport/spark-transport-udp", features = ["batch-udp-unix"] }
+spark-transport-tls = { path = "../transport/spark-transport-tls" }
+spark-transport-quic = { path = "../transport/spark-transport-quic" }
 anyhow = "1.0"
 quinn = "0.11"
 rustls-pki-types = "1.12"
@@ -32,11 +32,11 @@ tokio-rustls = "0.26"
 rcgen = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-spark-codec-rtp = { path = "../../spark-codec-rtp" }
-spark-codec-sdp = { path = "../../spark-codec-sdp" }
+spark-codec-rtp = { path = "../codecs/spark-codec-rtp" }
+spark-codec-sdp = { path = "../codecs/spark-codec-sdp" }
 rustls = { version = "0.23", default-features = false, features = ["std"] }
 hex = "0.4"
-spark-codec-rtcp = { path = "../../spark-codec-rtcp" }
+spark-codec-rtcp = { path = "../codecs/spark-codec-rtcp" }
 
 [[bench]]
 name = "tcp_throughput"

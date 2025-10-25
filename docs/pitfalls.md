@@ -17,7 +17,7 @@
 ## 3. 忽略缓冲池契约
 - **现象：** 自研缓冲池在高并发下出现越界或未释放内存。
 - **根因：** 未完整实现 `WritableBuffer`/`ReadableBuffer` 的约束（例如 `split_to` 未更新指针）。
-- **自检：** 对照 `spark-codec-line/examples/minimal.rs` 中的 Mock 实现，检查每个接口的前置/后置条件。
+- **自检：** 对照 `crates/codecs/spark-codec-line/examples/minimal.rs` 中的 Mock 实现，检查每个接口的前置/后置条件。
 - **进阶建议：** 在单元测试中引入 `DecodeContext::check_frame_constraints`，模拟预算压力。
 
 ## 4. 漏跑核心质量检查
@@ -41,7 +41,7 @@
 ## 7. 编解码预算未配置
 - **现象：** 遇到特定输入时 `codec.decode` 返回 `protocol.budget_exceeded`。
 - **根因：** 未根据实际业务帧长设置 `EncodeContext`/`DecodeContext` 的 `max_frame_size` 或绑定 `Budget`。
-- **自检：** 查阅 `spark-codec-line/examples/minimal.rs`，确认样例如何设置预算并回滚消费。
+- **自检：** 查阅 `crates/codecs/spark-codec-line/examples/minimal.rs`，确认样例如何设置预算并回滚消费。
 - **进阶建议：** 在生产环境将预算与 `SLO` 指标联动，实现动态调节。
 
 ## 8. 忽视运行时观测性

@@ -13,8 +13,6 @@ use core::time::Duration;
 use std::time::{Duration as StdDuration, UNIX_EPOCH};
 
 use spark_codec_rtcp::{
-    NtpTime, ReceiverStatistics, ReceptionStatistics, RtcpPacket, RtcpPacketVec, RtpClock,
-    SenderStatistics, build_rr, build_sr,
     BuildError, NtpTime, ReceiverStat, ReceiverStatistics, ReceptionStat, ReceptionStatistics,
     RtcpPacket, RtcpPacketVec, RtpClock, RtpClockMapper, SenderStat, SenderStatistics, build_rr,
     build_rr_raw, build_sr, build_sr_raw,
@@ -147,35 +145,6 @@ fn build_sr_honors_rtp_override() {
 
     assert_eq!(report.sender_info.rtp_timestamp, 0xDEAD_BEEF);
 }
-// SR/RR 报文生成测试集。
-//
-// # 教案意图（Why）
-// - 验证 `spark-codec-rtcp::build_sr_raw` 与 `build_rr_raw` 对时间映射、字段对齐与边界检查的实现是否符合 RFC3550。
-// - 帮助实现者理解 Sender Report/Receiver Report 的字节布局，在扩展复合报文生成之前锁定基线能力。
-//
-// # 测试范围（What）
-// - **正向路径**：生成包含统计与 Profile 扩展字段的 SR/RR，并比对完整字节序列；
-// - **异常路径**：验证时钟回退、扩展对齐与累计丢包范围等契约违规时返回错误。
-//
-// # 设计策略（How）
-// - 使用固定时间与统计输入，以纯字节断言避免实现与测试共享逻辑；
-// - 通过拆分测试函数覆盖不同的错误分支，确保错误信息可读且精确。
-
-    let mut packets = RtcpPacketVec::new();
-    build_sr(&NinetyKhzClock, &stats, &mut packets);
-
-use spark_codec_rtcp::{
-    BuildError, ReceiverStat, ReceptionStat, RtpClockMapper, SenderStat, build_rr_raw, build_sr_raw,
-};
-    let packet = packets.pop().expect("SR builder must emit a packet");
-    let RtcpPacket::SenderReport(report) = packet else {
-        panic!("expected SenderReport variant")
-    };
-
-    assert_eq!(report.sender_info.rtp_timestamp, 0xDEAD_BEEF);
-    assert_eq!(report.sender_info.ntp_timestamp, stats.capture_ntp.as_u64());
-}
-
 /// 生成包含单个接收报告与 Profile 扩展的 Sender Report，并校验完整字节序列。
 #[test]
 fn raw_build_sender_report_with_statistics() {

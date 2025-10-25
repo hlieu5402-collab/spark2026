@@ -46,7 +46,7 @@ A publicly-visible trait cannot be imported by its prior path. A `pub use` may h
        impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.44.0/src/lints/trait_missing.ron
 
 Failed in:
-  trait spark_core::Service, previously in file …/spark-core/src/service/traits/generic.rs:30
+  trait spark_core::Service, previously in file …/crates/spark-core/src/service/traits/generic.rs:30
 
      Summary semver requires new major version: 1 major and 0 minor checks failed
     Finished [  29.307s] spark-core

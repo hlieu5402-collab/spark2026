@@ -28,7 +28,7 @@
 | `changes.created/updated` | `Vec<{ key, value }>` | 新增/更新项的完整配置（包含元数据）。 |
 | `changes.deleted` | `Vec<{ key }>` | 被删除的配置键。 |
 
-> 字段在 `spark_core::audit::AuditEventV1` 中有一一对应的实现，详见源码注释。【F:spark-core/src/audit/mod.rs†L47-L164】
+> 字段在 `spark_core::audit::AuditEventV1` 中有一一对应的实现，详见源码注释。【F:crates/spark-core/src/audit/mod.rs†L47-L164】
 
 ## 事件样例
 
@@ -80,20 +80,20 @@
 
 ## 事件产生流程
 
-1. `ConfigurationBuilder::with_audit_pipeline` 注入 `AuditPipeline`，提供 `AuditRecorder` 与上下文（实体类型、操作者等）。【F:spark-core/src/configuration/builder.rs†L566-L586】
-2. `LayeredConfiguration::apply_change` 在应用增量前计算 `state_prev_hash`，并验证是否与 `audit_chain_tip` 一致，若不一致直接返回 `ConfigurationErrorKind::Conflict`。【F:spark-core/src/configuration/builder.rs†L905-L949】
-3. 生成 `AuditChangeSet`，写入 Recorder；Recorder 失败时自动回滚 Layer 与版本号并返回 `ConfigurationErrorKind::Audit`。【F:spark-core/src/configuration/builder.rs†L951-L992】
+1. `ConfigurationBuilder::with_audit_pipeline` 注入 `AuditPipeline`，提供 `AuditRecorder` 与上下文（实体类型、操作者等）。【F:crates/spark-core/src/configuration/builder.rs†L566-L586】
+2. `LayeredConfiguration::apply_change` 在应用增量前计算 `state_prev_hash`，并验证是否与 `audit_chain_tip` 一致，若不一致直接返回 `ConfigurationErrorKind::Conflict`。【F:crates/spark-core/src/configuration/builder.rs†L905-L949】
+3. 生成 `AuditChangeSet`，写入 Recorder；Recorder 失败时自动回滚 Layer 与版本号并返回 `ConfigurationErrorKind::Audit`。【F:crates/spark-core/src/configuration/builder.rs†L951-L992】
 4. 成功写入后更新链尾哈希并广播变更，确保审计与实际状态同步前进。 
 
 ## 回放与重发策略
 
-- **回放**：使用 `audit_replay` 工具读取事件日志并重建配置快照，支持指定初始基线、输出最终状态。【F:spark-core/src/bin/audit_replay.rs†L1-L157】
+- **回放**：使用 `audit_replay` 工具读取事件日志并重建配置快照，支持指定初始基线、输出最终状态。【F:crates/spark-core/src/bin/audit_replay.rs†L1-L157】
 - **哈希断裂检测**：若 `state_prev_hash` 与当前状态不符，工具会立即终止并提示断点行，同时可通过 `--gap-report` 生成补发请求 JSON，供上游重新推送缺失事件。
 - **自动重试建议**：当框架侧 Recorder 失败时，`apply_change` 返回 `ConfigurationErrorKind::Audit`，上游可捕获后触发“全量重载 + 重新发事件”策略。
 
 ## 与 Observability 契约的衔接
 
-`DEFAULT_OBSERVABILITY_CONTRACT` 已同步升级审计字段列表，方便日志/指标侧按键采集事件元数据。【F:spark-core/src/contract.rs†L493-L507】
+`DEFAULT_OBSERVABILITY_CONTRACT` 已同步升级审计字段列表，方便日志/指标侧按键采集事件元数据。【F:crates/spark-core/src/contract.rs†L493-L507】
 
 ## 附录：基线文件格式
 

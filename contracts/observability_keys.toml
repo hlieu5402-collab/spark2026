@@ -2,7 +2,7 @@
 #
 # 教案式说明（Why）：
 # - 避免指标、日志、追踪等多处重复维护键名，确保 SDK、仪表盘、治理文档共享同一来源；
-# - 为 `spark-core/src/observability/keys.rs` 与 `docs/observability-contract.md` 的自动生成提供输入；
+# - 为 `crates/spark-core/src/observability/keys.rs` 与 `docs/observability-contract.md` 的自动生成提供输入；
 # - 通过 `tools/ci/check_observability_keys.sh` 建立守门机制，防止合约更新时遗漏代码或文档同步。
 #
 # 契约定义（What）：

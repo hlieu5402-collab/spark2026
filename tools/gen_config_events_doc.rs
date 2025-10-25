@@ -93,8 +93,8 @@ struct EventDrillSpec {
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let contract_path = manifest_dir.join("../contracts/config_events.toml");
-    let doc_path = manifest_dir.join("../docs/configuration-events.md");
+    let contract_path = manifest_dir.join("../../contracts/config_events.toml");
+    let doc_path = manifest_dir.join("../../docs/configuration-events.md");
 
     let raw = fs::read_to_string(&contract_path)
         .unwrap_or_else(|err| panic!("读取 {:?} 失败: {}", contract_path, err));
@@ -112,7 +112,7 @@ fn render_markdown(contract: &ConfigEventsContract) -> String {
     buf.push_str(&format!("- 合约版本：`{}`。\n", contract.version));
     buf.push_str(&format!("- 总览：{}\n", contract.summary));
     buf.push_str("- 单一事实来源（SOT）：`contracts/config_events.toml`。\n");
-    buf.push_str("- 生成产物：`spark-core/src/configuration/events.rs`、`docs/configuration-events.md`。\n\n");
+    buf.push_str("- 生成产物：`crates/spark-core/src/configuration/events.rs`、`docs/configuration-events.md`。\n\n");
 
     buf.push_str("## 事件总览\n\n");
     buf.push_str("| 事件代码 | 名称 | 家族 | 严重性 | 结构体 |\n");

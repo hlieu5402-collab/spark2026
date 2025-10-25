@@ -2,7 +2,7 @@
 # 教案级注释：配置事件契约 SOT 同步守门脚本
 #
 # 目标（Why）：
-# - 保证 `contracts/config_events.toml` 与生成产物 `spark-core/src/configuration/events.rs`、
+# - 保证 `contracts/config_events.toml` 与生成产物 `crates/spark-core/src/configuration/events.rs`、
 #   `docs/configuration-events.md` 时刻保持一致，避免控制面事件语义与审计文档出现漂移；
 # - 在 CI 阶段快速发现遗漏的生成步骤，降低回滚和手工排查成本。
 #
@@ -25,8 +25,8 @@ cargo run --quiet -p spark-core --bin gen_config_events_doc \
   --features std,configuration_event_doc
 cargo build --quiet -p spark-core
 
-if ! git diff --quiet -- spark-core/src/configuration/events.rs; then
-  echo "配置事件生成文件与合约不同步：请提交 \"spark-core/src/configuration/events.rs\"。" >&2
+if ! git diff --quiet -- crates/spark-core/src/configuration/events.rs; then
+  echo "配置事件生成文件与合约不同步：请提交 \"crates/spark-core/src/configuration/events.rs\"。" >&2
   exit 1
 fi
 

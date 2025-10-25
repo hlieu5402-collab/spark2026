@@ -22,10 +22,10 @@ use serde::Deserialize;
 /// 3. 写入目标文件，供 CI 与评审校验。
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let contract_path = manifest_dir.join("../contracts/error_matrix.toml");
+    let contract_path = manifest_dir.join("../../contracts/error_matrix.toml");
     let contract = read_contract(&contract_path);
     let markdown = render_markdown(&contract);
-    let doc_path = manifest_dir.join("../docs/error-category-matrix.md");
+    let doc_path = manifest_dir.join("../../docs/error-category-matrix.md");
     fs::write(&doc_path, markdown).expect("写入 docs/error-category-matrix.md");
 }
 
@@ -125,7 +125,7 @@ fn render_markdown(contract: &ErrorMatrixContract) -> String {
     buf.push_str("## 阅读指引\n\n");
     buf.push_str("- **来源**：稳定错误码，统一使用 `<域>.<语义>` 格式。\n");
     buf.push_str(
-        "- **分类**：[`ErrorCategory`](../spark-core/src/error.rs) 枚举分支，用于驱动默认策略。\n",
+        "- **分类**：[`ErrorCategory`](../crates/spark-core/src/error.rs) 枚举分支，用于驱动默认策略。\n",
     );
     buf.push_str("- **单一事实来源**：分类矩阵由 `contracts/error_matrix.toml` 声明，经构建脚本与本工具生成代码与文档。\n");
     buf.push_str("- **默认动作**：`ExceptionAutoResponder::on_exception_caught` 在无显式覆盖时执行的行为：\n");

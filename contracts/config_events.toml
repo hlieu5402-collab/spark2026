@@ -6,7 +6,7 @@
 # - 为演练手册提供结构化元数据，确保跨团队能够按照一致步骤复现与验证配置治理流程。
 #
 # How：
-# - 构建脚本 `spark-core/build.rs` 解析本文件生成 `src/configuration/events.rs`，同步产出事件结构体与元数据常量；
+# - 构建脚本 `crates/spark-core/build.rs` 解析本文件生成 `src/configuration/events.rs`，同步产出事件结构体与元数据常量；
 # - 文档生成器 `tools/gen_config_events_doc.rs` 读取本文件生成 `docs/configuration-events.md`；
 # - CI 守门脚本会强制校验契约、代码、文档的同步更新。
 #

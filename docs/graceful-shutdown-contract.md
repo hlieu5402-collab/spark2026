@@ -66,7 +66,7 @@ stateDiagram-v2
 - [`GracefulShutdownTarget::for_channel`]：封装 Channel 语义，保证传输层始终遵循统一关闭契约。
 
 ## CI 覆盖
-- 集成测试位于 `spark-core/tests/contracts/shutdown.rs`，覆盖：
+- 集成测试位于 `crates/spark-core/tests/contracts/shutdown.rs`，覆盖：
   - 优雅关闭全部成功（无超时/无硬关闭）；
   - 截止时间到期触发硬关闭并记录 WARN 日志；
   - `await_closed` 返回 `SparkError` 时生成 `Failed` 记录。

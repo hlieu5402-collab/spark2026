@@ -4,7 +4,7 @@
 
 ## 背景与定位
 
-- **零核心改动**：本示例完全位于 `spark-codec-line` 新增 crate 内，仅依赖 `spark-core` 公开 API；
+- **零核心改动**：本示例完全位于 `crates/codecs/spark-codec-line` 新增 crate 内，仅依赖 `spark-core` 公开 API；
 - **学习模板**：涵盖 `Codec` trait 实现、预算控制、错误码选型与缓冲池交互，为后续扩展（如自定义 Transport/Middleware）提供参照；
 - **部署场景**：适用于日志流、命令行协议等“行文本”模型，可直接注册至 `CodecRegistry`。
 

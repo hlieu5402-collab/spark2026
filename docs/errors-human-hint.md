@@ -1,6 +1,6 @@
 # spark-core 常见错误人类可读摘要与修复建议
 
-> 本文面向一线值班/新人排障场景，列出框架内“十大常见错误码”的人类可读摘要与标准修复动作。表中文案与 `CoreError::human()` / `CoreError::hint()` 的返回值保持严格一致，更新此表时请同步修改 `spark-core/src/error.rs` 与集成测试。
+> 本文面向一线值班/新人排障场景，列出框架内“十大常见错误码”的人类可读摘要与标准修复动作。表中文案与 `CoreError::human()` / `CoreError::hint()` 的返回值保持严格一致，更新此表时请同步修改 `crates/spark-core/src/error.rs` 与集成测试。
 
 ## 十大常见错误与建议
 
