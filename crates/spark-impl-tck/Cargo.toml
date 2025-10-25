@@ -25,3 +25,4 @@ serde_json = "1.0"
 [[bench]]
 name = "tcp_throughput"
 harness = false
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }

@@ -1,24 +1,258 @@
 #![doc = r#"
 # spark-impl-tck
 
-## 设计动机（Why）
-- **定位**：承载各类传输实现（TCP/UDP/TLS/QUIC）的兼容性验证，统一运行 Spark Transport Compatibility Kit (TCK)。
-- **架构角色**：连接 `spark-core` 的抽象契约与具体 transport crate，确保实现遵循协议、错误语义与运行时假设。
-- **设计理念**：通过将 TCK 驱动与实现剥离，支持在 CI 中对多种传输实现进行一致性回归测试。
+## 章节定位（Why）
+- **目标**：为传输实现提供最小可运行的 TCK（Transport Compatibility Kit），确保每个传输模块在引入真实逻辑后立即被回归验证覆盖。
+- **当前阶段**：聚焦 UDP 通道的首发路径，包括基础收发与 SIP `rport` 行为验证。
 
-## 核心契约（What）
-- **输入条件**：未来将提供公共入口以注册传输实现、提供上下文与模拟服务；当前仅作为占位模块。
-- **输出/保障**：目标是对外暴露统一的测试集合与断言工具，帮助识别协议偏差；占位阶段尚未导出 API。
-- **前置约束**：依赖 transport crate 与 `spark-core` 的基础设施，运行场景默认处于 Tokio 等异步运行时之上。
-
-## 实现策略（How）
-- **依赖治理**：以 dev-dependency 的形式引用各 transport crate，确保 TCK 在编译期即可校验接口可用性，同时避免生产代码直接耦合具体实现。
-- **扩展点**：未来可根据不同运行时引入额外的测试后端，或通过特性选择要加载的传输集合。
-- **错误策略**：将沿用 `spark-core` 的错误抽象，并结合 `thiserror` 等工具提供易读的断言信息（后续补齐）。
-
-## 风险与考量（Trade-offs）
-- **编译成本**：引用多个 transport 实现会增加编译时间；通过 dev-dependency 降低发布产物的体积影响。
-- **功能缺口**：当前无具体测试逻辑，需在后续版本补充案例与驱动脚手架。
+## 结构概览（How）
+- `transport` 模块收纳各项传输相关测试；本阶段提供 `udp_smoke` 与 `udp_rport_return` 两组测试用例。
+- 每个测试均使用 Tokio 多线程运行时，模拟客户端与服务器之间的报文交互。
 "#]
 
 pub(crate) mod placeholder {}
+
+#[cfg(test)]
+mod transport {
+    use spark_core::{contract::CallContext, transport::TransportSocketAddr};
+    use spark_transport_tcp::{ShutdownDirection, TcpChannel, TcpListener, TcpSocketConfig};
+    use std::{net::SocketAddr, time::Duration};
+    use tokio::time::sleep;
+
+    /// 验证 TCP 通道在优雅关闭时遵循“FIN→等待 EOF→释放”的顺序，并正确应用 `linger` 配置。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 确保 `TcpChannel::close_graceful` 能在调用 `shutdown(Write)` 后等待对端发送 FIN，
+    ///   与契约文档一致；
+    /// - 校验 `TcpSocketConfig::with_linger(Some(..))` 在建连阶段确实生效，避免在生产
+    ///   环境中因配置缺失导致 RST 行为不确定。
+    ///
+    /// ## 体系位置（Architecture）
+    /// - 测试位于实现 TCK 的 crate 中，模拟“客户端主动关闭、服务端稍后响应 FIN”场景，
+    ///   作为传输层的守门测试；
+    /// - 运行时依赖 Tokio 多线程执行器，以贴近真实部署环境。
+    ///
+    /// ## 核心逻辑（How）
+    /// - 启动监听器并接受连接；
+    /// - 客户端使用自定义 `linger` 建立连接并调用 `close_graceful`；
+    /// - 服务端在读取到 EOF 后延迟一段时间再关闭写半部，
+    ///   断言客户端在此期间保持挂起；
+    /// - 最终断言 `close_graceful` 成功完成且 `linger` 读取结果与配置一致。
+    ///
+    /// ## 契约（What）
+    /// - **前置条件**：测试环境允许绑定环回地址并启动 Tokio 运行时；
+    /// - **后置条件**：若任何步骤违反契约，测试将 panic，从而阻止回归通过。
+    ///
+    /// ## 注意事项（Trade-offs）
+    /// - `sleep(150ms)` 模拟服务端清理资源的耗时，实测中可根据环境调整；
+    /// - `SO_LINGER` 在 Linux 上以秒为单位，此处选择 1 秒避免取整误差。
+    #[tokio::test(flavor = "multi_thread")]
+    async fn tcp_graceful_half_close() {
+        let bind_addr: SocketAddr = "127.0.0.1:0".parse().expect("invalid bind addr");
+        let listener = TcpListener::bind(TransportSocketAddr::from(bind_addr))
+            .await
+            .expect("bind listener");
+        let local_addr = listener.local_addr();
+
+        let server_ctx = CallContext::builder().build();
+        let server_task_ctx = server_ctx.clone();
+
+        let server_task = tokio::spawn(async move {
+            let (server_channel, _) = listener
+                .accept(&server_task_ctx)
+                .await
+                .expect("accept connection");
+            let mut sink = [0u8; 1];
+            let bytes = server_channel
+                .read(&server_task_ctx, &mut sink)
+                .await
+                .expect("read client FIN");
+            assert_eq!(bytes, 0, "server must observe client FIN");
+            sleep(Duration::from_millis(150)).await;
+            server_channel
+                .shutdown(&server_task_ctx, ShutdownDirection::Write)
+                .await
+                .expect("shutdown write half");
+        });
+
+        let client_ctx = CallContext::builder().build();
+        let client_config = TcpSocketConfig::new().with_linger(Some(Duration::from_secs(1)));
+        let client_channel =
+            TcpChannel::connect_with_config(&client_ctx, local_addr, client_config.clone())
+                .await
+                .expect("connect client");
+
+        assert_eq!(
+            client_channel.linger().await.expect("query linger option"),
+            Some(Duration::from_secs(1))
+        );
+        assert_eq!(
+            client_channel.config().linger(),
+            client_config.linger(),
+            "config cache should match applied linger",
+        );
+
+        let close_ctx = client_ctx.clone();
+        let closing_channel = client_channel.clone();
+        let close_task =
+            tokio::spawn(async move { closing_channel.close_graceful(&close_ctx).await });
+
+        sleep(Duration::from_millis(50)).await;
+        assert!(
+            !close_task.is_finished(),
+            "close_graceful must wait for peer EOF",
+        );
+
+        server_task.await.expect("server task join");
+
+        close_task
+            .await
+            .expect("close task join")
+            .expect("close graceful result");
+
+        drop(client_channel);
+/// 传输相关测试集合。
+#[cfg(test)]
+pub mod transport {
+    use std::{net::SocketAddr, str};
+
+    use anyhow::{Context, Result};
+    use tokio::net::UdpSocket;
+
+    use spark_core::transport::TransportSocketAddr;
+    use spark_transport_udp::{SipViaRportDisposition, UdpEndpoint};
+
+    /// 将 `TransportSocketAddr` 转换为标准库 `SocketAddr`，以便测试客户端套接字使用。
+    fn transport_to_std(addr: TransportSocketAddr) -> SocketAddr {
+        match addr {
+            TransportSocketAddr::V4 { addr, port } => SocketAddr::from((addr, port)),
+            TransportSocketAddr::V6 { addr, port } => {
+                SocketAddr::new(std::net::IpAddr::V6(std::net::Ipv6Addr::from(addr)), port)
+            }
+            _ => panic!("测试暂不支持额外的 TransportSocketAddr 变体"),
+        }
+    }
+
+    /// UDP 基线能力测试集合。
+    pub mod udp_smoke {
+        use super::{
+            Context, Result, TransportSocketAddr, UdpEndpoint, UdpSocket, transport_to_std,
+        };
+
+        /// UDP 烟囱测试：验证绑定、收包、回包等最小链路是否可用。
+        ///
+        /// # 测试逻辑（How）
+        /// 1. 绑定服务端 `UdpEndpoint` 到 `127.0.0.1:0`，并获取实际监听地址。
+        /// 2. 客户端发送 `ping` 报文，服务端读取并校验源地址。
+        /// 3. 使用 `UdpReturnRoute` 将 `pong` 报文回发客户端，确认响应可达。
+        #[tokio::test(flavor = "multi_thread")]
+        async fn bind_send_recv() -> Result<()> {
+            let endpoint = UdpEndpoint::bind(TransportSocketAddr::V4 {
+                addr: [127, 0, 0, 1],
+                port: 0,
+            })
+            .await?;
+            let server_addr = transport_to_std(endpoint.local_addr()?);
+
+            let client = UdpSocket::bind("127.0.0.1:0").await?;
+            let client_addr = client.local_addr()?;
+            let payload = b"ping";
+
+            client
+                .send_to(payload, server_addr)
+                .await
+                .context("客户端发送 ping 失败")?;
+
+            let mut buffer = vec![0u8; 1024];
+            let incoming = endpoint
+                .recv_from(&mut buffer)
+                .await
+                .context("服务端接收 ping 失败")?;
+
+            assert_eq!(&buffer[..incoming.len()], payload);
+            assert_eq!(incoming.peer().port(), client_addr.port());
+
+            let route = incoming.return_route().clone();
+            let response = b"pong";
+            endpoint
+                .send_to(response, &route)
+                .await
+                .context("服务端发送 pong 失败")?;
+
+            let mut recv_buffer = vec![0u8; 1024];
+            let (received, addr) = client
+                .recv_from(&mut recv_buffer)
+                .await
+                .context("客户端接收 pong 失败")?;
+
+            assert_eq!(addr, server_addr);
+            assert_eq!(&recv_buffer[..received], response);
+            assert_eq!(route.target().port(), client_addr.port());
+
+            Ok(())
+        }
+    }
+
+    /// 验证 `rport` 在响应中被正确回写，确保 NAT 场景可达。
+    ///
+    /// # 测试逻辑
+    /// 1. 构造包含 `Via` 头且携带 `;rport` 参数的 SIP 请求。
+    /// 2. 服务端解析后回发响应，`send_to` 应在 `Via` 头中补写客户端实际端口。
+    /// 3. 客户端收到响应后，校验 `;rport=<port>` 是否存在。
+    #[tokio::test(flavor = "multi_thread")]
+    async fn udp_rport_return() -> Result<()> {
+        let endpoint = UdpEndpoint::bind(TransportSocketAddr::V4 {
+            addr: [127, 0, 0, 1],
+            port: 0,
+        })
+        .await?;
+        let server_addr = transport_to_std(endpoint.local_addr()?);
+
+        let client = UdpSocket::bind("127.0.0.1:0").await?;
+        let client_addr = client.local_addr()?;
+
+        let request = "REGISTER sip:spark.invalid SIP/2.0\r\nVia: SIP/2.0/UDP client.invalid;branch=z9hG4bK-1;rport\r\n\r\n";
+        client
+            .send_to(request.as_bytes(), server_addr)
+            .await
+            .context("客户端发送 SIP 请求失败")?;
+
+        let mut buffer = vec![0u8; 1024];
+        let incoming = endpoint
+            .recv_from(&mut buffer)
+            .await
+            .context("服务端接收 SIP 请求失败")?;
+
+        assert_eq!(
+            incoming.return_route().sip_rport(),
+            SipViaRportDisposition::Requested
+        );
+
+        let route = incoming.return_route().clone();
+        let response =
+            "SIP/2.0 200 OK\r\nVia: SIP/2.0/UDP client.invalid;branch=z9hG4bK-1;rport\r\n\r\n";
+        endpoint
+            .send_to(response.as_bytes(), &route)
+            .await
+            .context("服务端发送 SIP 响应失败")?;
+
+        let mut recv_buffer = vec![0u8; 1024];
+        let (received, _) = client
+            .recv_from(&mut recv_buffer)
+            .await
+            .context("客户端接收 SIP 响应失败")?;
+
+        let text = str::from_utf8(&recv_buffer[..received])?;
+        let expected_marker = format!(";rport={}", client_addr.port());
+        assert!(
+            text.contains(&expected_marker),
+            "响应缺少正确的 rport，期望片段：{}，实际：{}",
+            expected_marker,
+            text
+        );
+
+        Ok(())
+    }
+}
