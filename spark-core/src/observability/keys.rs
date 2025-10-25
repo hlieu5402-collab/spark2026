@@ -93,7 +93,6 @@ pub mod logging {
         #[doc = "关机耗时，毫秒。"]
         pub const FIELD_ELAPSED_MS: &str = "shutdown.elapsed.ms";
     }
-
 }
 
 /// metrics 键名分组（模块标识：metrics）
@@ -424,7 +423,6 @@ pub mod metrics {
         #[doc = "对端角色：服务端。"]
         pub const ROLE_SERVER: &str = "server";
     }
-
 }
 
 /// tracing 键名分组（模块标识：tracing）
@@ -484,6 +482,4 @@ pub mod tracing {
         #[doc = "Handler 方向：未指定（兜底）。"]
         pub const DIRECTION_UNSPECIFIED: &str = "unspecified";
     }
-
 }
-

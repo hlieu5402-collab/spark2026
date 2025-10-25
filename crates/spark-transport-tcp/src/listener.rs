@@ -1,5 +1,5 @@
 use crate::{
-    TcpChannel,
+    TcpChannel, TcpSocketConfig,
     error::{self, map_io_error},
     util::{deadline_expired, run_with_context, to_socket_addr},
 };
@@ -67,6 +67,39 @@ impl TcpListener {
         &self,
         ctx: &CallContext,
     ) -> Result<(TcpChannel, TransportSocketAddr), CoreError> {
+        self.accept_with_config(ctx, TcpSocketConfig::default())
+            .await
+    }
+
+    /// 接受一个入站连接，并根据上下文处理取消/超时，可指定套接字配置。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 允许服务端在接受阶段就决定连接的 `SO_LINGER` 策略，确保与客户端一致的
+    ///   优雅关闭体验；
+    /// - 避免宿主层重复操作 `TcpStream` 套接字选项。
+    ///
+    /// ## 契约（What）
+    /// - `ctx`：控制取消/超时的 [`CallContext`]；
+    /// - `config`：应用到新建通道的 [`TcpSocketConfig`]；
+    /// - 返回 `(TcpChannel, TransportSocketAddr)`：通道及对端地址；
+    /// - **前置条件**：监听器处于活跃状态且 `ctx` 未被取消；
+    /// - **后置条件**：成功返回的通道已经写入 `config`，失败时保持监听器继续工作。
+    ///
+    /// ## 实现逻辑（How）
+    /// - 复用 `run_with_context` 执行 `accept`，从而继承取消与截止语义；
+    /// - 读取本地/对端地址后调用 `TcpChannel::from_parts` 并传入 `config`；
+    /// - 套接字选项配置失败会被映射为 [`CoreError`] 返回给调用方。
+    ///
+    /// ## 注意事项（Trade-offs）
+    /// - 若 `config` 设置的 linger 过短，仍可能导致未发送完的数据被 RST；
+    /// - 当前实现逐个接受连接，若需批量或并发接受，可在上层引入任务池。
+    pub async fn accept_with_config(
+        &self,
+        ctx: &CallContext,
+        config: TcpSocketConfig,
+    ) -> Result<(TcpChannel, TransportSocketAddr), CoreError> {
         if deadline_expired(ctx.deadline()) {
             return Err(error::timeout_error(error::ACCEPT));
         }
@@ -79,8 +112,12 @@ impl TcpListener {
             .local_addr()
             .map_err(|err| map_io_error(error::ACCEPT, err))?;
         let peer_addr = TransportSocketAddr::from(remote);
-        let channel =
-            TcpChannel::from_parts(stream, TransportSocketAddr::from(local_addr), peer_addr);
+        let channel = TcpChannel::from_parts(
+            stream,
+            TransportSocketAddr::from(local_addr),
+            peer_addr,
+            config,
+        )?;
         Ok((channel, peer_addr))
     }
 }

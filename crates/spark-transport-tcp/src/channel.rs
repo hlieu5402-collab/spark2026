@@ -1,6 +1,6 @@
 use crate::{
     backpressure::BackpressureState,
-    error::{self, map_io_error},
+    error::{self, CONFIGURE, map_io_error},
     util::{deadline_expired, deadline_remaining, run_with_context, to_socket_addr},
 };
 use socket2::SockRef;
@@ -14,8 +14,10 @@ use spark_core::{
 use std::{
     io::{self, IoSlice},
     net::Shutdown as StdShutdown,
+    ops::DerefMut,
     sync::{Arc, Mutex},
     task::Poll,
+    time::Duration,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -23,12 +25,70 @@ use tokio::{
     sync::Mutex as AsyncMutex,
 };
 
+/// TCP 套接字级配置项，实现对内核行为的显式控制。
+///
+/// # 教案级注释
+///
+/// ## 意图（Why）
+/// - 将“优雅关闭需等待对端 EOF、超时后通过 RST 释放资源”这一契约显式配置化，
+///   避免调用方直接操作 `socket2` 或平台相关常量；
+/// - 为未来扩展更多套接字选项（如 `TCP_NODELAY`、`SO_KEEPALIVE`）预留统一入口。
+///
+/// ## 体系定位（Architecture）
+/// - 该结构位于传输实现层，对 `TcpChannel` 的构造及检查流程提供只读依赖；
+/// - `TcpListener::accept_with_config`、`TcpChannel::connect_with_config` 使用它决定每条
+///   连接的 `SO_LINGER` 行为，从而影响关闭阶段的资源回收时序。
+///
+/// ## 核心逻辑（How）
+/// - `linger` 字段存储超时时长；当值为 `Some(dur)` 时，通过 `socket2::SockRef::set_linger`
+///   `SO_LINGER`，使得 `close`/`drop` 阶段在 `dur` 后未完成就发送 RST；
+/// - `None` 表示遵循内核默认策略，通常为“立即返回并由内核异步完成发送”。
+///
+/// ## 契约说明（What）
+/// - `with_linger`：输入 `Option<Duration>`，`Duration` 必须为非负值；返回新的配置实例；
+/// - `linger`：读取当前配置值；
+/// - **前置条件**：调用 `apply` 前，`TokioTcpStream` 必须已成功创建；
+/// - **后置条件**：若 `apply` 返回 `Ok(())`，则套接字选项已落地，失败时原配置不生效。
+///
+/// ## 设计取舍与注意事项（Trade-offs）
+/// - `SO_LINGER` 在不同平台的精度不同（Linux 取整到秒），测试与生产环境需选择合适超时；
+/// - 若设置过小，可能导致仍在发送缓冲区的数据被丢弃并触发对端 `ECONNRESET`；
+/// - 目前仅封装 `linger`，未来扩展需注意保持向后兼容与 API 对称性。
+#[derive(Clone, Debug, Default)]
+pub struct TcpSocketConfig {
+    linger: Option<Duration>,
+}
+
+impl TcpSocketConfig {
+    /// 创建默认配置，等价于 `linger = None`。
+    pub const fn new() -> Self {
+        Self { linger: None }
+    }
+
+    /// 设置 `SO_LINGER` 超时时长。
+    pub fn with_linger(mut self, linger: Option<Duration>) -> Self {
+        self.linger = linger;
+        self
+    }
+
+    /// 读取当前配置的超时时长。
+    pub fn linger(&self) -> Option<Duration> {
+        self.linger
+    }
+
+    fn apply(&self, stream: &TokioTcpStream) -> io::Result<()> {
+        let sock = SockRef::from(stream);
+        sock.set_linger(self.linger)
+    }
+}
+
 #[derive(Debug)]
 struct TcpChannelInner {
     stream: AsyncMutex<TokioTcpStream>,
     backpressure: Mutex<BackpressureState>,
     peer_addr: TransportSocketAddr,
     local_addr: TransportSocketAddr,
+    config: TcpSocketConfig,
 }
 
 /// TCP 通道的最小实现，封装读写、半关闭与背压探测。
@@ -72,19 +132,55 @@ impl TcpChannel {
         stream: TokioTcpStream,
         local_addr: TransportSocketAddr,
         peer_addr: TransportSocketAddr,
-    ) -> Self {
-        Self {
+        config: TcpSocketConfig,
+    ) -> Result<Self, CoreError> {
+        config
+            .apply(&stream)
+            .map_err(|err| map_io_error(CONFIGURE, err))?;
+        Ok(Self {
             inner: Arc::new(TcpChannelInner {
                 stream: AsyncMutex::new(stream),
                 backpressure: Mutex::new(BackpressureState::new()),
                 peer_addr,
                 local_addr,
+                config,
             }),
-        }
+        })
     }
 
     /// 根据上下文建立到目标地址的连接。
     pub async fn connect(ctx: &CallContext, addr: TransportSocketAddr) -> Result<Self, CoreError> {
+        Self::connect_with_config(ctx, addr, TcpSocketConfig::default()).await
+    }
+
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 为调用方提供在建连阶段即可指定套接字行为（如 `linger`）的能力，确保后续
+    ///   优雅关闭遵循一致策略；
+    /// - 避免上层再重复封装 `socket2`，降低错误配置风险。
+    ///
+    /// ## 契约（What）
+    /// - `ctx`：携带取消/截止语义的 [`CallContext`]；
+    /// - `addr`：目标地址；
+    /// - `config`：本次连接使用的 [`TcpSocketConfig`]，其中 `linger=None` 表示沿用内核默认；
+    /// - **前置条件**：`ctx` 未取消且截止未过期；
+    /// - **后置条件**：成功返回的通道已应用 `config` 并可立即读写。
+    ///
+    /// ## 实现逻辑（How）
+    /// - 通过 `run_with_context` 把建连过程与 `ctx` 绑定，继承取消/超时；
+    /// - 成功后设置本地/对端地址并调用 `config.apply` 写入 `SO_LINGER`；
+    /// - 失败时将错误映射为 [`CoreError`]，错误码覆盖“连接失败”“配置失败”两类。
+    ///
+    /// ## 注意事项（Trade-offs）
+    /// - `SO_LINGER` 仅在 `close`/`drop` 时生效，建连成功后修改需要重新创建通道；
+    /// - 若 `config` 设置了很短的超时，调用方需确保优雅关闭在该时间内完成，否则对端将收到 RST。
+    pub async fn connect_with_config(
+        ctx: &CallContext,
+        addr: TransportSocketAddr,
+        config: TcpSocketConfig,
+    ) -> Result<Self, CoreError> {
         let socket_addr = to_socket_addr(addr);
         let stream =
             run_with_context(ctx, error::CONNECT, TokioTcpStream::connect(socket_addr)).await?;
@@ -94,11 +190,12 @@ impl TcpChannel {
         let peer = stream
             .peer_addr()
             .map_err(|err| map_io_error(error::CONNECT, err))?;
-        Ok(Self::from_parts(
+        Self::from_parts(
             stream,
             TransportSocketAddr::from(local),
             TransportSocketAddr::from(peer),
-        ))
+            config,
+        )
     }
 
     /// 读取数据到缓冲区。
@@ -147,6 +244,51 @@ impl TcpChannel {
         Ok(written)
     }
 
+    /// 返回构造时使用的套接字配置。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 在调试或测试场景下快速确认某条连接继承的 `linger` 等策略，避免通过
+    ///   平台工具逐一排查；
+    /// - 为未来的观测指标提供数据来源，可据此统计不同配置的关闭耗时分布。
+    ///
+    /// ## 契约（What）
+    /// - 返回值为 [`TcpSocketConfig`] 的引用，仅反映构造时的静态配置；
+    /// - **前置条件**：通道已成功构造；
+    /// - **后置条件**：不会触发 IO，也不会修改内部状态。
+    ///
+    /// ## 注意事项（Trade-offs）
+    /// - 该方法不读取内核实时状态；若外部在运行时修改了 `SO_LINGER`，需结合
+    ///   [`TcpChannel::linger`] 校验实际值。
+    pub fn config(&self) -> &TcpSocketConfig {
+        &self.inner.config
+    }
+
+    /// 查询底层套接字当前的 `SO_LINGER` 设置。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 验证配置是否已经被内核接受，便于在 TCK 或运维排障时检测平台差异；
+    /// - 当运行时支持动态调整套接字选项时，可用于观测最终状态。
+    ///
+    /// ## 契约（What）
+    /// - 返回 `Option<Duration>`：`Some(dur)` 表示在 `dur` 秒后发送 RST；`None`
+    ///   表示沿用内核默认策略；
+    /// - **前置条件**：调用方需保证通道仍持有有效的内核句柄；
+    /// - **后置条件**：不会改变套接字状态，失败时返回 [`CoreError`] 并保持原状。
+    ///
+    /// ## 注意事项（Trade-offs）
+    /// - Linux 会将 `Duration` 向下取整到秒，测试断言需据此选择阈值；
+    /// - 若调用时通道已被其他线程并发关闭，可能返回 `Err`，应结合关闭流程处理。
+    pub async fn linger(&self) -> Result<Option<Duration>, CoreError> {
+        let guard = self.inner.stream.lock().await;
+        SockRef::from(&*guard)
+            .linger()
+            .map_err(|err| map_io_error(CONFIGURE, err))
+    }
+
     /// 根据方向执行半关闭。
     pub async fn shutdown(
         &self,
@@ -165,6 +307,45 @@ impl TcpChannel {
             }
         })
         .await?;
+        if let Ok(mut state) = self.inner.backpressure.lock() {
+            state.on_ready();
+        }
+        Ok(())
+    }
+
+    /// 执行契约化的优雅关闭流程：发送 FIN、等待对端 EOF 再释放资源。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 满足“先写半关闭、等待对端确认后再释放资源”的协议契约，确保数据不会
+    ///   在关闭过程中被截断；
+    /// - 为 [`GracefulShutdownCoordinator`](spark_core::host::shutdown::GracefulShutdownCoordinator)
+    ///   等上层组件提供可等待的半关闭原语。
+    ///
+    /// ## 体系位置（Architecture）
+    /// - `GracefulShutdownCoordinator` 在触发 `close_graceful` 时会调用该方法；
+    /// - 方法内部复用 `run_with_context`，因此会继承 `CallContext` 的取消/超时语义。
+    ///
+    /// ## 契约（What）
+    /// - `ctx`：关闭流程的上下文视图；
+    /// - **前置条件**：调用方必须确保不会在关闭过程中继续写入数据；
+    /// - **后置条件**：对端 EOF 被确认后返回 `Ok(())`，若超时/取消则返回对应的
+    ///   [`CoreError`]；函数返回后即可安全地 `drop` 通道。
+    ///
+    /// ## 逻辑解析（How）
+    /// 1. 先复用 [`TcpChannel::shutdown`] 触发写半关闭（发送 FIN）；
+    /// 2. 调用内部的 `await_peer_half_close` 循环读取直至获得对端 EOF；
+    /// 3. 若读取过程中出现 `Interrupted`/`WouldBlock`，会自动重试；其它错误会被
+    ///    映射为 `CoreError`。
+    ///
+    /// ## 设计取舍（Trade-offs）
+    /// - 为避免长期持有锁阻塞其他调用，读取阶段每次尝试都会释放互斥锁；
+    /// - 若对端长时间不发送 FIN，等待将受 `ctx.deadline` 限制，届时建议结合
+    ///   `TcpSocketConfig::linger` 触发 RST。
+    pub async fn close_graceful(&self, ctx: &CallContext) -> Result<(), CoreError> {
+        self.shutdown(ctx, ShutdownDirection::Write).await?;
+        self.await_peer_half_close(ctx).await?;
         if let Ok(mut state) = self.inner.backpressure.lock() {
             state.on_ready();
         }
@@ -224,6 +405,14 @@ impl TcpChannel {
             }
         }
     }
+
+    async fn await_peer_half_close(&self, ctx: &CallContext) -> Result<(), CoreError> {
+        run_with_context(ctx, error::READ, async {
+            let mut guard = self.inner.stream.lock().await;
+            read_until_eof(guard.deref_mut()).await
+        })
+        .await
+    }
 }
 
 /// 表示半关闭的方向。
@@ -250,4 +439,17 @@ impl From<ShutdownDirection> for StdShutdown {
 fn sync_shutdown(stream: &TokioTcpStream, direction: StdShutdown) -> io::Result<()> {
     let sock = SockRef::from(stream);
     sock.shutdown(direction)
+}
+
+async fn read_until_eof(stream: &mut TokioTcpStream) -> io::Result<()> {
+    let mut buf = [0u8; 1024];
+    loop {
+        match stream.read(&mut buf).await {
+            Ok(0) => return Ok(()),
+            Ok(_) => continue,
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+            Err(err) => return Err(err),
+        }
+    }
 }
