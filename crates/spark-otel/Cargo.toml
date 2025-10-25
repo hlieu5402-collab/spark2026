@@ -15,7 +15,7 @@ bench = false
 
 [features]
 default = []
-test-util = ["opentelemetry-sdk/testing"]
+test-util = ["dep:futures-util"]
 
 [dependencies]
 spark-core = { path = "../../spark-core" }
@@ -24,6 +24,7 @@ opentelemetry-sdk = { package = "opentelemetry_sdk", version = "0.22", default-f
 tracing = "0.1"
 tracing-opentelemetry = "0.23"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
 tracing-test = "0.2"

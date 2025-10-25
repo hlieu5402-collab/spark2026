@@ -24,5 +24,5 @@ default = []
 batch-udp-unix = ["socket2"]
 
 [dependencies.socket2]
-version = "0.5"
+version = "0.6"
 optional = true
