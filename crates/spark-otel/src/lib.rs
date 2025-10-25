@@ -33,7 +33,7 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt};
 #[cfg(feature = "test-util")]
 use opentelemetry_sdk::export::trace::SpanData;
 #[cfg(feature = "test-util")]
-use opentelemetry_sdk::testing::trace::InMemorySpanExporter;
+use test_support::InMemorySpanExporter;
 
 /// 安装状态的全局缓存，确保 `install` 仅执行一次。
 static INSTALL_STATE: OnceLock<InstallState> = OnceLock::new();
@@ -178,6 +178,87 @@ fn build_tracer_provider() -> TracerProvider {
 fn fetch_in_memory_exporter() -> InMemorySpanExporter {
     static EXPORTER: OnceLock<InMemorySpanExporter> = OnceLock::new();
     EXPORTER.get_or_init(InMemorySpanExporter::default).clone()
+}
+
+#[cfg(feature = "test-util")]
+mod test_support {
+    use std::sync::{Arc, Mutex};
+
+    use futures_util::future::BoxFuture;
+    use opentelemetry::trace::{TraceError, TraceResult};
+    use opentelemetry_sdk::export::trace::{ExportResult, SpanData, SpanExporter};
+
+    /// InMemorySpanExporter 的教学级封装，复刻官方 testing 实现以规避 `rt-async-std` 特性强制
+    /// 引入过时运行时的依赖。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：仅保留“收集已完成 Span 供断言”这一测试能力，避免 `opentelemetry-sdk/testing`
+    ///   间接启用 `async-std`（已被 RustSec 判定为弃用）。
+    /// - **架构定位（Where）**：模块私有于 `spark-otel`，仅在 `test-util` 特性开启时构建，供
+    ///   `fetch_in_memory_exporter` 提供稳定出口。
+    /// - **实现逻辑（How）**：
+    ///   1. 通过 `Arc<Mutex<Vec<SpanData>>>` 保存导出结果，确保跨线程共享与可变访问；
+    ///   2. `export` 将批量 Span 追加至内部缓冲，并以 `BoxFuture` 立即返回；
+    ///   3. `get_finished_spans`/`reset` 分别用于断言与清理，锁失败时转换为 `TraceError`。
+    /// - **契约（What）**：
+    ///   - `get_finished_spans`：返回当前缓冲快照；锁被毒化时返回错误；
+    ///   - `reset`：清空缓存；
+    ///   - `SpanExporter::export`：接收一批已完成 Span，追加成功即返回 `Ok(())`。
+    /// - **权衡（Trade-offs）**：
+    ///   - 牺牲官方实现附带的 builder 与统计字段，以换取零额外依赖；
+    ///   - 使用 `Mutex` 而非无锁结构，因测试场景规模有限、简单性优先。
+    #[derive(Clone, Debug, Default)]
+    pub struct InMemorySpanExporter {
+        spans: Arc<Mutex<Vec<SpanData>>>,
+    }
+
+    impl InMemorySpanExporter {
+        /// 返回当前已收集的 Span 数据副本，供断言使用。
+        ///
+        /// # 教案式说明
+        /// - **前置条件**：调用方仅在测试线程中使用，避免与生产导出流程混用；
+        /// - **后置条件**：若成功，返回时内部缓冲保持不变；失败时原样保留原始数据。
+        pub fn get_finished_spans(&self) -> TraceResult<Vec<SpanData>> {
+            self.spans
+                .lock()
+                .map(|guard| guard.iter().cloned().collect())
+                .map_err(TraceError::from)
+        }
+
+        /// 清空内部缓冲，确保多轮测试之间互不干扰。
+        ///
+        /// # 教案式说明
+        /// - **副作用**：仅在持有锁成功时清除，锁毒化时静默忽略以最大化测试延续性。
+        pub fn reset(&self) {
+            if let Ok(mut guard) = self.spans.lock() {
+                guard.clear();
+            }
+        }
+    }
+
+    impl SpanExporter for InMemorySpanExporter {
+        /// 将批量完成的 Span 追加到内存缓冲。
+        ///
+        /// # 教案式说明
+        /// - **实现细节（How）**：尝试获取互斥锁并将批次逐条追加；若锁获取失败，返回 `TraceError`，
+        ///   让调用方可见具体失败原因。
+        /// - **并发契约（What）**：遵循 OpenTelemetry“单线程调用同一 exporter”的约定，仍以锁
+        ///   保护数据以抵御测试误用。
+        fn export(&mut self, mut batch: Vec<SpanData>) -> BoxFuture<'static, ExportResult> {
+            let result = self
+                .spans
+                .lock()
+                .map(|mut guard| guard.append(&mut batch))
+                .map_err(TraceError::from);
+
+            Box::pin(async move { result })
+        }
+
+        /// 关闭导出器时清理残留数据，保证下一次安装得到干净状态。
+        fn shutdown(&mut self) {
+            self.reset();
+        }
+    }
 }
 
 /// OpenTelemetry 版本的 Handler Span Tracer，实现 `spark-core` 的自动建 Span 需求。

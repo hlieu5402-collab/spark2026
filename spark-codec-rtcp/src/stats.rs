@@ -20,6 +20,7 @@
 
 use alloc::vec::Vec;
 use core::{cmp, time::Duration};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{ReceiverReport, ReceptionReport, RtcpPacket, RtcpPacketVec, SenderInfo, SenderReport};
 
@@ -276,11 +277,15 @@ fn reception_from_stats(stats: &ReceptionStatistics) -> ReceptionReport {
     }
 }
 
-const MIN_CUMULATIVE_LOST: i32 = -0x80_0000; // -8_388_608
-const MAX_CUMULATIVE_LOST: i32 = 0x7F_FFFF; // 8_388_607
+const RTCP_VERSION: u8 = 2;
+const RTCP_SR_PACKET_TYPE: u8 = 200;
+const RTCP_RR_PACKET_TYPE: u8 = 201;
+const NTP_UNIX_EPOCH_DELTA_SECS: u64 = 2_208_988_800;
+const CUMULATIVE_LOST_MIN: i32 = -0x80_0000; // -8_388_608
+const CUMULATIVE_LOST_MAX: i32 = 0x7F_FFFF; // 8_388_607
 
 fn clamp_cumulative_lost(value: i32) -> i32 {
-    value.clamp(MIN_CUMULATIVE_LOST, MAX_CUMULATIVE_LOST)
+    value.clamp(CUMULATIVE_LOST_MIN, CUMULATIVE_LOST_MAX)
 }
 
 fn encode_delay_since_last_sr(delay: Duration) -> u32 {
@@ -356,6 +361,62 @@ pub mod raw {
             value: i32,
         },
     }
+/// ### What
+/// - 每个变体对应一类契约违规：报告块数量超限、扩展字段未按 32-bit 对齐、时间回退等。
+/// - 错误在 `build_sr`/`build_rr` 中返回，调用方可据此选择回滚或丢弃统计。
+///
+/// ### How
+/// - 仅使用 `#[derive(Debug, Clone, PartialEq, Eq)]`，便于单元测试直接断言；
+/// - 未实现 `std::error::Error`，因为该模块在 `no_std` 环境下默认禁用。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuildError {
+    /// 报告块数量超出 5 bit 所能表示的范围（RFC3550 上限 31）。
+    TooManyReports {
+        /// 实际提供的报告块数量。
+        count: usize,
+    },
+    /// Profile 扩展长度不是 32-bit 对齐，违反 §6.4.1/§6.4.2 的对齐约束。
+    MisalignedProfileExtension {
+        /// Profile 扩展字段的原始字节长度。
+        len: usize,
+    },
+    /// `SystemTime` 早于 1900-01-01，无法映射为合法的 NTP 时间戳。
+    SystemTimeBeforeNtpEpoch,
+    /// 采样时间早于 `RtpClockMapper` 的参考起点，意味着时钟倒退。
+    ClockWentBackwards,
+    /// 接收报告中的 `cumulative_lost` 超出 24-bit 有符号整数的表示范围。
+    CumulativeLostOutOfRange {
+        /// 调用方传入的累计丢包值。
+        value: i32,
+    },
+}
+
+/// RTP 与 NTP 时间映射器。
+///
+/// ### 意图说明（Why）
+/// - SR 需要同时携带 64-bit NTP 时间戳与 RTP 时钟刻度，二者必须严格对应同一采样时刻。
+/// - 通过集中管理起始时间与时钟频率，可以确保所有调用者共享一致的换算规则。
+///
+/// ### 契约（What）
+/// - `origin_time`：对应 `origin_rtp` 的绝对时间，用于之后的差值计算；
+/// - `origin_rtp`：RTP 时间戳零点（或任意参考点），允许在 32-bit 范围内回绕；
+/// - `clock_rate`：RTP 时钟频率（单位：ticks/秒），必须为正数；
+/// - `snapshot`：将任意 `SystemTime` 映射为 `(ntp_timestamp, rtp_timestamp)`。
+///
+/// ### 实现细节（How）
+/// - 差值计算基于整数运算：`ticks = secs * clock_rate + nanos * clock_rate / 1e9`；
+/// - NTP 时间戳通过向 Unix 时间加上固定偏移（2208988800 秒）获得；
+/// - `rtp_timestamp` 使用 `wrapping_add` 处理 32-bit 回绕。
+///
+/// ### 风险提示（Trade-offs）
+/// - 假设调用方提供的 `SystemTime` 精度不低于纳秒；若底层平台精度更低可能导致 RTP tick 取整误差；
+/// - 当 `clock_rate` 极大时（> 4GHz）`u128` 计算仍然安全，但输出转换为 `u32` 时会发生截断，符合 RTP 模 2^32 的语义。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RtpClockMapper {
+    origin_time: SystemTime,
+    origin_rtp: u32,
+    clock_rate: u32,
+}
 
     /// RTP 与 NTP 时间映射器。
     ///
@@ -542,6 +603,69 @@ pub mod raw {
         out.extend_from_slice(sender_stat.profile_extensions);
         Ok(())
     }
+/// 构造 Sender Report 报文并写入输出缓冲。
+///
+/// ### 使用说明（How）
+/// 1. 调用方准备 `RtpClockMapper` 与 `SenderStat`；
+/// 2. 该函数会计算 NTP/RTP 时间戳、写入 header、固定字段、报告块以及扩展字段；
+/// 3. 若任一步骤违反契约则返回 [`BuildError`]。
+///
+/// ### 前置条件（What）
+/// - `sender_stat.reports.len() <= 31`；
+/// - `sender_stat.profile_extensions.len()` 为 4 的倍数；
+/// - `sender_stat.capture_time` 不早于 `clock.origin_time` 且不早于 1900-01-01。
+///
+/// ### 后置条件
+/// - `out` 追加完整的 SR 报文，长度等于 `(length + 1) * 4`；
+/// - 输出缓冲未进行清空操作，允许调用方复用同一个 `Vec` 生成多个报文。
+pub fn build_sr_raw(
+    clock: &RtpClockMapper,
+    sender_stat: &SenderStat<'_>,
+    out: &mut Vec<u8>,
+) -> Result<(), BuildError> {
+    validate_report_constraints(sender_stat.reports, sender_stat.profile_extensions)?;
+    let (ntp_timestamp, rtp_timestamp) = clock.snapshot(sender_stat.capture_time)?;
+
+    let report_count = sender_stat.reports.len();
+    let payload_len = 4  // sender_ssrc
+        + 20 // sender info
+        + report_count * 24
+        + sender_stat.profile_extensions.len();
+    let total_len = 4 + payload_len;
+    let length_field = bytes_to_rtcp_length(total_len);
+
+    write_header(out, report_count as u8, RTCP_SR_PACKET_TYPE, length_field);
+    out.extend_from_slice(&sender_stat.sender_ssrc.to_be_bytes());
+    out.extend_from_slice(&ntp_timestamp.to_be_bytes());
+    out.extend_from_slice(&rtp_timestamp.to_be_bytes());
+    out.extend_from_slice(&sender_stat.sender_packet_count.to_be_bytes());
+    out.extend_from_slice(&sender_stat.sender_octet_count.to_be_bytes());
+    write_reception_reports(out, sender_stat.reports)?;
+    out.extend_from_slice(sender_stat.profile_extensions);
+    Ok(())
+}
+
+/// 构造 Receiver Report 报文并写入输出缓冲。
+///
+/// ### 契约摘要
+/// - 校验报告块数量与扩展字段对齐；
+/// - 无需进行 NTP/RTP 映射；
+/// - 输出缓冲追加完整 RR 报文。
+pub fn build_rr_raw(recv_stat: &ReceiverStat<'_>, out: &mut Vec<u8>) -> Result<(), BuildError> {
+    validate_report_constraints(recv_stat.reports, recv_stat.profile_extensions)?;
+    let report_count = recv_stat.reports.len();
+    let payload_len = 4 // reporter_ssrc
+        + report_count * 24
+        + recv_stat.profile_extensions.len();
+    let total_len = 4 + payload_len;
+    let length_field = bytes_to_rtcp_length(total_len);
+
+    write_header(out, report_count as u8, RTCP_RR_PACKET_TYPE, length_field);
+    out.extend_from_slice(&recv_stat.reporter_ssrc.to_be_bytes());
+    write_reception_reports(out, recv_stat.reports)?;
+    out.extend_from_slice(recv_stat.profile_extensions);
+    Ok(())
+}
 
     /// 构造 Receiver Report 报文并写入输出缓冲。
     ///

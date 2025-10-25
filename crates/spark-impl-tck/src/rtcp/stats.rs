@@ -10,10 +10,14 @@
 //! - 覆盖异常情况，例如 `cumulative_lost` 超界及延迟溢出，确认构建函数采取饱和策略。
 
 use core::time::Duration;
+use std::time::{Duration as StdDuration, UNIX_EPOCH};
 
 use spark_codec_rtcp::{
     NtpTime, ReceiverStatistics, ReceptionStatistics, RtcpPacket, RtcpPacketVec, RtpClock,
     SenderStatistics, build_rr, build_sr,
+    BuildError, NtpTime, ReceiverStat, ReceiverStatistics, ReceptionStat, ReceptionStatistics,
+    RtcpPacket, RtcpPacketVec, RtpClock, RtpClockMapper, SenderStat, SenderStatistics, build_rr,
+    build_rr_raw, build_sr, build_sr_raw,
 };
 
 /// 90 kHz RTP 媒体时钟：RTP 时间戳 = 秒 * 90000 + (fraction >> 16)。
@@ -25,6 +29,7 @@ impl RtpClock for NinetyKhzClock {
     }
 }
 
+/// 验证高阶构建器能够复制发送者统计与接收报告字段。
 #[test]
 fn build_sr_populates_sender_and_reports() {
     let clock = NinetyKhzClock;
@@ -81,6 +86,7 @@ fn build_sr_populates_sender_and_reports() {
     assert_eq!(rr.delay_since_last_sr, 229_376);
 }
 
+/// 验证高阶构建器对延迟饱和与 profile 扩展复制的处理。
 #[test]
 fn build_rr_respects_overrides_and_saturation() {
     let reception = ReceptionStatistics {
@@ -118,6 +124,7 @@ fn build_rr_respects_overrides_and_saturation() {
     }
 }
 
+/// 验证高阶构建器优先使用 `rtp_timestamp_override`。
 #[test]
 fn build_sr_honors_rtp_override() {
     let stats = SenderStatistics {
@@ -154,17 +161,26 @@ fn build_sr_honors_rtp_override() {
 // - 使用固定时间与统计输入，以纯字节断言避免实现与测试共享逻辑；
 // - 通过拆分测试函数覆盖不同的错误分支，确保错误信息可读且精确。
 
-use std::time::{Duration, UNIX_EPOCH};
+    let mut packets = RtcpPacketVec::new();
+    build_sr(&NinetyKhzClock, &stats, &mut packets);
 
 use spark_codec_rtcp::{
     BuildError, ReceiverStat, ReceptionStat, RtpClockMapper, SenderStat, build_rr_raw, build_sr_raw,
 };
+    let packet = packets.pop().expect("SR builder must emit a packet");
+    let RtcpPacket::SenderReport(report) = packet else {
+        panic!("expected SenderReport variant")
+    };
+
+    assert_eq!(report.sender_info.rtp_timestamp, 0xDEAD_BEEF);
+    assert_eq!(report.sender_info.ntp_timestamp, stats.capture_ntp.as_u64());
+}
 
 /// 生成包含单个接收报告与 Profile 扩展的 Sender Report，并校验完整字节序列。
 #[test]
-fn build_sender_report_with_statistics() {
+fn raw_build_sender_report_with_statistics() {
     let clock = RtpClockMapper::new(UNIX_EPOCH, 0, 90_000);
-    let capture_time = UNIX_EPOCH + Duration::from_millis(1500);
+    let capture_time = UNIX_EPOCH + StdDuration::from_millis(1500);
     let reports = [ReceptionStat {
         source_ssrc: 0x0102_0304,
         fraction_lost: 0x05,
@@ -195,7 +211,7 @@ fn build_sender_report_with_statistics() {
 
 /// 生成包含两个接收报告的 Receiver Report，并验证负累计丢包的编码逻辑。
 #[test]
-fn build_receiver_report_with_signed_loss() {
+fn raw_build_receiver_report_with_signed_loss() {
     let reports = [
         ReceptionStat {
             source_ssrc: 0x0102_0304,
@@ -234,8 +250,8 @@ fn build_receiver_report_with_signed_loss() {
 
 /// 当采样时间早于映射器起点时应返回 `ClockWentBackwards` 错误，避免生成无效 NTP/RTP 时间戳。
 #[test]
-fn sr_rejects_clock_rewind() {
-    let clock = RtpClockMapper::new(UNIX_EPOCH + Duration::from_secs(10), 0, 90_000);
+fn raw_sr_rejects_clock_rewind() {
+    let clock = RtpClockMapper::new(UNIX_EPOCH + StdDuration::from_secs(10), 0, 90_000);
     let sender_stat = SenderStat {
         sender_ssrc: 0x1234_5678,
         capture_time: UNIX_EPOCH,
@@ -252,11 +268,10 @@ fn sr_rejects_clock_rewind() {
 
 /// Profile 扩展长度必须按 32-bit 对齐，否则返回 `MisalignedProfileExtension`。
 #[test]
-fn rr_rejects_misaligned_extension() {
-    let reports = [];
+fn raw_rr_rejects_misaligned_extension() {
     let recv_stat = ReceiverStat {
         reporter_ssrc: 0xCAFE_BABE,
-        reports: &reports,
+        reports: &[],
         profile_extensions: &[0xAA],
     };
     let mut out = Vec::new();
@@ -269,7 +284,7 @@ fn rr_rejects_misaligned_extension() {
 
 /// `cumulative_lost` 超过 24-bit 表示范围时应触发 `CumulativeLostOutOfRange` 错误。
 #[test]
-fn reception_stat_rejects_out_of_range_loss() {
+fn raw_reception_stat_rejects_out_of_range_loss() {
     let reports = [ReceptionStat {
         source_ssrc: 0,
         fraction_lost: 0,

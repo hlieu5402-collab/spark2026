@@ -10,6 +10,9 @@
 
 #![allow(clippy::module_name_repetitions)]
 
+/// WebSocket 文本/二进制帧聚合与拆分的教学示例实现，详见子模块内的逐步讲解。
+pub mod frame_text_binary;
+
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec::Vec};
 
