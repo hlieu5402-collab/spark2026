@@ -3,10 +3,12 @@ mod tests {
         pub mod error_category_autoresponse {
             use std::{
                 any::Any,
+                collections::BTreeSet,
                 sync::{Arc, Mutex},
                 time::Duration,
             };
 
+            use serde::Deserialize;
             use spark_core::async_trait;
             use spark_core::contract::{
                 Budget, CallContext, CallContextBuilder, Cancellation, CloseReason,
@@ -35,6 +37,16 @@ mod tests {
                     TaskExecutor, TaskHandle, TaskResult, TimeDriver,
                 },
             };
+
+            #[derive(Deserialize)]
+            struct ErrorMatrixContract {
+                rows: Vec<ErrorMatrixRow>,
+            }
+
+            #[derive(Deserialize)]
+            struct ErrorMatrixRow {
+                codes: Vec<String>,
+            }
 
             #[test]
             fn category_matrix_and_autoresponder_are_consistent() {
@@ -194,6 +206,48 @@ mod tests {
                         entry.code()
                     );
                 }
+            }
+
+            #[test]
+            fn category_matrix_contract_is_in_sync() {
+                // 教案式说明（Why）：确保声明式契约 `contracts/error_matrix.toml` 与生成的
+                // `category_matrix::entries()` 始终同步，避免单独更新任意一侧时导致调用方
+                // 获得过时的默认自动响应信息。构建阶段若发生漂移，该测试能立即失败，提醒
+                // 维护者补齐同步步骤。
+                //
+                // 教案式说明（How）：
+                // 1. 通过 `include_str!` 读取 TOML 合约，并使用 `toml` crate 解析为结构化数据；
+                // 2. 将合约中的错误码收集进 [`BTreeSet`]，同时检查是否存在重复声明；
+                // 3. 读取生成矩阵的所有错误码，转换为同样的集合并与合约集合对比。
+                //
+                // 教案式说明（What）：
+                // - 输入：`contracts/error_matrix.toml` 与 `category_matrix::entries()`；
+                // - 前置条件：TOML 合约遵循测试内的结构定义；
+                // - 后置条件：若集合不相等或合约存在重复项，断言失败并给出原因。
+                let raw_contract = include_str!("../../../contracts/error_matrix.toml");
+                let contract: ErrorMatrixContract =
+                    toml::from_str(raw_contract).expect("解析 contracts/error_matrix.toml");
+
+                let mut contract_codes = BTreeSet::new();
+                for row in contract.rows {
+                    for code in row.codes {
+                        let inserted = contract_codes.insert(code.clone());
+                        assert!(
+                            inserted,
+                            "contracts/error_matrix.toml 存在重复错误码：{code}"
+                        );
+                    }
+                }
+
+                let matrix_codes = category_matrix::entries()
+                    .iter()
+                    .map(|entry| entry.code().to_string())
+                    .collect::<BTreeSet<_>>();
+
+                assert_eq!(
+                    matrix_codes, contract_codes,
+                    "错误分类矩阵与 contracts/error_matrix.toml 不一致"
+                );
             }
 
             #[derive(Default)]

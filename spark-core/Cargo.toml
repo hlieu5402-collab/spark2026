@@ -45,6 +45,7 @@ spark-otel = { path = "../crates/spark-otel", features = ["test-util"] }
 spark-contract-tests = { version = "0.1.0" }
 futures = { version = "0.3", features = ["executor"] }
 serde_json = "1.0"
+toml = "0.8"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(spark_loom)'] }
