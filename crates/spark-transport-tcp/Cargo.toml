@@ -5,6 +5,11 @@ edition = "2024"
 publish = false
 license = "Apache-2.0"
 
+[lib]
+# TCP 传输 crate 以单元测试验证协议行为，禁用基准运行以避免 `--quick`
+# 交给 `libtest` 造成参数解析失败。
+bench = false
+
 [dependencies]
 spark-core = { path = "../../spark-core" }
 thiserror = "1.0"
@@ -12,9 +17,8 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "ne
 
 [features]
 default = []
-# 针对批量 UDP，暴露一个可选的 socket2 依赖；后续实现会在 Unix 系统下启用。
-batch-udp-unix = ["socket2"]
+# TCP 半关闭实现依赖 socket2；保留 batch-udp-unix 特性以便复用该依赖。
+batch-udp-unix = []
 
 [dependencies.socket2]
 version = "0.5"
-optional = true
