@@ -15,7 +15,7 @@ spark-core = { path = "../../spark-core" }
 
 [dev-dependencies]
 spark-transport-tcp = { path = "../spark-transport-tcp" }
-spark-transport-udp = { path = "../spark-transport-udp" }
+spark-transport-udp = { path = "../spark-transport-udp", features = ["batch-udp-unix"] }
 spark-transport-tls = { path = "../spark-transport-tls" }
 spark-transport-quic = { path = "../spark-transport-quic" }
 anyhow = "1.0"
