@@ -29,7 +29,8 @@ use crate::status::{PollReady, ReadyCheck, ReadyState};
 /// ## 设计权衡与风险（Trade-offs）
 /// - 优点：零运行时开销，迁移期间的维护成本最低。
 /// - 风险：若某域忘记实现 `Into<ReadyState>` 将在编译时报错；注释中特别强调此约束以提醒使用者。
-/// - TODO：待所有调用方完成迁移后，可删除 `compat_v0` 模块并直接让调用方返回 `ReadyState`。
+/// - 跟踪事项：参见《docs/tracking/T107.md#compat-v0-cleanup》；当所有调用方完成迁移后，即可删除 `compat_v0`
+///   模块并让调用方直接返回 [`ReadyState`]，并同步清理示例与迁移文档，避免遗留错误指引。
 #[inline]
 pub fn to_ready_state<T>(old: T) -> ReadyState
 where
