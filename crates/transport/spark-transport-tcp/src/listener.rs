@@ -3,9 +3,12 @@ use crate::{
     error::{self, map_io_error},
     util::{deadline_expired, run_with_context, to_socket_addr},
 };
-use spark_core::contract::CallContext;
-use spark_core::error::CoreError;
-use spark_core::transport::TransportSocketAddr;
+use spark_core::{
+    context::ExecutionContext, contract::CallContext, error::CoreError,
+    transport::TransportSocketAddr,
+};
+use spark_transport::{ShutdownDirection, TransportListener as TransportListenerTrait};
+use std::pin::Pin;
 use tokio::net::TcpListener as TokioTcpListener;
 
 /// 对 Tokio `TcpListener` 的语义封装。
@@ -120,4 +123,57 @@ impl TcpListener {
         )?;
         Ok((channel, peer_addr))
     }
+}
+
+impl TransportListenerTrait for TcpListener {
+    type Error = CoreError;
+    type AcceptCtx<'ctx> = CallContext;
+    type ShutdownCtx<'ctx> = ExecutionContext<'ctx>;
+    type Connection = TcpChannel;
+
+    type AcceptFuture<'ctx>
+        = Pin<
+        Box<
+            dyn core::future::Future<
+                    Output = Result<(Self::Connection, TransportSocketAddr), CoreError>,
+                > + Send
+                + 'ctx,
+        >,
+    >
+    where
+        Self: 'ctx,
+        Self::AcceptCtx<'ctx>: 'ctx;
+
+    type ShutdownFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::ShutdownCtx<'ctx>: 'ctx;
+
+    fn scheme(&self) -> &'static str {
+        "tcp"
+    }
+
+    fn local_addr(&self) -> Result<TransportSocketAddr, CoreError> {
+        Ok(TcpListener::local_addr(self))
+    }
+
+    fn accept<'ctx>(&'ctx self, ctx: &'ctx Self::AcceptCtx<'ctx>) -> Self::AcceptFuture<'ctx> {
+        Box::pin(async move { self.accept(ctx).await })
+    }
+
+    fn shutdown<'ctx>(
+        &'ctx self,
+        _ctx: &'ctx Self::ShutdownCtx<'ctx>,
+        _direction: ShutdownDirection,
+    ) -> Self::ShutdownFuture<'ctx> {
+        Box::pin(async move { Ok(()) })
+    }
+}
+
+#[allow(dead_code)]
+fn _assert_tcp_transport_listener()
+where
+    TcpListener: TransportListenerTrait<Error = CoreError, Connection = TcpChannel>,
+{
 }

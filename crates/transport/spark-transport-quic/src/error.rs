@@ -67,6 +67,11 @@ pub(crate) const WRITE: OperationKind = OperationKind {
     message: "quic write",
 };
 
+pub(crate) const FLUSH: OperationKind = OperationKind {
+    code: "spark.transport.quic.flush_failed",
+    message: "quic flush",
+};
+
 pub(crate) const SHUTDOWN: OperationKind = OperationKind {
     code: "spark.transport.quic.shutdown_failed",
     message: "quic shutdown",

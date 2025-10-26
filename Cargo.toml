@@ -11,7 +11,7 @@ members = [
     "crates/spark-core",
     "crates/spark-impl-tck",
     "crates/spark-macros",
-    "crates/spark-otel",
+    "crates/spark-otel", "crates/transport/spark-transport",
     "crates/transport/spark-transport-quic",
     "crates/transport/spark-transport-tcp",
     "crates/transport/spark-transport-tls",

@@ -57,6 +57,11 @@ pub(crate) const WRITE: OperationKind = OperationKind {
     message: "tls write",
 };
 
+pub(crate) const FLUSH: OperationKind = OperationKind {
+    code: "spark.transport.tls.flush_failed",
+    message: "tls flush",
+};
+
 pub(crate) const SHUTDOWN: OperationKind = OperationKind {
     code: "spark.transport.tls.shutdown_failed",
     message: "tls shutdown",

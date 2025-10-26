@@ -1,6 +1,6 @@
 use crate::{
     backpressure::QuicBackpressure,
-    error,
+    error::{self, FLUSH},
     util::{deadline_expired, deadline_remaining, run_with_context},
 };
 use futures::task::noop_waker_ref;
@@ -9,9 +9,13 @@ use spark_core::{
     context::ExecutionContext,
     contract::CallContext,
     error::CoreError,
-    status::ready::{PollReady, ReadyCheck},
+    status::ready::{PollReady, ReadyCheck, ReadyState},
     transport::{ShutdownDirection, TransportSocketAddr},
 };
+use spark_transport::{
+    BackpressureDecision, BackpressureMetrics, TransportConnection as TransportConnectionTrait,
+};
+use std::borrow::Cow;
 use std::{
     pin::Pin,
     sync::{Arc, Mutex},
@@ -123,6 +127,16 @@ impl QuicChannel {
         Ok(result)
     }
 
+    pub async fn flush(&self, ctx: &CallContext) -> Result<(), CoreError> {
+        if deadline_expired(ctx.deadline()) {
+            return Err(error::timeout_error(FLUSH));
+        }
+        if ctx.cancellation().is_cancelled() {
+            return Err(error::cancelled_error(FLUSH));
+        }
+        Ok(())
+    }
+
     pub async fn shutdown(
         &self,
         ctx: &CallContext,
@@ -215,4 +229,104 @@ impl QuicChannel {
         }
         Ok(())
     }
+}
+
+impl TransportConnectionTrait for QuicChannel {
+    type Error = CoreError;
+    type CallCtx<'ctx> = CallContext;
+    type ReadyCtx<'ctx> = ExecutionContext<'ctx>;
+
+    type ReadFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type WriteFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type ShutdownFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type FlushFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    fn id(&self) -> Cow<'_, str> {
+        Cow::Owned(format!(
+            "quic:{}->{}",
+            self.inner.local_addr, self.inner.peer_addr
+        ))
+    }
+
+    fn peer_addr(&self) -> Option<TransportSocketAddr> {
+        Some(self.inner.peer_addr)
+    }
+
+    fn local_addr(&self) -> Option<TransportSocketAddr> {
+        Some(self.inner.local_addr)
+    }
+
+    fn read<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::CallCtx<'ctx>,
+        buf: &'ctx mut [u8],
+    ) -> Self::ReadFuture<'ctx> {
+        Box::pin(async move { QuicChannel::read(self, ctx, buf).await })
+    }
+
+    fn write<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::CallCtx<'ctx>,
+        buf: &'ctx [u8],
+    ) -> Self::WriteFuture<'ctx> {
+        Box::pin(async move { QuicChannel::write(self, ctx, buf).await })
+    }
+
+    fn flush<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx<'ctx>) -> Self::FlushFuture<'ctx> {
+        Box::pin(async move { QuicChannel::flush(self, ctx).await })
+    }
+
+    fn shutdown<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::CallCtx<'ctx>,
+        direction: ShutdownDirection,
+    ) -> Self::ShutdownFuture<'ctx> {
+        Box::pin(async move { QuicChannel::shutdown(self, ctx, direction).await })
+    }
+
+    fn classify_backpressure(
+        &self,
+        ctx: &Self::ReadyCtx<'_>,
+        _metrics: &BackpressureMetrics,
+    ) -> BackpressureDecision {
+        match self.poll_ready(ctx) {
+            Poll::Pending => BackpressureDecision::Busy,
+            Poll::Ready(ReadyCheck::Ready(ReadyState::Ready)) => BackpressureDecision::Ready,
+            Poll::Ready(ReadyCheck::Ready(ReadyState::Busy(_))) => BackpressureDecision::Busy,
+            Poll::Ready(ReadyCheck::Ready(ReadyState::RetryAfter(advice))) => {
+                BackpressureDecision::RetryAfter { delay: advice.wait }
+            }
+            Poll::Ready(ReadyCheck::Ready(ReadyState::BudgetExhausted(_))) => {
+                BackpressureDecision::BudgetExhausted
+            }
+            Poll::Ready(ReadyCheck::Err(_)) => BackpressureDecision::Rejected,
+            Poll::Ready(_) => BackpressureDecision::Busy,
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn _assert_quic_transport_connection()
+where
+    QuicChannel: TransportConnectionTrait<Error = CoreError>,
+{
 }

@@ -1,6 +1,8 @@
-use std::sync::Arc;
-
-use spark_core::{contract::CallContext, error::CoreError, transport::TransportSocketAddr};
+use spark_core::{
+    context::ExecutionContext, contract::CallContext, error::CoreError,
+    transport::TransportSocketAddr,
+};
+use std::{borrow::Cow, pin::Pin, sync::Arc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream as TokioTcpStream,
@@ -8,7 +10,14 @@ use tokio::{
 };
 use tokio_rustls::server::TlsStream;
 
-use crate::{error, util::run_with_context};
+use crate::{
+    error::{self, FLUSH},
+    util::run_with_context,
+};
+use spark_transport::{
+    BackpressureDecision, BackpressureMetrics, ShutdownDirection,
+    TransportConnection as TransportConnectionTrait,
+};
 
 /// TLS 通道对象，封装握手后的加密读写能力。
 ///
@@ -107,6 +116,20 @@ impl TlsChannel {
         .await
     }
 
+    /// 刷新 TLS 会话缓冲区，确保待发送的密文全部写出。
+    pub async fn flush(&self, ctx: &CallContext) -> Result<(), CoreError> {
+        run_with_context(
+            ctx,
+            FLUSH,
+            async {
+                let mut guard = self.inner.stream.lock().await;
+                guard.flush().await
+            },
+            error::map_stream_error,
+        )
+        .await
+    }
+
     /// 发送 TLS `close_notify` 并关闭写方向。
     pub async fn shutdown(&self, ctx: &CallContext) -> Result<(), CoreError> {
         run_with_context(
@@ -140,4 +163,97 @@ impl TlsChannel {
     pub fn alpn_protocol(&self) -> Option<&[u8]> {
         self.inner.alpn_protocol.as_deref()
     }
+}
+
+impl TransportConnectionTrait for TlsChannel {
+    type Error = CoreError;
+    type CallCtx<'ctx> = CallContext;
+    type ReadyCtx<'ctx> = ExecutionContext<'ctx>;
+
+    type ReadFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type WriteFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type ShutdownFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type FlushFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    fn id(&self) -> Cow<'_, str> {
+        Cow::Owned(format!(
+            "tls:{}->{}",
+            self.inner.local_addr, self.inner.peer_addr
+        ))
+    }
+
+    fn peer_addr(&self) -> Option<TransportSocketAddr> {
+        Some(self.inner.peer_addr)
+    }
+
+    fn local_addr(&self) -> Option<TransportSocketAddr> {
+        Some(self.inner.local_addr)
+    }
+
+    fn read<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::CallCtx<'ctx>,
+        buf: &'ctx mut [u8],
+    ) -> Self::ReadFuture<'ctx> {
+        Box::pin(async move { TlsChannel::read(self, ctx, buf).await })
+    }
+
+    fn write<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::CallCtx<'ctx>,
+        buf: &'ctx [u8],
+    ) -> Self::WriteFuture<'ctx> {
+        Box::pin(async move { TlsChannel::write(self, ctx, buf).await })
+    }
+
+    fn flush<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx<'ctx>) -> Self::FlushFuture<'ctx> {
+        Box::pin(async move { TlsChannel::flush(self, ctx).await })
+    }
+
+    fn shutdown<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::CallCtx<'ctx>,
+        direction: ShutdownDirection,
+    ) -> Self::ShutdownFuture<'ctx> {
+        Box::pin(async move {
+            match direction {
+                ShutdownDirection::Write | ShutdownDirection::Both => self.shutdown(ctx).await,
+                ShutdownDirection::Read => Ok(()),
+            }
+        })
+    }
+
+    fn classify_backpressure(
+        &self,
+        _ctx: &Self::ReadyCtx<'_>,
+        _metrics: &BackpressureMetrics,
+    ) -> BackpressureDecision {
+        BackpressureDecision::Ready
+    }
+}
+
+#[allow(dead_code)]
+fn _assert_tls_transport_connection()
+where
+    TlsChannel: TransportConnectionTrait<Error = CoreError>,
+{
 }
