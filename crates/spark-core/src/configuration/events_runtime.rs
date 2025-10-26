@@ -14,7 +14,13 @@
 //! - 将差异键集合排序去重，提供稳定 diff；
 //! - 构造审计实体标签，补充事件代码、家族、严重性与哈希信息，便于外部索引。
 
-use alloc::{borrow::Cow, string::String, vec::Vec};
+use alloc::{
+    borrow::Cow,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 
 use crate::audit::{AuditActor, AuditChangeSet, AuditEntityRef, AuditEventV1};
 use crate::configuration::ChangeSet;

@@ -13,12 +13,15 @@ bench = false
 [dependencies]
 spark-core = { path = "../../spark-core" }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"], optional = true }
 
 [features]
-default = []
+default = ["runtime-tokio"]
+# Tokio 实现层入口：默认启用，关闭默认特性时可显式禁用以减少依赖。
+runtime-tokio = ["dep:tokio", "dep:socket2"]
 # TCP 半关闭实现依赖 socket2；保留 batch-udp-unix 特性以便复用该依赖。
-batch-udp-unix = []
+batch-udp-unix = ["runtime-tokio", "dep:socket2"]
 
 [dependencies.socket2]
 workspace = true
+optional = true

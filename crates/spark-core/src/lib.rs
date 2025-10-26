@@ -14,6 +14,12 @@
 #![doc = "`spark-core` 目前定位于 `no_std + alloc` 场景：核心契约大量依赖 [`alloc`] 中的 `Box`、`Arc`、`Vec` 等类型来支撑 Pipeline 事件分发、缓冲池租借与异步运行时对象安全。"]
 #![doc = "纯 `no_std`（无分配器）环境暂不支持；若在无堆平台使用，需由调用方提供等价的内存与调度设施。最新的可行性研究（参见 docs/no-std-compatibility-report.md）已探索通过泛型化消息体、外部 Arena Trait、静态容量容器等思路，引入以 feature flag 控制的“极简契约”作为长期演进方向。现阶段该能力仍处于调研期，我们会在确定迁移策略后再发布实验性接口。"]
 
+#[cfg(not(feature = "alloc"))]
+compile_error!(
+    "spark-core 依赖堆分配能力：请启用默认特性或通过 `--features alloc` 显式打开该功能。"
+);
+
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 pub use async_trait::async_trait;
