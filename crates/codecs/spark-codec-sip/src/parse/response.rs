@@ -23,7 +23,7 @@ use super::{parse_headers, split_first_line, split_headers_body};
 /// - **返回**：成功时给出 [`SipMessage`]，失败时返回 [`SipParseError`]。
 /// - **前置条件**：状态行需符合 `SIP/2.0 <code> <reason>` 格式。
 /// - **后置条件**：返回的切片均指向输入缓冲，未发生复制。
-pub fn parse_response<'a>(input: &'a str) -> Result<SipMessage<'a>, SipParseError> {
+pub fn parse_response<'a>(input: &'a str) -> spark_core::Result<SipMessage<'a>, SipParseError> {
     let (line, rest) = split_first_line(input)?;
     let status_line = parse_status_line(line)?;
     let (header_block, body_block) = split_headers_body(rest)?;
@@ -35,7 +35,7 @@ pub fn parse_response<'a>(input: &'a str) -> Result<SipMessage<'a>, SipParseErro
     })
 }
 
-fn parse_status_line<'a>(line: &'a str) -> Result<StatusLine<'a>, SipParseError> {
+fn parse_status_line<'a>(line: &'a str) -> spark_core::Result<StatusLine<'a>, SipParseError> {
     let first_space = line.find(' ').ok_or(SipParseError::InvalidStatusLine)?;
     let version = &line[..first_space];
     if !version.eq_ignore_ascii_case("SIP/2.0") {

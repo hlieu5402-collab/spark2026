@@ -209,7 +209,7 @@ impl PipelineMessage {
     /// # 返回值契约
     /// - 成功时返回 `Ok(T)`，调用者即可获得具体类型的所有权继续处理；
     /// - 失败时返回原封不动的 `PipelineMessage`，确保不会丢失消息，便于调用方走兜底逻辑（例如记录错误后回退到泛型处理）。
-    pub fn try_into_user<T>(self) -> Result<T, Self>
+    pub fn try_into_user<T>(self) -> crate::Result<T, Self>
     where
         T: UserMessage,
     {

@@ -207,15 +207,15 @@ where
 struct TestBufferPool;
 
 impl BufferPool for TestBufferPool {
-    fn acquire(&self, _min_capacity: usize) -> Result<Box<dyn spark_core::buffer::WritableBuffer>, CoreError> {
+    fn acquire(&self, _min_capacity: usize) -> spark_core::Result<Box<dyn spark_core::buffer::WritableBuffer>, CoreError> {
         Err(CoreError::new("test.buffer", "acquire not used in tests"))
     }
 
-    fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+    fn shrink_to_fit(&self) -> spark_core::Result<usize, CoreError> {
         Ok(0)
     }
 
-    fn statistics(&self) -> Result<spark_core::buffer::PoolStats, CoreError> {
+    fn statistics(&self) -> spark_core::Result<spark_core::buffer::PoolStats, CoreError> {
         Ok(Default::default())
     }
 }

@@ -74,7 +74,7 @@ pub trait DynServerTransport: Send + Sync + Sealed {
         &self,
         ctx: &ExecutionContext<'_>,
         plan: ListenerShutdown,
-    ) -> Result<(), CoreError>;
+    ) -> crate::Result<(), CoreError>;
 }
 
 /// 将泛型监听器适配为对象层实现。
@@ -115,7 +115,7 @@ where
         &self,
         ctx: &ExecutionContext<'_>,
         plan: ListenerShutdown,
-    ) -> Result<(), CoreError> {
+    ) -> crate::Result<(), CoreError> {
         GenericServerTransport::shutdown(&*self.inner, ctx, plan).await
     }
 }
@@ -182,7 +182,7 @@ pub trait DynTransportFactory: Send + Sync + Sealed {
         ctx: &ExecutionContext<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynControllerFactory>,
-    ) -> Result<Box<dyn DynServerTransport>, CoreError>;
+    ) -> crate::Result<Box<dyn DynServerTransport>, CoreError>;
 
     /// 建立客户端通道。
     ///
@@ -207,7 +207,7 @@ pub trait DynTransportFactory: Send + Sync + Sealed {
         ctx: &ExecutionContext<'_>,
         intent: ConnectionIntent,
         discovery: Option<Arc<dyn ServiceDiscovery>>,
-    ) -> Result<Box<dyn Channel>, CoreError>;
+    ) -> crate::Result<Box<dyn Channel>, CoreError>;
 }
 
 /// 将泛型传输工厂适配为对象层实现。
@@ -249,7 +249,7 @@ where
         ctx: &ExecutionContext<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynControllerFactory>,
-    ) -> Result<Box<dyn DynServerTransport>, CoreError> {
+    ) -> crate::Result<Box<dyn DynServerTransport>, CoreError> {
         let adapter = DynControllerFactoryAdapter::new(pipeline_factory);
         let server =
             GenericTransportFactory::bind(&*self.inner, ctx, config, Arc::new(adapter)).await?;
@@ -261,7 +261,7 @@ where
         ctx: &ExecutionContext<'_>,
         intent: ConnectionIntent,
         discovery: Option<Arc<dyn ServiceDiscovery>>,
-    ) -> Result<Box<dyn Channel>, CoreError> {
+    ) -> crate::Result<Box<dyn Channel>, CoreError> {
         let channel =
             GenericTransportFactory::connect(&*self.inner, ctx, intent, discovery).await?;
         Ok(Box::new(channel) as Box<dyn Channel>)

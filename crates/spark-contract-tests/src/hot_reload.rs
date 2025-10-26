@@ -475,11 +475,17 @@ impl ConfigurationSource for TestSource {
     where
         Self: 'a;
 
-    fn load(&self, _profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError> {
+    fn load(
+        &self,
+        _profile: &ProfileId,
+    ) -> spark_core::Result<Vec<ConfigurationLayer>, ConfigurationError> {
         Ok(self.layers.clone())
     }
 
-    fn watch<'a>(&'a self, _profile: &ProfileId) -> Result<Self::Stream<'a>, ConfigurationError> {
+    fn watch<'a>(
+        &'a self,
+        _profile: &ProfileId,
+    ) -> spark_core::Result<Self::Stream<'a>, ConfigurationError> {
         Ok(TestStream {
             events: Arc::clone(&self.events),
         })

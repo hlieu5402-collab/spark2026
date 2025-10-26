@@ -75,7 +75,7 @@ impl Codec for LineDelimitedCodec {
         &self,
         item: &Self::Outgoing,
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, CoreError> {
+    ) -> spark_core::Result<EncodedPayload, CoreError> {
         // === 教案级注释 ===
         // Why: 保证编码阶段符合帧预算与缓冲池契约，防止单帧超长拖垮下游。
         // How:
@@ -110,7 +110,7 @@ impl Codec for LineDelimitedCodec {
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Self::Incoming>, CoreError> {
+    ) -> spark_core::Result<DecodeOutcome<Self::Incoming>, CoreError> {
         // === 教案级注释 ===
         // Why: 解码阶段需要在不复制整个缓冲的前提下识别行结束符，同时保证预算与 UTF-8 有效性。
         // How:
@@ -196,7 +196,10 @@ mod tests {
     struct TestBufferPool;
 
     impl BufferPool for TestBufferPool {
-        fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
+        fn acquire(
+            &self,
+            min_capacity: usize,
+        ) -> spark_core::Result<Box<dyn WritableBuffer>, CoreError> {
             // Why: 为编码侧租借足够容量的缓冲，避免测试因容量不足失败。
             // How: 创建预留 `min_capacity` 的 `Vec<u8>` 并包装为 `TestWritable`。
             // What: 返回实现 `WritableBuffer` 的对象安全盒子。
@@ -206,11 +209,11 @@ mod tests {
             }))
         }
 
-        fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+        fn shrink_to_fit(&self) -> spark_core::Result<usize, CoreError> {
             Ok(0)
         }
 
-        fn statistics(&self) -> Result<PoolStats, CoreError> {
+        fn statistics(&self) -> spark_core::Result<PoolStats, CoreError> {
             Ok(PoolStats::default())
         }
     }
@@ -233,13 +236,13 @@ mod tests {
             self.data.len()
         }
 
-        fn reserve(&mut self, additional: usize) -> Result<(), CoreError> {
+        fn reserve(&mut self, additional: usize) -> spark_core::Result<(), CoreError> {
             self.data
                 .try_reserve(additional)
                 .map_err(|_| CoreError::new("buffer.reserve_failed", "Vec reserve failed"))
         }
 
-        fn put_slice(&mut self, src: &[u8]) -> Result<(), CoreError> {
+        fn put_slice(&mut self, src: &[u8]) -> spark_core::Result<(), CoreError> {
             self.data.extend_from_slice(src);
             Ok(())
         }
@@ -248,7 +251,7 @@ mod tests {
             &mut self,
             src: &mut dyn ReadableBuffer,
             len: usize,
-        ) -> Result<(), CoreError> {
+        ) -> spark_core::Result<(), CoreError> {
             let segment = src.split_to(len)?;
             let chunk = segment.try_into_vec()?;
             self.data.extend_from_slice(&chunk);
@@ -259,7 +262,7 @@ mod tests {
             self.data.clear();
         }
 
-        fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+        fn freeze(self: Box<Self>) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
             Ok(Box::new(TestReadable {
                 data: self.data,
                 read: 0,
@@ -291,7 +294,10 @@ mod tests {
             &self.data[self.read..]
         }
 
-        fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+        fn split_to(
+            &mut self,
+            len: usize,
+        ) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
             if len > self.remaining() {
                 return Err(CoreError::new(
                     "buffer.out_of_range",
@@ -307,7 +313,7 @@ mod tests {
             }))
         }
 
-        fn advance(&mut self, len: usize) -> Result<(), CoreError> {
+        fn advance(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
             if len > self.remaining() {
                 return Err(CoreError::new(
                     "buffer.out_of_range",
@@ -318,7 +324,7 @@ mod tests {
             Ok(())
         }
 
-        fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
+        fn copy_into_slice(&mut self, dst: &mut [u8]) -> spark_core::Result<(), CoreError> {
             if dst.len() > self.remaining() {
                 return Err(CoreError::new(
                     "buffer.out_of_range",
@@ -331,7 +337,7 @@ mod tests {
             Ok(())
         }
 
-        fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
+        fn try_into_vec(self: Box<Self>) -> spark_core::Result<Vec<u8>, CoreError> {
             let TestReadable { data, read } = *self;
             Ok(data[read..].to_vec())
         }

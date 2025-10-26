@@ -111,7 +111,7 @@ pub trait DynRouter: Send + Sync + Sealed {
     fn route_dyn(
         &self,
         context: RoutingContext<'_, PipelineMessage>,
-    ) -> Result<RouteDecisionObject, RouteError<SparkError>>;
+    ) -> crate::Result<RouteDecisionObject, RouteError<SparkError>>;
 
     /// 返回当前路由快照。
     fn snapshot(&self) -> RoutingSnapshot<'_>;
@@ -133,7 +133,9 @@ pub trait DynRouter: Send + Sync + Sealed {
 pub struct RouterObject<R, Adapter>
 where
     R: Router<PipelineMessage, Error = SparkError> + Send + Sync,
-    Adapter: Fn(RouteBinding<R::Service, PipelineMessage>) -> Result<RouteBindingObject, SparkError>
+    Adapter: Fn(
+            RouteBinding<R::Service, PipelineMessage>,
+        ) -> crate::Result<RouteBindingObject, SparkError>
         + Send
         + Sync
         + 'static,
@@ -145,7 +147,9 @@ where
 impl<R, Adapter> RouterObject<R, Adapter>
 where
     R: Router<PipelineMessage, Error = SparkError> + Send + Sync,
-    Adapter: Fn(RouteBinding<R::Service, PipelineMessage>) -> Result<RouteBindingObject, SparkError>
+    Adapter: Fn(
+            RouteBinding<R::Service, PipelineMessage>,
+        ) -> crate::Result<RouteBindingObject, SparkError>
         + Send
         + Sync
         + 'static,
@@ -162,7 +166,9 @@ where
 impl<R, Adapter> DynRouter for RouterObject<R, Adapter>
 where
     R: Router<PipelineMessage, Error = SparkError> + Send + Sync,
-    Adapter: Fn(RouteBinding<R::Service, PipelineMessage>) -> Result<RouteBindingObject, SparkError>
+    Adapter: Fn(
+            RouteBinding<R::Service, PipelineMessage>,
+        ) -> crate::Result<RouteBindingObject, SparkError>
         + Send
         + Sync
         + 'static,
@@ -170,7 +176,7 @@ where
     fn route_dyn(
         &self,
         context: RoutingContext<'_, PipelineMessage>,
-    ) -> Result<RouteDecisionObject, RouteError<SparkError>> {
+    ) -> crate::Result<RouteDecisionObject, RouteError<SparkError>> {
         let decision = self.inner.route(context)?;
         let (binding, warnings) = decision.into_parts();
         let binding_object = (self.service_adapter)(binding).map_err(RouteError::Internal)?;

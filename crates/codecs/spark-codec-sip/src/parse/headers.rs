@@ -23,7 +23,9 @@ use crate::{
 use super::common::{parse_sip_uri, skip_lws, take_token_until, trim_lws_end};
 
 /// 解析 header 区域。
-pub(crate) fn parse_headers<'a>(input: &'a str) -> Result<Vec<Header<'a>>, SipParseError> {
+pub(crate) fn parse_headers<'a>(
+    input: &'a str,
+) -> spark_core::Result<Vec<Header<'a>>, SipParseError> {
     if input.is_empty() {
         return Ok(Vec::new());
     }
@@ -95,7 +97,10 @@ pub(crate) fn parse_headers<'a>(input: &'a str) -> Result<Vec<Header<'a>>, SipPa
     Ok(headers)
 }
 
-fn build_header<'a>(name: HeaderName<'a>, value: &'a str) -> Result<Header<'a>, SipParseError> {
+fn build_header<'a>(
+    name: HeaderName<'a>,
+    value: &'a str,
+) -> spark_core::Result<Header<'a>, SipParseError> {
     match name.kind {
         HeaderKind::Via => parse_via(value).map(Header::Via),
         HeaderKind::From => parse_name_addr(value).map(Header::From),
@@ -108,7 +113,7 @@ fn build_header<'a>(name: HeaderName<'a>, value: &'a str) -> Result<Header<'a>, 
     }
 }
 
-fn parse_via<'a>(value: &'a str) -> Result<ViaHeader<'a>, SipParseError> {
+fn parse_via<'a>(value: &'a str) -> spark_core::Result<ViaHeader<'a>, SipParseError> {
     let mut idx = skip_lws(value, 0);
     let (protocol, next_idx) = take_token_until(value, idx, |b| matches!(b, b' ' | b'\t' | b';'));
     if protocol.is_empty() {
@@ -198,7 +203,7 @@ fn parse_via<'a>(value: &'a str) -> Result<ViaHeader<'a>, SipParseError> {
     })
 }
 
-fn split_host_port(input: &str) -> Result<(&str, Option<u16>), SipParseError> {
+fn split_host_port(input: &str) -> spark_core::Result<(&str, Option<u16>), SipParseError> {
     if input.is_empty() {
         return Err(SipParseError::InvalidViaHeader);
     }
@@ -215,7 +220,7 @@ fn split_host_port(input: &str) -> Result<(&str, Option<u16>), SipParseError> {
     Ok((input, None))
 }
 
-fn parse_name_addr<'a>(value: &'a str) -> Result<NameAddr<'a>, SipParseError> {
+fn parse_name_addr<'a>(value: &'a str) -> spark_core::Result<NameAddr<'a>, SipParseError> {
     let mut idx = skip_lws(value, 0);
     let bytes = value.as_bytes();
     let mut display_name = None;
@@ -274,7 +279,7 @@ fn parse_name_addr<'a>(value: &'a str) -> Result<NameAddr<'a>, SipParseError> {
     })
 }
 
-fn parse_call_id<'a>(value: &'a str) -> Result<CallIdHeader<'a>, SipParseError> {
+fn parse_call_id<'a>(value: &'a str) -> spark_core::Result<CallIdHeader<'a>, SipParseError> {
     let start = skip_lws(value, 0);
     let end = trim_lws_end(value, value.len());
     if start >= end {
@@ -285,7 +290,7 @@ fn parse_call_id<'a>(value: &'a str) -> Result<CallIdHeader<'a>, SipParseError> 
     })
 }
 
-fn parse_cseq<'a>(value: &'a str) -> Result<CSeqHeader<'a>, SipParseError> {
+fn parse_cseq<'a>(value: &'a str) -> spark_core::Result<CSeqHeader<'a>, SipParseError> {
     let mut idx = skip_lws(value, 0);
     let (number_part, next) = take_token_until(value, idx, |b| matches!(b, b' ' | b'\t'));
     if number_part.is_empty() {
@@ -305,7 +310,7 @@ fn parse_cseq<'a>(value: &'a str) -> Result<CSeqHeader<'a>, SipParseError> {
     })
 }
 
-fn parse_max_forwards(value: &str) -> Result<MaxForwardsHeader, SipParseError> {
+fn parse_max_forwards(value: &str) -> spark_core::Result<MaxForwardsHeader, SipParseError> {
     let start = skip_lws(value, 0);
     let end = trim_lws_end(value, value.len());
     let slice = &value[start..end];
@@ -318,7 +323,7 @@ fn parse_max_forwards(value: &str) -> Result<MaxForwardsHeader, SipParseError> {
     Ok(MaxForwardsHeader { hops })
 }
 
-fn parse_contact<'a>(value: &'a str) -> Result<ContactHeader<'a>, SipParseError> {
+fn parse_contact<'a>(value: &'a str) -> spark_core::Result<ContactHeader<'a>, SipParseError> {
     let start = skip_lws(value, 0);
     let end = trim_lws_end(value, value.len());
     if start >= end {

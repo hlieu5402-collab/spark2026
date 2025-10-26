@@ -72,7 +72,7 @@ pub(crate) async fn run_with_context<'a, F, T>(
     ctx: &CallContext,
     kind: OperationKind,
     future: F,
-) -> Result<T, CoreError>
+) -> spark_core::Result<T, CoreError>
 where
     F: Future<Output = io::Result<T>> + Send + 'a,
     T: Send + 'a,

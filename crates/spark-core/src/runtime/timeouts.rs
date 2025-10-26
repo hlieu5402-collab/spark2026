@@ -49,7 +49,9 @@ impl TimeoutSettings {
     }
 
     /// 从合并后的配置解析超时设置。
-    pub fn from_configuration(config: &ResolvedConfiguration) -> Result<Self, TimeoutConfigError> {
+    pub fn from_configuration(
+        config: &ResolvedConfiguration,
+    ) -> crate::Result<Self, TimeoutConfigError> {
         let mut settings = Self::default();
 
         if let Some(value) = config.values.get(&request_timeout_key()) {
@@ -169,7 +171,7 @@ impl TimeoutRuntimeConfig {
     pub fn update_from_configuration(
         &self,
         config: &ResolvedConfiguration,
-    ) -> Result<(), TimeoutConfigError> {
+    ) -> crate::Result<(), TimeoutConfigError> {
         let timer = HotReloadApplyTimer::start();
         let parsed = TimeoutSettings::from_configuration(config)?;
         let guard = self.fence.write();
@@ -184,7 +186,7 @@ impl TimeoutRuntimeConfig {
         guard: &HotReloadWriteGuard<'_>,
         config: &ResolvedConfiguration,
         timer: HotReloadApplyTimer,
-    ) -> Result<(), TimeoutConfigError> {
+    ) -> crate::Result<(), TimeoutConfigError> {
         let parsed = TimeoutSettings::from_configuration(config)?;
         let epoch = self.commit_with_guard(guard, parsed);
         self.observability.record(epoch, timer.elapsed());
@@ -257,7 +259,7 @@ impl fmt::Display for TimeoutField {
 fn parse_duration(
     value: &ConfigValue,
     field: TimeoutField,
-) -> Result<Duration, TimeoutConfigError> {
+) -> crate::Result<Duration, TimeoutConfigError> {
     match value {
         ConfigValue::Integer(v, _) => {
             if *v <= 0 {

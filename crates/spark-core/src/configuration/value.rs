@@ -161,7 +161,7 @@ impl ConfigValue {
     }
 
     /// 根据中间表示重建配置值。
-    pub(crate) fn from_repr(repr: ConfigValueRepr) -> Result<Self, ConfigValueReprError> {
+    pub(crate) fn from_repr(repr: ConfigValueRepr) -> crate::Result<Self, ConfigValueReprError> {
         match repr {
             ConfigValueRepr::Boolean { value, metadata } => Ok(ConfigValue::Boolean(
                 value,
@@ -201,7 +201,7 @@ impl ConfigValue {
                 let converted = values
                     .into_iter()
                     .map(ConfigValue::from_repr)
-                    .collect::<Result<Vec<_>, _>>()?;
+                    .collect::<crate::Result<Vec<_>, _>>()?;
                 Ok(ConfigValue::List(converted, metadata))
             }
             ConfigValueRepr::Dictionary { entries, metadata } => {
@@ -209,7 +209,7 @@ impl ConfigValue {
                 let converted = entries
                     .into_iter()
                     .map(|(k, v)| Ok((Cow::Owned(k), ConfigValue::from_repr(v)?)))
-                    .collect::<Result<Vec<_>, ConfigValueReprError>>()?;
+                    .collect::<crate::Result<Vec<_>, ConfigValueReprError>>()?;
                 Ok(ConfigValue::Dictionary(converted, metadata))
             }
         }

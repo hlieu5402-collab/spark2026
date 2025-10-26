@@ -31,7 +31,7 @@ use super::{parse_headers, parse_sip_uri, split_first_line, split_headers_body};
 /// - 使用 `split_first_line` 与 `split_headers_body` 切分文本；
 /// - 请求行解析完成后委托 `parse_headers` 处理折行与核心头部；
 /// - body 以 `&[u8]` 形式返回，保留原始编码。
-pub fn parse_request<'a>(input: &'a str) -> Result<SipMessage<'a>, SipParseError> {
+pub fn parse_request<'a>(input: &'a str) -> spark_core::Result<SipMessage<'a>, SipParseError> {
     let (line, rest) = split_first_line(input)?;
     let request_line = parse_request_line(line)?;
     let (header_block, body_block) = split_headers_body(rest)?;
@@ -43,7 +43,7 @@ pub fn parse_request<'a>(input: &'a str) -> Result<SipMessage<'a>, SipParseError
     })
 }
 
-fn parse_request_line<'a>(line: &'a str) -> Result<RequestLine<'a>, SipParseError> {
+fn parse_request_line<'a>(line: &'a str) -> spark_core::Result<RequestLine<'a>, SipParseError> {
     let mut parts = line.split_whitespace();
     let method = parts.next().ok_or(SipParseError::InvalidRequestLine)?;
     let uri_text = parts.next().ok_or(SipParseError::InvalidRequestLine)?;

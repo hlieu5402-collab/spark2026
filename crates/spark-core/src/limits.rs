@@ -252,7 +252,7 @@ impl LimitPlan {
     }
 
     /// 调整限额，校验输入是否在合法范围内。
-    pub fn set_limit(&mut self, new_limit: u64) -> Result<(), LimitConfigError> {
+    pub fn set_limit(&mut self, new_limit: u64) -> crate::Result<(), LimitConfigError> {
         if new_limit == 0 {
             return Err(LimitConfigError::LimitBelowMinimum {
                 resource: self.resource,
@@ -271,7 +271,7 @@ impl LimitPlan {
     }
 
     /// 覆盖策略，若传入排队策略需保证容量有效。
-    pub fn set_action(&mut self, action: LimitAction) -> Result<(), LimitConfigError> {
+    pub fn set_action(&mut self, action: LimitAction) -> crate::Result<(), LimitConfigError> {
         if matches!(action.queue_capacity(), Some(0)) {
             return Err(LimitConfigError::QueueCapacityInvalid {
                 resource: self.resource,
@@ -283,7 +283,7 @@ impl LimitPlan {
     }
 
     /// 更新排队容量，仅当当前策略为 `Queue` 时生效。
-    pub fn update_queue_capacity(&mut self, capacity: u32) -> Result<(), LimitConfigError> {
+    pub fn update_queue_capacity(&mut self, capacity: u32) -> crate::Result<(), LimitConfigError> {
         if capacity == 0 {
             return Err(LimitConfigError::QueueCapacityInvalid {
                 resource: self.resource,
@@ -396,7 +396,9 @@ impl LimitSettings {
     /// 1. 读取 `limit` 键（整数，单位与资源一致），校验范围后覆盖默认值。
     /// 2. 读取 `action` 键（文本：`reject`/`queue`/`degrade`），若为 `queue` 则结合 `queue_capacity` 键。
     /// 3. 单独出现 `queue_capacity` 时要求当前策略为队列，否则报错提醒配置矛盾。
-    pub fn from_configuration(config: &ResolvedConfiguration) -> Result<Self, LimitConfigError> {
+    pub fn from_configuration(
+        config: &ResolvedConfiguration,
+    ) -> crate::Result<Self, LimitConfigError> {
         let mut settings = Self::new();
         for resource in ResourceKind::ALL {
             let mut overrides = LimitOverride::default();
@@ -523,7 +525,7 @@ impl LimitRuntimeConfig {
     pub fn update_from_configuration(
         &self,
         config: &ResolvedConfiguration,
-    ) -> Result<(), LimitConfigError> {
+    ) -> crate::Result<(), LimitConfigError> {
         let timer = HotReloadApplyTimer::start();
         let parsed = LimitSettings::from_configuration(config)?;
         let guard = self.fence.write();
@@ -538,7 +540,7 @@ impl LimitRuntimeConfig {
         guard: &HotReloadWriteGuard<'_>,
         config: &ResolvedConfiguration,
         timer: HotReloadApplyTimer,
-    ) -> Result<(), LimitConfigError> {
+    ) -> crate::Result<(), LimitConfigError> {
         let parsed = LimitSettings::from_configuration(config)?;
         let epoch = self.commit_with_guard(guard, parsed);
         self.observability.record(epoch, timer.elapsed());
@@ -670,7 +672,10 @@ enum ActionKind {
     Degrade,
 }
 
-fn apply_overrides(plan: &mut LimitPlan, overrides: LimitOverride) -> Result<(), LimitConfigError> {
+fn apply_overrides(
+    plan: &mut LimitPlan,
+    overrides: LimitOverride,
+) -> crate::Result<(), LimitConfigError> {
     if let Some(limit) = overrides.limit {
         plan.set_limit(limit)?;
     }
@@ -715,7 +720,10 @@ fn apply_overrides(plan: &mut LimitPlan, overrides: LimitOverride) -> Result<(),
 /// # 契约说明
 /// - 仅接受 `ConfigValue::Integer` 变体；其它类型视为配置错误。
 /// - 返回值必须大于零，否则触发 `LimitBelowMinimum`。
-fn parse_limit_value(resource: ResourceKind, value: &ConfigValue) -> Result<u64, LimitConfigError> {
+fn parse_limit_value(
+    resource: ResourceKind,
+    value: &ConfigValue,
+) -> crate::Result<u64, LimitConfigError> {
     match value {
         ConfigValue::Integer(v, _) => {
             if *v <= 0 {
@@ -742,7 +750,7 @@ fn parse_limit_value(resource: ResourceKind, value: &ConfigValue) -> Result<u64,
 fn parse_action_value(
     resource: ResourceKind,
     value: &ConfigValue,
-) -> Result<ActionKind, LimitConfigError> {
+) -> crate::Result<ActionKind, LimitConfigError> {
     match value {
         ConfigValue::Text(text, _) => match text.as_ref() {
             "reject" => Ok(ActionKind::Reject),
@@ -768,7 +776,7 @@ fn parse_action_value(
 fn parse_queue_capacity(
     resource: ResourceKind,
     value: &ConfigValue,
-) -> Result<u32, LimitConfigError> {
+) -> crate::Result<u32, LimitConfigError> {
     match value {
         ConfigValue::Integer(v, _) => {
             if *v <= 0 {

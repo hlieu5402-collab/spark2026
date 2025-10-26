@@ -513,7 +513,7 @@ impl RecordingServiceCore {
 impl Service<PipelineMessage> for RecordingServiceHandle {
     type Response = PipelineMessage;
     type Error = SparkError;
-    type Future = core::future::Ready<Result<Self::Response, Self::Error>>;
+    type Future = core::future::Ready<spark_core::Result<Self::Response, Self::Error>>;
 
     fn poll_ready(
         &mut self,
@@ -561,7 +561,7 @@ impl Router<PipelineMessage> for RecordingRouter {
     fn route(
         &self,
         context: RoutingContext<'_, PipelineMessage>,
-    ) -> Result<RouteDecision<Self::Service, PipelineMessage>, RouteError<Self::Error>> {
+    ) -> spark_core::Result<RouteDecision<Self::Service, PipelineMessage>, RouteError<Self::Error>> {
         self.events
             .lock()
             .expect("路由阶段锁应可用")
@@ -614,7 +614,7 @@ impl Codec for RecordingCodec {
         &self,
         item: &Self::Outgoing,
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, CoreError> {
+    ) -> spark_core::Result<EncodedPayload, CoreError> {
         self.events
             .lock()
             .expect("编码阶段锁应可用")
@@ -630,7 +630,7 @@ impl Codec for RecordingCodec {
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Self::Incoming>, CoreError> {
+    ) -> spark_core::Result<DecodeOutcome<Self::Incoming>, CoreError> {
         self.events
             .lock()
             .expect("解码阶段锁应可用")
@@ -661,12 +661,12 @@ impl TransportFactory for RecordingTransportFactory {
     type Channel = TestChannel;
     type Server = TestServerTransport;
 
-    type BindFuture<'a, P> = core::future::Ready<Result<Self::Server, CoreError>>
+    type BindFuture<'a, P> = core::future::Ready<spark_core::Result<Self::Server, CoreError>>
     where
         Self: 'a,
         P: spark_core::pipeline::traits::generic::ControllerFactory + Send + Sync + 'static;
 
-    type ConnectFuture<'a> = core::future::Ready<Result<Self::Channel, CoreError>> where Self: 'a;
+    type ConnectFuture<'a> = core::future::Ready<spark_core::Result<Self::Channel, CoreError>> where Self: 'a;
 
     fn scheme(&self, ctx: &ExecutionContext<'_>) -> &'static str {
         self.events
@@ -727,7 +727,7 @@ impl TestServerTransport {
 }
 
 impl ServerTransport for TestServerTransport {
-    type ShutdownFuture<'a> = core::future::Ready<Result<(), CoreError>> where Self: 'a;
+    type ShutdownFuture<'a> = core::future::Ready<spark_core::Result<(), CoreError>> where Self: 'a;
 
     fn local_addr(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
         self.events
@@ -800,11 +800,11 @@ impl Channel for TestChannel {
 
     fn close(&self) {}
 
-    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>> {
+    fn closed(&self) -> BoxFuture<'static, spark_core::Result<(), SparkError>> {
         Box::pin(async { Ok(()) })
     }
 
-    fn write(&self, _msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+    fn write(&self, _msg: PipelineMessage) -> spark_core::Result<WriteSignal, CoreError> {
         Ok(WriteSignal::Accepted)
     }
 
@@ -850,7 +850,7 @@ impl Controller for NoopController {
         &self,
         _: &dyn spark_core::pipeline::Middleware,
         _: &spark_core::runtime::CoreServices,
-    ) -> Result<(), CoreError> {
+    ) -> spark_core::Result<(), CoreError> {
         Ok(())
     }
 
@@ -911,7 +911,7 @@ impl HandlerRegistry for NoopRegistry {
 struct NoopAllocator;
 
 impl BufferAllocator for NoopAllocator {
-    fn acquire(&self, _min_capacity: usize) -> Result<Box<ErasedSparkBufMut>, CoreError> {
+    fn acquire(&self, _min_capacity: usize) -> spark_core::Result<Box<ErasedSparkBufMut>, CoreError> {
         Err(CoreError::new(
             codes::RUNTIME_INTERNAL,
             "allocator disabled for deterministic test",
@@ -940,7 +940,7 @@ impl ReadableBuffer for TestReadableBuffer {
         &self.data[self.cursor..]
     }
 
-    fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+    fn split_to(&mut self, len: usize) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
         if len > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -953,7 +953,7 @@ impl ReadableBuffer for TestReadableBuffer {
         Ok(Box::new(TestReadableBuffer::new(slice)))
     }
 
-    fn advance(&mut self, len: usize) -> Result<(), CoreError> {
+    fn advance(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
         if len > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -964,7 +964,7 @@ impl ReadableBuffer for TestReadableBuffer {
         Ok(())
     }
 
-    fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
+    fn copy_into_slice(&mut self, dst: &mut [u8]) -> spark_core::Result<(), CoreError> {
         if dst.len() > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -977,7 +977,7 @@ impl ReadableBuffer for TestReadableBuffer {
         Ok(())
     }
 
-    fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
+    fn try_into_vec(self: Box<Self>) -> spark_core::Result<Vec<u8>, CoreError> {
         Ok(self.data)
     }
 }
@@ -1023,7 +1023,7 @@ struct DummyControllerFactory;
 impl spark_core::pipeline::traits::generic::ControllerFactory for DummyControllerFactory {
     type Controller = NoopController;
 
-    fn build(&self, _: &spark_core::runtime::CoreServices) -> Result<Self::Controller, CoreError> {
+    fn build(&self, _: &spark_core::runtime::CoreServices) -> spark_core::Result<Self::Controller, CoreError> {
         Ok(NoopController)
     }
 }

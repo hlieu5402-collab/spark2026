@@ -188,7 +188,9 @@ pub mod transport {
         alpn: Option<Vec<u8>>,
     }
 
-    fn generate_certified_key(host: &str) -> Result<(CertifiedKey, CertificateDer<'static>)> {
+    fn generate_certified_key(
+        host: &str,
+    ) -> spark_core::Result<(CertifiedKey, CertificateDer<'static>)> {
         let cert = generate_simple_self_signed([host.to_string()]).context("生成自签名证书失败")?;
         let cert_der =
             CertificateDer::from(cert.serialize_der().context("序列化证书 DER 失败")?).into_owned();
@@ -200,7 +202,7 @@ pub mod transport {
         Ok((certified, cert_der))
     }
 
-    fn build_server_config() -> Result<(
+    fn build_server_config() -> spark_core::Result<(
         Arc<ServerConfig>,
         CertificateDer<'static>,
         CertificateDer<'static>,
@@ -224,7 +226,7 @@ pub mod transport {
     fn build_client_config(
         cert: &CertificateDer<'static>,
         protocols: &[&str],
-    ) -> Result<Arc<ClientConfig>> {
+    ) -> spark_core::Result<Arc<ClientConfig>> {
         let mut roots = RootCertStore::empty();
         roots
             .add(cert.clone())
@@ -244,7 +246,7 @@ pub mod transport {
         client_config: Arc<ClientConfig>,
         request: &[u8],
         response: &[u8],
-    ) -> Result<(ServerObservation, Vec<u8>)> {
+    ) -> spark_core::Result<(ServerObservation, Vec<u8>)> {
         let server_future = async {
             let ctx = CallContext::builder().build();
             let (tcp, _) = listener
@@ -309,7 +311,7 @@ pub mod transport {
         /// 2. 客户端发送 `ping` 报文，服务端读取并校验源地址。
         /// 3. 使用 `UdpReturnRoute` 将 `pong` 报文回发客户端，确认响应可达。
         #[tokio::test(flavor = "multi_thread")]
-        async fn bind_send_recv() -> Result<()> {
+        async fn bind_send_recv() -> spark_core::Result<()> {
             let endpoint = UdpEndpoint::bind(TransportSocketAddr::V4 {
                 addr: [127, 0, 0, 1],
                 port: 0,
@@ -363,7 +365,7 @@ pub mod transport {
     /// 2. 服务端解析后回发响应，`send_to` 应在 `Via` 头中补写客户端实际端口。
     /// 3. 客户端收到响应后，校验 `;rport=<port>` 是否存在。
     #[tokio::test(flavor = "multi_thread")]
-    async fn udp_rport_return() -> Result<()> {
+    async fn udp_rport_return() -> spark_core::Result<()> {
         let endpoint = UdpEndpoint::bind(TransportSocketAddr::V4 {
             addr: [127, 0, 0, 1],
             port: 0,
@@ -434,7 +436,7 @@ pub mod transport {
         use spark_transport_quic::{QuicEndpoint, ShutdownDirection};
         use std::{sync::Arc, task::Poll};
 
-        fn build_tls_configs() -> Result<(ServerConfig, ClientConfig)> {
+        fn build_tls_configs() -> spark_core::Result<(ServerConfig, ClientConfig)> {
             let cert = generate_simple_self_signed(vec!["localhost".into()])?;
             let cert_der_raw = cert.serialize_der()?;
             let key_der_raw = cert.serialize_private_key_der();
@@ -457,7 +459,7 @@ pub mod transport {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        async fn bidirectional_streams() -> Result<()> {
+        async fn bidirectional_streams() -> spark_core::Result<()> {
             let (server_cfg, client_cfg) = build_tls_configs()?;
 
             let server_endpoint = QuicEndpoint::bind_server(
@@ -589,7 +591,9 @@ pub mod transport {
     /// - 借助 `rcgen` 生成自签名证书与 PKCS#8 私钥；
     /// - 使用 `rustls` 构建 `ServerConfig`，配置为无需客户端证书；
     /// - 返回 `Arc` 封装的配置，便于直接注入热更容器。
-    fn generate_server_config(common_name: &str) -> Result<(Arc<rustls::ServerConfig>, Vec<u8>)> {
+    fn generate_server_config(
+        common_name: &str,
+    ) -> spark_core::Result<(Arc<rustls::ServerConfig>, Vec<u8>)> {
         use std::convert::TryFrom;
 
         use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
@@ -636,7 +640,7 @@ pub mod transport {
     /// # 实现（How）
     /// - 向 `RootCertStore` 写入证书 DER；
     /// - 通过 `rustls::ClientConfig::builder` 生成配置，并关闭客户端证书认证。
-    fn build_client_config(certificate: &[u8]) -> Result<Arc<rustls::ClientConfig>> {
+    fn build_client_config(certificate: &[u8]) -> spark_core::Result<Arc<rustls::ClientConfig>> {
         use rustls::pki_types::CertificateDer;
         use rustls::{ClientConfig, RootCertStore};
 
@@ -659,7 +663,7 @@ pub mod transport {
     /// 2. 建立首个 TLS 连接，校验服务端证书指纹并完成回环收发；
     /// 3. 热替换第二版证书；新连接应观测到新证书，而旧连接继续收发不受影响。
     #[tokio::test(flavor = "multi_thread")]
-    async fn tls_handshake_hotreload() -> Result<()> {
+    async fn tls_handshake_hotreload() -> spark_core::Result<()> {
         use anyhow::Context;
         use rustls::pki_types::ServerName;
         use tokio_rustls::TlsConnector;
@@ -793,7 +797,7 @@ pub mod transport {
         configs: HotReloadingServerConfig,
         stream: TcpStream,
         ready: oneshot::Sender<()>,
-    ) -> Result<()> {
+    ) -> spark_core::Result<()> {
         let mut tls_stream = configs
             .accept(stream)
             .await
@@ -828,7 +832,7 @@ pub mod transport {
         };
 
         #[tokio::test(flavor = "multi_thread")]
-        async fn sni_selection_and_io() -> Result<()> {
+        async fn sni_selection_and_io() -> spark_core::Result<()> {
             let (server_config, alpha_cert, beta_cert) = build_server_config()?;
             let acceptor = TlsAcceptor::new(server_config);
             let listener = TcpListener::bind(TransportSocketAddr::V4 {
@@ -881,7 +885,7 @@ pub mod transport {
         };
 
         #[tokio::test(flavor = "multi_thread")]
-        async fn negotiated_protocol_exposed() -> Result<()> {
+        async fn negotiated_protocol_exposed() -> spark_core::Result<()> {
             let (server_config, alpha_cert, _) = build_server_config()?;
             let acceptor = TlsAcceptor::new(server_config);
             let listener = TcpListener::bind(TransportSocketAddr::V4 {
@@ -923,7 +927,7 @@ pub mod transport {
         /// 3. 服务端构造对应响应，调用 [`batch::send_to`] 批量发回并校验写入长度。
         /// 4. 客户端逐一接收响应，确认报文内容与顺序匹配。
         #[tokio::test(flavor = "multi_thread")]
-        async fn round_trip() -> Result<()> {
+        async fn round_trip() -> spark_core::Result<()> {
             let server = UdpSocket::bind("127.0.0.1:0")
                 .await
                 .context("服务端绑定失败")?;
@@ -1048,7 +1052,7 @@ pub mod rtp {
 
         /// 解析带有 CSRC、扩展与 padding 的 RTP 报文，并验证零拷贝窗口。
         #[test]
-        fn csrc_extension_padding_roundtrip() -> Result<()> {
+        fn csrc_extension_padding_roundtrip() -> spark_core::Result<()> {
             let mut header = RtpHeader::default();
             header.marker = true;
             header.payload_type = 96;

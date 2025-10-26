@@ -344,11 +344,14 @@ impl Channel for TestChannel {
 
     fn close(&self) {}
 
-    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>> {
+    fn closed(&self) -> BoxFuture<'static, spark_core::Result<(), SparkError>> {
         Box::pin(async { Ok(()) })
     }
 
-    fn write(&self, _msg: PipelineMessage) -> Result<WriteSignal, spark_core::error::CoreError> {
+    fn write(
+        &self,
+        _msg: PipelineMessage,
+    ) -> spark_core::Result<WriteSignal, spark_core::error::CoreError> {
         Ok(WriteSignal::Accepted)
     }
 
@@ -583,18 +586,23 @@ impl Logger for NoopLogger {
 struct NoopBufferPool;
 
 impl BufferPool for NoopBufferPool {
-    fn acquire(&self, _: usize) -> Result<Box<dyn WritableBuffer>, spark_core::error::CoreError> {
+    fn acquire(
+        &self,
+        _: usize,
+    ) -> spark_core::Result<Box<dyn WritableBuffer>, spark_core::error::CoreError> {
         Err(spark_core::error::CoreError::new(
             "buffer.disabled",
             "buffer pool disabled",
         ))
     }
 
-    fn shrink_to_fit(&self) -> Result<usize, spark_core::error::CoreError> {
+    fn shrink_to_fit(&self) -> spark_core::Result<usize, spark_core::error::CoreError> {
         Ok(0)
     }
 
-    fn statistics(&self) -> Result<spark_core::buffer::PoolStats, spark_core::error::CoreError> {
+    fn statistics(
+        &self,
+    ) -> spark_core::Result<spark_core::buffer::PoolStats, spark_core::error::CoreError> {
         Ok(spark_core::buffer::PoolStats {
             allocated_bytes: 0,
             resident_bytes: 0,

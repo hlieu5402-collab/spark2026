@@ -36,25 +36,25 @@ pub trait TransportConnection: Send + Sync + 'static {
     type ReadyCtx<'ctx>: ?Sized;
 
     /// 读操作返回的 Future。
-    type ReadFuture<'ctx>: Future<Output = Result<usize, Self::Error>> + Send + 'ctx
+    type ReadFuture<'ctx>: Future<Output = crate::Result<usize, Self::Error>> + Send + 'ctx
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     /// 写操作返回的 Future。
-    type WriteFuture<'ctx>: Future<Output = Result<usize, Self::Error>> + Send + 'ctx
+    type WriteFuture<'ctx>: Future<Output = crate::Result<usize, Self::Error>> + Send + 'ctx
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     /// 半关闭操作返回的 Future。
-    type ShutdownFuture<'ctx>: Future<Output = Result<(), Self::Error>> + Send + 'ctx
+    type ShutdownFuture<'ctx>: Future<Output = crate::Result<(), Self::Error>> + Send + 'ctx
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     /// 刷新操作返回的 Future。
-    type FlushFuture<'ctx>: Future<Output = Result<(), Self::Error>> + Send + 'ctx
+    type FlushFuture<'ctx>: Future<Output = crate::Result<(), Self::Error>> + Send + 'ctx
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
@@ -128,7 +128,7 @@ pub trait DatagramEndpoint: Send + Sync + 'static {
     type OutboundMeta: ?Sized;
 
     /// 接收报文返回的 Future。
-    type RecvFuture<'ctx>: Future<Output = Result<(usize, Self::InboundMeta), Self::Error>>
+    type RecvFuture<'ctx>: Future<Output = crate::Result<(usize, Self::InboundMeta), Self::Error>>
         + Send
         + 'ctx
     where
@@ -136,13 +136,13 @@ pub trait DatagramEndpoint: Send + Sync + 'static {
         Self::CallCtx<'ctx>: 'ctx;
 
     /// 发送报文返回的 Future。
-    type SendFuture<'ctx>: Future<Output = Result<usize, Self::Error>> + Send + 'ctx
+    type SendFuture<'ctx>: Future<Output = crate::Result<usize, Self::Error>> + Send + 'ctx
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     /// 查询本地绑定地址。
-    fn local_addr(&self) -> Result<TransportSocketAddr, Self::Error>;
+    fn local_addr(&self) -> crate::Result<TransportSocketAddr, Self::Error>;
 
     /// 接收单个报文并返回长度与对端地址。
     fn recv<'ctx>(

@@ -960,18 +960,21 @@ impl spark_core::buffer::BufferPool for NoopBufferPool {
     fn acquire(
         &self,
         _: usize,
-    ) -> Result<Box<dyn spark_core::buffer::WritableBuffer>, spark_core::error::CoreError> {
+    ) -> spark_core::Result<Box<dyn spark_core::buffer::WritableBuffer>, spark_core::error::CoreError>
+    {
         Err(spark_core::error::CoreError::new(
             "buffer.disabled",
             "buffer pool disabled",
         ))
     }
 
-    fn shrink_to_fit(&self) -> Result<usize, spark_core::error::CoreError> {
+    fn shrink_to_fit(&self) -> spark_core::Result<usize, spark_core::error::CoreError> {
         Ok(0)
     }
 
-    fn statistics(&self) -> Result<spark_core::buffer::PoolStats, spark_core::error::CoreError> {
+    fn statistics(
+        &self,
+    ) -> spark_core::Result<spark_core::buffer::PoolStats, spark_core::error::CoreError> {
         Ok(spark_core::buffer::PoolStats {
             allocated_bytes: 0,
             resident_bytes: 0,
@@ -1156,7 +1159,7 @@ impl ChannelRecorder {
     }
 
     #[allow(clippy::result_large_err)]
-    fn take_closed_result(&self) -> Result<(), SparkError> {
+    fn take_closed_result(&self) -> spark_core::Result<(), SparkError> {
         if self.result_recorded.swap(true, Ordering::SeqCst) {
             return Ok(());
         }
@@ -1247,7 +1250,7 @@ struct ManualClosedFuture {
 }
 
 impl Future for ManualClosedFuture {
-    type Output = Result<(), SparkError>;
+    type Output = spark_core::Result<(), SparkError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if self.state.is_completed() {
@@ -1345,7 +1348,7 @@ impl Channel for TestChannel {
         self.recorder.force_calls.fetch_add(1, Ordering::SeqCst);
     }
 
-    fn closed(&self) -> spark_core::future::BoxFuture<'static, Result<(), SparkError>> {
+    fn closed(&self) -> spark_core::future::BoxFuture<'static, spark_core::Result<(), SparkError>> {
         self.recorder.reset_result_recording();
         Box::pin(ManualClosedFuture {
             state: Arc::clone(&self.recorder.closed_state),
@@ -1356,7 +1359,7 @@ impl Channel for TestChannel {
     fn write(
         &self,
         _msg: spark_core::buffer::PipelineMessage,
-    ) -> Result<spark_core::pipeline::WriteSignal, spark_core::error::CoreError> {
+    ) -> spark_core::Result<spark_core::pipeline::WriteSignal, spark_core::error::CoreError> {
         Ok(spark_core::pipeline::WriteSignal::Accepted)
     }
 
@@ -1405,7 +1408,7 @@ impl Controller for NoopController {
         &self,
         _: &dyn spark_core::pipeline::Middleware,
         _: &CoreServices,
-    ) -> Result<(), spark_core::error::CoreError> {
+    ) -> spark_core::Result<(), spark_core::error::CoreError> {
         Ok(())
     }
 

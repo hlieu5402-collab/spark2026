@@ -14,7 +14,7 @@ use core::{convert::TryFrom, fmt, num::NonZeroU16};
 struct FrameCharge(u64);
 
 impl FrameCharge {
-    fn new(len: usize) -> Result<Self, CoreError> {
+    fn new(len: usize) -> crate::Result<Self, CoreError> {
         u64::try_from(len).map(FrameCharge).map_err(|_| {
             CoreError::new(
                 codes::PROTOCOL_BUDGET_EXCEEDED,
@@ -118,7 +118,7 @@ impl<'a> DecodeContext<'a> {
     pub fn acquire_scratch(
         &self,
         min_capacity: usize,
-    ) -> Result<Box<ErasedSparkBufMut>, CoreError> {
+    ) -> crate::Result<Box<ErasedSparkBufMut>, CoreError> {
         self.allocator.acquire(min_capacity)
     }
 
@@ -157,7 +157,7 @@ impl<'a> DecodeContext<'a> {
     ///   - **后置条件**：错误返回附带 `protocol.budget_exceeded`，供上层快速拒绝连接。
     /// - **风险提示 (Trade-offs)**：
     ///   - 在自定义解码器需要多次读取同一帧时，建议结合 [`Self::refund_budget`] 做差量扣减。
-    pub fn check_frame_constraints(&self, frame_len: usize) -> Result<(), CoreError> {
+    pub fn check_frame_constraints(&self, frame_len: usize) -> crate::Result<(), CoreError> {
         if let Some(max) = self.max_frame_size
             && frame_len > max
         {
@@ -206,7 +206,7 @@ impl<'a> DecodeContext<'a> {
     ///   - **前置条件**：无；**后置条件**：成功进入后 `current_depth` 增加 1。
     /// - **注意事项 (Trade-offs)**：
     ///   - 若调用方使用 `mem::forget` 刻意泄漏守卫，会导致深度永远不回退，应避免此类操作。
-    pub fn enter_frame(&mut self) -> Result<DecodeFrameGuard<'_, 'a>, CoreError> {
+    pub fn enter_frame(&mut self) -> crate::Result<DecodeFrameGuard<'_, 'a>, CoreError> {
         if let Some(limit) = self.max_recursion_depth
             && self.current_depth >= limit.get()
         {
@@ -338,5 +338,5 @@ pub trait Decoder: Send + Sync + 'static + Sealed {
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Self::Item>, CoreError>;
+    ) -> crate::Result<DecodeOutcome<Self::Item>, CoreError>;
 }

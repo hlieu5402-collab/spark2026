@@ -173,7 +173,7 @@ mod tests {
                     panic!("测试桩未实现 forward_read()：示例不会转发事件");
                 }
 
-                fn write(&self, _msg: spark_core::buffer::PipelineMessage) -> Result<spark_core::pipeline::WriteSignal, spark_core::CoreError> {
+                fn write(&self, _msg: spark_core::buffer::PipelineMessage) -> spark_core::Result<spark_core::pipeline::WriteSignal, spark_core::CoreError> {
                     panic!("测试桩未实现 write()：语法糖示例不会写出站消息");
                 }
 
@@ -189,7 +189,7 @@ mod tests {
                     panic!("测试桩未实现 close_graceful()：示例不会触发关闭");
                 }
 
-                fn closed(&self) -> spark_core::future::BoxFuture<'static, Result<(), spark_core::SparkError>> {
+                fn closed(&self) -> spark_core::future::BoxFuture<'static, spark_core::Result<(), spark_core::SparkError>> {
                     panic!("测试桩未实现 closed()：语法糖示例不会等待关闭");
                 }
             }

@@ -123,7 +123,7 @@ impl<'a> ConfigurationWatch<'a> {
 }
 
 impl<'a> Stream for ConfigurationWatch<'a> {
-    type Item = Result<ConfigurationUpdate, ConfigurationError>;
+    type Item = crate::Result<ConfigurationUpdate, ConfigurationError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -724,7 +724,7 @@ impl ConfigurationBuilder {
     pub fn register_source(
         &mut self,
         source: Box<dyn DynConfigurationSource>,
-    ) -> Result<(), SourceRegistrationError> {
+    ) -> crate::Result<(), SourceRegistrationError> {
         if self
             .capacity
             .is_some_and(|limit| self.sources.len() >= limit)
@@ -758,7 +758,7 @@ impl ConfigurationBuilder {
     pub fn register_source_static(
         &mut self,
         source: &'static (dyn DynConfigurationSource),
-    ) -> Result<(), SourceRegistrationError> {
+    ) -> crate::Result<(), SourceRegistrationError> {
         self.register_source(super::source::boxed_static_source(source))
     }
 
@@ -786,7 +786,7 @@ impl ConfigurationBuilder {
     /// ### 风险提示（Trade-offs）
     /// - Layer 排序后仍可能存在重复键；后写入的值会覆盖先前值，这是预期行为。
     /// - 快照始终脱敏加密字段，若业务需要调试原文，需要在可信环境额外导出。
-    pub fn build(self) -> Result<BuildOutcome, BuildError> {
+    pub fn build(self) -> crate::Result<BuildOutcome, BuildError> {
         let ConfigurationBuilder {
             profile,
             sources,
@@ -977,7 +977,7 @@ impl ConfigurationHandle {
     /// - **返回值**：[`ConfigurationWatch`]，实现 [`Stream`]，每次轮询返回一次 [`ConfigurationUpdate`]。
     /// - 若所有数据源均不支持增量推送，返回的流会立即结束。
     /// - 错误场景（如审计哈希不一致）以 [`ConfigurationError`] 形式暴露。
-    pub fn watch(&mut self) -> Result<ConfigurationWatch<'_>, ConfigurationError> {
+    pub fn watch(&mut self) -> crate::Result<ConfigurationWatch<'_>, ConfigurationError> {
         let mut streams = Vec::with_capacity(self.sources.len());
         for source in &self.sources {
             let stream = source.watch_dyn(&self.descriptor.identifier)?;
@@ -1009,7 +1009,7 @@ impl LayeredConfiguration {
     pub fn apply_change(
         &mut self,
         notification: ChangeNotification,
-    ) -> Result<ChangeSet, ConfigurationError> {
+    ) -> crate::Result<ChangeSet, ConfigurationError> {
         let before_snapshot = self.resolve();
         let state_prev_hash = AuditStateHasher::hash_configuration(before_snapshot.values.iter());
         if let Some(chain_tip) = &self.audit_chain_tip {
@@ -1107,7 +1107,7 @@ impl LayeredConfiguration {
     pub fn apply_refresh(
         &mut self,
         layers: Vec<ConfigurationLayer>,
-    ) -> Result<ResolvedConfiguration, ConfigurationError> {
+    ) -> crate::Result<ResolvedConfiguration, ConfigurationError> {
         let before_snapshot = self.resolve();
         let state_prev_hash = AuditStateHasher::hash_configuration(before_snapshot.values.iter());
         if let Some(chain_tip) = &self.audit_chain_tip {
@@ -1232,7 +1232,7 @@ mod tests {
         fn load(
             &self,
             _profile: &ProfileId,
-        ) -> Result<Vec<ConfigurationLayer>, ConfigurationError> {
+        ) -> crate::Result<Vec<ConfigurationLayer>, ConfigurationError> {
             if self.fail {
                 Err(ConfigurationError::with_context(
                     ConfigurationErrorKind::Source,
@@ -1246,7 +1246,7 @@ mod tests {
         fn watch<'a>(
             &'a self,
             _profile: &ProfileId,
-        ) -> Result<Self::Stream<'a>, ConfigurationError> {
+        ) -> crate::Result<Self::Stream<'a>, ConfigurationError> {
             Ok(NoopConfigStream::new())
         }
     }
@@ -1382,7 +1382,7 @@ mod tests {
     struct FailingRecorder;
 
     impl AuditRecorder for FailingRecorder {
-        fn record(&self, _event: AuditEventV1) -> Result<(), AuditError> {
+        fn record(&self, _event: AuditEventV1) -> crate::Result<(), AuditError> {
             Err(AuditError::new("forced failure"))
         }
     }

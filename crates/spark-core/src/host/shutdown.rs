@@ -15,7 +15,8 @@ use crate::contract::{CloseReason, Deadline};
 use crate::pipeline::Channel;
 
 type TriggerFn = dyn Fn(&CloseReason, Option<Deadline>) + Send + Sync + 'static;
-type AwaitFn = dyn Fn() -> BoxFuture<'static, Result<(), SparkError>> + Send + Sync + 'static;
+type AwaitFn =
+    dyn Fn() -> BoxFuture<'static, crate::Result<(), SparkError>> + Send + Sync + 'static;
 type ForceFn = dyn Fn() + Send + Sync + 'static;
 
 /// `GracefulShutdownStatus` 表示单个关闭目标的执行结果。
@@ -186,7 +187,10 @@ impl GracefulShutdownTarget {
     pub fn for_callbacks(
         label: impl Into<Cow<'static, str>>,
         trigger_graceful: impl Fn(&CloseReason, Option<Deadline>) + Send + Sync + 'static,
-        await_closed: impl Fn() -> BoxFuture<'static, Result<(), SparkError>> + Send + Sync + 'static,
+        await_closed: impl Fn() -> BoxFuture<'static, crate::Result<(), SparkError>>
+        + Send
+        + Sync
+        + 'static,
         force_close: impl Fn() + Send + Sync + 'static,
     ) -> Self {
         Self {
@@ -394,13 +398,13 @@ impl GracefulShutdownCoordinator {
 /// - 避免引入额外依赖，在 `no_std + alloc` 环境下手工实现 `select` 语义；
 /// - 保证协调器能够在 Future 未完成时基于运行时计时器触发硬关闭。
 struct TimeoutFuture {
-    future: BoxFuture<'static, Result<(), SparkError>>,
+    future: BoxFuture<'static, crate::Result<(), SparkError>>,
     timer: Option<BoxFuture<'static, ()>>,
 }
 
 impl TimeoutFuture {
     fn new(
-        future: BoxFuture<'static, Result<(), SparkError>>,
+        future: BoxFuture<'static, crate::Result<(), SparkError>>,
         deadline: Option<MonotonicTimePoint>,
         runtime: Arc<dyn AsyncRuntime>,
     ) -> Self {
@@ -429,7 +433,7 @@ enum TimeoutOutcome<T> {
 }
 
 impl core::future::Future for TimeoutFuture {
-    type Output = TimeoutOutcome<Result<(), SparkError>>;
+    type Output = TimeoutOutcome<crate::Result<(), SparkError>>;
 
     fn poll(
         mut self: core::pin::Pin<&mut Self>,

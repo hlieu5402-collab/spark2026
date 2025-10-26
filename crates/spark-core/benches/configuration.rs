@@ -29,8 +29,10 @@ fn bench_build_static_layer(c: &mut Criterion) {
                 fn load(
                     &self,
                     _profile: &ProfileId,
-                ) -> Result<Vec<ConfigurationLayer>, spark_core::configuration::ConfigurationError>
-                {
+                ) -> spark_core::Result<
+                    Vec<ConfigurationLayer>,
+                    spark_core::configuration::ConfigurationError,
+                > {
                     Ok(vec![ConfigurationLayer {
                         metadata: SourceMetadata::new("bench", 0, None),
                         entries: vec![(
@@ -43,8 +45,10 @@ fn bench_build_static_layer(c: &mut Criterion) {
                 fn watch<'a>(
                     &'a self,
                     _profile: &ProfileId,
-                ) -> Result<Self::Stream<'a>, spark_core::configuration::ConfigurationError>
-                {
+                ) -> spark_core::Result<
+                    Self::Stream<'a>,
+                    spark_core::configuration::ConfigurationError,
+                > {
                     Ok(spark_core::configuration::NoopConfigStream::new())
                 }
             }

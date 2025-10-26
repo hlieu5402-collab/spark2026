@@ -159,7 +159,7 @@ impl ConfigKey {
     }
 
     /// 根据中间表示还原配置键。
-    pub(crate) fn from_repr(repr: ConfigKeyRepr) -> Result<Self, ConfigKeyReprError> {
+    pub(crate) fn from_repr(repr: ConfigKeyRepr) -> crate::Result<Self, ConfigKeyReprError> {
         let scope = ConfigScope::parse(&repr.scope)
             .ok_or_else(|| ConfigKeyReprError::InvalidScope(repr.scope.clone()))?;
         Ok(Self::new(repr.domain, repr.name, scope, repr.summary))

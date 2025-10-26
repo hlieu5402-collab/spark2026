@@ -34,7 +34,7 @@ use super::super::{
 /// - 实现者应关注关闭流程中的资源释放，防止内存/句柄泄漏。
 pub trait ServerTransport: Send + Sync + 'static + Sealed {
     /// 关闭 Future 的具体类型。
-    type ShutdownFuture<'a>: Future<Output = Result<(), CoreError>> + Send + 'a
+    type ShutdownFuture<'a>: Future<Output = crate::Result<(), CoreError>> + Send + 'a
     where
         Self: 'a;
 
@@ -111,13 +111,13 @@ pub trait TransportFactory: Send + Sync + 'static + Sealed {
     type Server: ServerTransport;
 
     /// 绑定流程返回的 Future 类型。
-    type BindFuture<'a, P>: Future<Output = Result<Self::Server, CoreError>> + Send + 'a
+    type BindFuture<'a, P>: Future<Output = crate::Result<Self::Server, CoreError>> + Send + 'a
     where
         Self: 'a,
         P: GenericControllerFactory + Send + Sync + 'static;
 
     /// 建连流程返回的 Future 类型。
-    type ConnectFuture<'a>: Future<Output = Result<Self::Channel, CoreError>> + Send + 'a
+    type ConnectFuture<'a>: Future<Output = crate::Result<Self::Channel, CoreError>> + Send + 'a
     where
         Self: 'a;
 

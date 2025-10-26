@@ -169,12 +169,12 @@ pub trait ConfigConsumer: Sealed {
         &self,
         ctx: &HostContext,
         config: ConfigEnvelope,
-    ) -> Result<ProvisioningOutcome, Self::Error>;
+    ) -> crate::Result<ProvisioningOutcome, Self::Error>;
 
     /// 增量配置变更通知。
     fn on_incremental_change(
         &self,
         ctx: &HostContext,
         change: ConfigChange,
-    ) -> Result<ProvisioningOutcome, Self::Error>;
+    ) -> crate::Result<ProvisioningOutcome, Self::Error>;
 }

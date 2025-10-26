@@ -45,7 +45,7 @@ impl AutoDynBridge for MyService {
 }
 
 impl Decode for MyRequest {
-    fn decode(message: PipelineMessage) -> Result<Self, SparkError> {
+    fn decode(message: PipelineMessage) -> spark_core::Result<Self, SparkError> {
         match message.try_into_user::<MyRequest>() {
             Ok(request) => Ok(request),
             Err(original) => {
@@ -68,7 +68,7 @@ impl Encode for MyResponse {
 impl Service<MyRequest> for MyService {
     type Response = MyResponse;
     type Error = SparkError;
-    type Future = core::future::Ready<Result<Self::Response, Self::Error>>;
+    type Future = core::future::Ready<spark_core::Result<Self::Response, Self::Error>>;
 
     fn poll_ready(
         &mut self,

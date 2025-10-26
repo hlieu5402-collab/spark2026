@@ -83,7 +83,7 @@ impl TaskLaunchOptions {
 /// # 契约说明（What）
 /// - `Ok(T)`：任务成功完成并返回值。
 /// - `Err(TaskError)`：任务取消、失败或执行器故障。
-pub type TaskResult<T = ()> = Result<T, TaskError>;
+pub type TaskResult<T = ()> = crate::Result<T, TaskError>;
 
 /// `TaskError` 枚举任务失败原因。
 ///

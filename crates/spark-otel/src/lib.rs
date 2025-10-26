@@ -109,7 +109,7 @@ struct InstallState {
 ///   5. 将安装状态写入 `INSTALL_STATE`，确保 Provider 与 Tracer 在进程生命周期内保持有效。
 /// - **契约（What）**：多次调用返回 [`Error::AlreadyInstalled`]；调用前若外部已配置 Subscriber，返回
 ///   [`Error::SubscriberAlreadySet`]；成功后全局可观测性能力立即生效。
-pub fn install() -> Result<(), Error> {
+pub fn install() -> spark_core::Result<(), Error> {
     if INSTALL_STATE.get().is_some() {
         return Err(Error::AlreadyInstalled);
     }
@@ -124,7 +124,7 @@ pub fn install() -> Result<(), Error> {
         .map(|_| ())
 }
 
-fn install_impl() -> Result<InstallState, Error> {
+fn install_impl() -> spark_core::Result<InstallState, Error> {
     let tracer_provider = build_tracer_provider();
     global::set_tracer_provider(tracer_provider.clone());
 
@@ -282,7 +282,7 @@ impl OtelHandlerTracer {
         &self,
         params: &HandlerSpanParams<'_>,
         parent: &TraceContext,
-    ) -> Result<HandlerSpan, Error> {
+    ) -> spark_core::Result<HandlerSpan, Error> {
         let parent_context = trace_context_to_otel(parent)?;
         let span_name = format!(
             "spark.pipeline.{}.{}",
@@ -377,7 +377,7 @@ fn otel_span_kind(direction: HandlerDirection) -> SpanKind {
 /// - **风险与取舍（Trade-offs）**：
 ///   - 直接重建 `TraceState` 会执行一次分配，但可确保与 W3C 规范对齐；
 ///   - 若未来需要零分配，可考虑预先缓存字符串，但需权衡内存占用与实现复杂度。
-fn trace_context_to_otel(parent: &TraceContext) -> Result<Context, Error> {
+fn trace_context_to_otel(parent: &TraceContext) -> spark_core::Result<Context, Error> {
     let otel_state = otel_trace::TraceState::from_key_value(
         parent
             .trace_state
@@ -414,7 +414,7 @@ fn trace_context_to_otel(parent: &TraceContext) -> Result<Context, Error> {
 /// - **风险与取舍（Trade-offs）**：
 ///   - 字符串拆分会产生暂存分配，但换取了实现清晰度；
 ///   - 若未来存在大量 TraceState 条目，可引入自定义解析器以提升性能。
-fn trace_context_from_otel(ctx: &OtelSpanContext) -> Result<TraceContext, Error> {
+fn trace_context_from_otel(ctx: &OtelSpanContext) -> spark_core::Result<TraceContext, Error> {
     let state = ctx.trace_state().header();
     let trace_state = if state.is_empty() {
         TraceState::default()

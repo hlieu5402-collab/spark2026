@@ -273,6 +273,28 @@ pub struct SparkError {
 /// `ErrorCause` 封装底层原因，保持 `Send + Sync` 以方便跨线程传递。
 pub type ErrorCause = Box<dyn Error + Send + Sync + 'static>;
 
+/// `Result` 为框架统一的返回值别名，在所有层级提供稳定的错误边界。
+///
+/// # 设计意图（Why）
+/// - 要求业务与实现层共享相同的错误封装模型，便于指标、日志与 AIOps 聚合时直接识别错误域；
+/// - 避免在各处重复书写 `Result<_, CoreError>`、`Result<_, SparkError>` 等样板代码，提示开发者显式区分领域与实现层错误。
+///
+/// # 逻辑解析（How）
+/// - 简单复用 `core::result::Result`，但通过别名集中约定默认错误类型为 [`CoreError`]；
+/// - 调用方若需要返回领域或实现层错误，可在第二个泛型参数中显式指定自定义类型。
+///
+/// # 契约说明（What）
+/// - **泛型参数**：
+///   - `T`：成功路径上的返回值类型；
+///   - `E`：错误类型，默认值为 [`CoreError`]；
+/// - **前置条件**：调用点需确保错误类型符合框架要求（实现 `Error + Send + Sync + 'static`），以保障跨线程传递与 `source()` 链接。
+/// - **后置条件**：获得的别名与标准库 `Result` 行为完全一致，可直接与 `?` 运算符、模式匹配协同工作。
+///
+/// # 设计取舍与风险（Trade-offs）
+/// - 统一别名提升了可读性，也意味着在泛型约束或过程宏中需要显式引用 `spark_core::Result`；
+/// - 若未来调整默认错误类型或增加额外上下文，仅需在此处更新别名即可全局生效，代价是所有子 crate 必须与核心保持版本一致。
+pub type Result<T, E = CoreError> = core::result::Result<T, E>;
+
 impl SparkError {
     /// 使用稳定错误码与消息创建 `SparkError`。
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {

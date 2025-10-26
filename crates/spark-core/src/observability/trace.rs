@@ -103,7 +103,7 @@ impl TraceContext {
     }
 
     /// 校验上下文是否满足基础合法性（ID 非全零，`TraceState` 不包含重复键等）。
-    pub fn validate(&self) -> Result<(), TraceContextError> {
+    pub fn validate(&self) -> crate::Result<(), TraceContextError> {
         if self.trace_id.iter().all(|byte| *byte == 0) {
             return Err(TraceContextError::InvalidTraceId);
         }
@@ -268,7 +268,7 @@ impl TraceState {
     }
 
     /// 基于已有条目构建 `TraceState`。
-    pub fn from_entries(entries: Vec<TraceStateEntry>) -> Result<Self, TraceStateError> {
+    pub fn from_entries(entries: Vec<TraceStateEntry>) -> crate::Result<Self, TraceStateError> {
         let mut state = Self::new();
         for entry in entries {
             state.insert(entry)?;
@@ -277,7 +277,7 @@ impl TraceState {
     }
 
     /// 插入或替换条目。
-    pub fn insert(&mut self, entry: TraceStateEntry) -> Result<(), TraceStateError> {
+    pub fn insert(&mut self, entry: TraceStateEntry) -> crate::Result<(), TraceStateError> {
         entry.validate()?;
         if let Some(existing) = self
             .entries
@@ -309,7 +309,7 @@ impl TraceState {
     }
 
     /// 校验内部条目合法性。
-    pub fn validate(&self) -> Result<(), TraceContextError> {
+    pub fn validate(&self) -> crate::Result<(), TraceContextError> {
         for entry in &self.entries {
             entry
                 .validate()
@@ -341,7 +341,7 @@ impl TraceStateEntry {
     }
 
     /// 校验条目是否符合 W3C 规范。
-    pub fn validate(&self) -> Result<(), TraceStateError> {
+    pub fn validate(&self) -> crate::Result<(), TraceStateError> {
         if self.key.is_empty() || self.key.len() > 256 {
             return Err(TraceStateError::InvalidKey);
         }

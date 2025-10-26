@@ -398,7 +398,7 @@ impl SecurityContextSnapshot {
     }
 
     /// 校验是否允许以安全模式继续执行。
-    pub fn ensure_secure(&self) -> Result<(), SparkError> {
+    pub fn ensure_secure(&self) -> crate::Result<(), SparkError> {
         if self.allow_insecure {
             return Ok(());
         }

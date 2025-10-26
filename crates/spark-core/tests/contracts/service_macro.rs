@@ -98,7 +98,7 @@ impl ManualFutureHandle {
 async fn wait_for_manual(
     _ctx: spark::CallContext,
     task: ManualFutureTask,
-) -> Result<(), spark::CoreError> {
+) -> spark_core::Result<(), spark::CoreError> {
     task.await;
     Ok(())
 }

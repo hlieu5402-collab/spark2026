@@ -61,7 +61,7 @@ pub trait Router<Request>: Sealed {
     fn route(
         &self,
         context: RoutingContext<'_, Request>,
-    ) -> Result<RouteDecision<Self::Service, Request>, RouteError<Self::Error>>;
+    ) -> crate::Result<RouteDecision<Self::Service, Request>, RouteError<Self::Error>>;
 
     /// 返回当前路由快照。
     fn snapshot(&self) -> super::super::context::RoutingSnapshot<'_>;

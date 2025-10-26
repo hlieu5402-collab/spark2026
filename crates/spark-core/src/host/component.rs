@@ -115,5 +115,5 @@ pub trait ComponentFactory: Sealed {
     fn descriptor(&self) -> &ComponentDescriptor;
 
     /// 初始化组件实例。
-    fn initialize(&self, ctx: &HostContext) -> Result<Self::Instance, Self::Error>;
+    fn initialize(&self, ctx: &HostContext) -> crate::Result<Self::Instance, Self::Error>;
 }

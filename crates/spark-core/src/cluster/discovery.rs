@@ -170,7 +170,7 @@ pub trait ServiceDiscovery: Send + Sync + 'static + Sealed {
         &self,
         service: &ServiceName,
         consistency: ClusterConsistencyLevel,
-    ) -> Result<DiscoverySnapshot, ClusterError>;
+    ) -> crate::Result<DiscoverySnapshot, ClusterError>;
 
     /// 订阅服务实例事件。
     fn watch(
@@ -182,5 +182,5 @@ pub trait ServiceDiscovery: Send + Sync + 'static + Sealed {
     ) -> SubscriptionStream<DiscoveryEvent>;
 
     /// 列举当前命名空间下的服务列表。
-    async fn list_services(&self) -> Result<Vec<ServiceName>, ClusterError>;
+    async fn list_services(&self) -> crate::Result<Vec<ServiceName>, ClusterError>;
 }

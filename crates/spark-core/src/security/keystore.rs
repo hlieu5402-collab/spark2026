@@ -277,5 +277,5 @@ pub trait KeySource: Sealed {
     /// # 设计取舍（Trade-offs）
     /// - Trait 不强制异步接口，便于在 `no_std` 环境实现；异步场景可在上层通过 [`crate::future::BoxFuture`] 包装。
     /// - 返回值允许为空列表，表示后端拒绝或暂无法提供密钥。
-    fn fetch(&self, request: &KeyRequest) -> Result<KeyResponse, KeyRetrievalError>;
+    fn fetch(&self, request: &KeyRequest) -> crate::Result<KeyResponse, KeyRetrievalError>;
 }

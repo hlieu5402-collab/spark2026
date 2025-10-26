@@ -159,7 +159,7 @@ impl TcpChannel {
         local_addr: TransportSocketAddr,
         peer_addr: TransportSocketAddr,
         config: TcpSocketConfig,
-    ) -> Result<Self, CoreError> {
+    ) -> spark_core::Result<Self, CoreError> {
         config
             .apply(&stream)
             .map_err(|err| map_io_error(CONFIGURE, err))?;
@@ -175,7 +175,10 @@ impl TcpChannel {
     }
 
     /// 根据上下文建立到目标地址的连接。
-    pub async fn connect(ctx: &CallContext, addr: TransportSocketAddr) -> Result<Self, CoreError> {
+    pub async fn connect(
+        ctx: &CallContext,
+        addr: TransportSocketAddr,
+    ) -> spark_core::Result<Self, CoreError> {
         Self::connect_with_config(ctx, addr, TcpSocketConfig::default()).await
     }
 
@@ -206,7 +209,7 @@ impl TcpChannel {
         ctx: &CallContext,
         addr: TransportSocketAddr,
         config: TcpSocketConfig,
-    ) -> Result<Self, CoreError> {
+    ) -> spark_core::Result<Self, CoreError> {
         let socket_addr = to_socket_addr(addr);
         let stream =
             run_with_context(ctx, error::CONNECT, TokioTcpStream::connect(socket_addr)).await?;
@@ -225,7 +228,11 @@ impl TcpChannel {
     }
 
     /// 读取数据到缓冲区。
-    pub async fn read(&self, ctx: &CallContext, buf: &mut [u8]) -> Result<usize, CoreError> {
+    pub async fn read(
+        &self,
+        ctx: &CallContext,
+        buf: &mut [u8],
+    ) -> spark_core::Result<usize, CoreError> {
         run_with_context(ctx, error::READ, async {
             let mut guard = self.inner.stream.lock().await;
             guard.read(buf).await
@@ -234,7 +241,11 @@ impl TcpChannel {
     }
 
     /// 将整个缓冲区写入套接字。
-    pub async fn write(&self, ctx: &CallContext, buf: &[u8]) -> Result<usize, CoreError> {
+    pub async fn write(
+        &self,
+        ctx: &CallContext,
+        buf: &[u8],
+    ) -> spark_core::Result<usize, CoreError> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -267,7 +278,7 @@ impl TcpChannel {
     /// ## 风险提示（Trade-offs）
     /// - 频繁刷新会增加系统调用频率，应仅在需要强一致性时调用；
     /// - 若 `ctx` 即将超时，该操作可能提前中断并返回 `Timeout` 错误。
-    pub async fn flush(&self, ctx: &CallContext) -> Result<(), CoreError> {
+    pub async fn flush(&self, ctx: &CallContext) -> spark_core::Result<(), CoreError> {
         run_with_context(ctx, FLUSH, async {
             let mut guard = self.inner.stream.lock().await;
             guard.flush().await
@@ -284,7 +295,7 @@ impl TcpChannel {
         &self,
         ctx: &CallContext,
         bufs: &[IoSlice<'_>],
-    ) -> Result<usize, CoreError> {
+    ) -> spark_core::Result<usize, CoreError> {
         if bufs.is_empty() {
             return Ok(0);
         }
@@ -337,7 +348,7 @@ impl TcpChannel {
     /// ## 注意事项（Trade-offs）
     /// - Linux 会将 `Duration` 向下取整到秒，测试断言需据此选择阈值；
     /// - 若调用时通道已被其他线程并发关闭，可能返回 `Err`，应结合关闭流程处理。
-    pub async fn linger(&self) -> Result<Option<Duration>, CoreError> {
+    pub async fn linger(&self) -> spark_core::Result<Option<Duration>, CoreError> {
         let guard = self.inner.stream.lock().await;
         SockRef::from(&*guard)
             .linger()
@@ -349,7 +360,7 @@ impl TcpChannel {
         &self,
         ctx: &CallContext,
         direction: ShutdownDirection,
-    ) -> Result<(), CoreError> {
+    ) -> spark_core::Result<(), CoreError> {
         run_with_context(ctx, error::SHUTDOWN, async {
             let mut guard = self.inner.stream.lock().await;
             match direction {
@@ -398,7 +409,7 @@ impl TcpChannel {
     /// - 为避免长期持有锁阻塞其他调用，读取阶段每次尝试都会释放互斥锁；
     /// - 若对端长时间不发送 FIN，等待将受 `ctx.deadline` 限制，届时建议结合
     ///   `TcpSocketConfig::linger` 触发 RST。
-    pub async fn close_graceful(&self, ctx: &CallContext) -> Result<(), CoreError> {
+    pub async fn close_graceful(&self, ctx: &CallContext) -> spark_core::Result<(), CoreError> {
         self.shutdown(ctx, ShutdownDirection::Write).await?;
         self.await_peer_half_close(ctx).await?;
         if let Ok(mut state) = self.inner.backpressure.lock() {
@@ -437,7 +448,7 @@ impl TcpChannel {
     /// - 返回 `Err(self)` 表示仍有其他持有者，调用方仍可继续以明文方式使用通道；
     /// - **前置条件**：调用方必须确保没有未完成的读写操作；
     /// - **后置条件**：成功拆解后，内部互斥锁与背压状态将被丢弃。
-    pub fn try_into_parts(self) -> Result<TcpChannelParts, Self> {
+    pub fn try_into_parts(self) -> spark_core::Result<TcpChannelParts, Self> {
         match Arc::try_unwrap(self.inner) {
             Ok(inner) => {
                 let stream = inner.stream.into_inner();
@@ -495,7 +506,7 @@ impl TcpChannel {
         }
     }
 
-    async fn await_peer_half_close(&self, ctx: &CallContext) -> Result<(), CoreError> {
+    async fn await_peer_half_close(&self, ctx: &CallContext) -> spark_core::Result<(), CoreError> {
         run_with_context(ctx, error::READ, async {
             let mut guard = self.inner.stream.lock().await;
             read_until_eof(guard.deref_mut()).await
@@ -510,25 +521,31 @@ impl TransportConnectionTrait for TcpChannel {
     type ReadyCtx<'ctx> = ExecutionContext<'ctx>;
 
     type ReadFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+        = Pin<
+        Box<dyn core::future::Future<Output = spark_core::Result<usize, CoreError>> + Send + 'ctx>,
+    >
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     type WriteFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+        = Pin<
+        Box<dyn core::future::Future<Output = spark_core::Result<usize, CoreError>> + Send + 'ctx>,
+    >
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     type ShutdownFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+        =
+        Pin<Box<dyn core::future::Future<Output = spark_core::Result<(), CoreError>> + Send + 'ctx>>
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     type FlushFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+        =
+        Pin<Box<dyn core::future::Future<Output = spark_core::Result<(), CoreError>> + Send + 'ctx>>
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;

@@ -95,7 +95,7 @@ impl AuditEntityRef {
 }
 
 impl serde::Serialize for AuditEntityRef {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> crate::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -104,7 +104,7 @@ impl serde::Serialize for AuditEntityRef {
 }
 
 impl<'de> serde::Deserialize<'de> for AuditEntityRef {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> crate::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -183,7 +183,7 @@ impl AuditActor {
 }
 
 impl serde::Serialize for AuditActor {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> crate::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -192,7 +192,7 @@ impl serde::Serialize for AuditActor {
 }
 
 impl<'de> serde::Deserialize<'de> for AuditActor {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> crate::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -268,7 +268,7 @@ impl TsaEvidence {
 }
 
 impl serde::Serialize for TsaEvidence {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> crate::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -277,7 +277,7 @@ impl serde::Serialize for TsaEvidence {
 }
 
 impl<'de> serde::Deserialize<'de> for TsaEvidence {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> crate::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -355,7 +355,7 @@ impl AuditEventV1 {
     ///
     /// ## 契约定义（What）
     /// - 入参：`repr`，内部序列化表示。
-    /// - 返回：`Result<AuditEventV1, String>`，失败时携带可读错误信息。
+    /// - 返回：`crate::Result<AuditEventV1, String>`，失败时携带可读错误信息。
     ///
     /// ## 逻辑解析（How）
     /// - 逐字段调用子结构的 `from_repr`，恢复原始领域模型。
@@ -367,7 +367,7 @@ impl AuditEventV1 {
     ///
     /// ## 设计考量（Trade-offs）
     /// - 通过集中转换点可以在未来 Schema 演进时加入默认值或迁移逻辑，降低破坏性改动。
-    pub(crate) fn from_repr(repr: AuditEventV1Repr) -> Result<Self, String> {
+    pub(crate) fn from_repr(repr: AuditEventV1Repr) -> crate::Result<Self, String> {
         let changes = AuditChangeSet::from_repr(repr.changes)
             .map_err(|err| format!("invalid change set: {}", err))?;
         Ok(Self {
@@ -386,7 +386,7 @@ impl AuditEventV1 {
 }
 
 impl serde::Serialize for AuditEventV1 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> crate::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -395,7 +395,7 @@ impl serde::Serialize for AuditEventV1 {
 }
 
 impl<'de> serde::Deserialize<'de> for AuditEventV1 {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> crate::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -484,7 +484,7 @@ impl AuditChangeSet {
     ///
     /// ## 契约定义（What）
     /// - 入参：`repr`。
-    /// - 返回：`Result<AuditChangeSet, String>`，失败时包含详细错误信息。
+    /// - 返回：`crate::Result<AuditChangeSet, String>`，失败时包含详细错误信息。
     ///
     /// ## 逻辑解析（How）
     /// - 对内部表示的向量执行 `into_iter` 并调用条目级 `from_repr` 还原。
@@ -495,7 +495,7 @@ impl AuditChangeSet {
     ///
     /// ## 设计考量（Trade-offs）
     /// - 保持函数 `pub(crate)`，防止外部组件绕过类型抽象直接依赖内部表示。
-    pub(crate) fn from_repr(repr: AuditChangeSetRepr) -> Result<Self, String> {
+    pub(crate) fn from_repr(repr: AuditChangeSetRepr) -> crate::Result<Self, String> {
         let created = repr
             .created
             .into_iter()
@@ -505,7 +505,7 @@ impl AuditChangeSet {
                     format!("invalid created change entry at index {}: {}", idx, err)
                 })
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<crate::Result<Vec<_>, _>>()?;
         let updated = repr
             .updated
             .into_iter()
@@ -515,7 +515,7 @@ impl AuditChangeSet {
                     format!("invalid updated change entry at index {}: {}", idx, err)
                 })
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<crate::Result<Vec<_>, _>>()?;
         let deleted = repr
             .deleted
             .into_iter()
@@ -525,7 +525,7 @@ impl AuditChangeSet {
                     format!("invalid deleted change entry at index {}: {}", idx, err)
                 })
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<crate::Result<Vec<_>, _>>()?;
         Ok(Self {
             created,
             updated,
@@ -535,7 +535,7 @@ impl AuditChangeSet {
 }
 
 impl serde::Serialize for AuditChangeSet {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> crate::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -544,7 +544,7 @@ impl serde::Serialize for AuditChangeSet {
 }
 
 impl<'de> serde::Deserialize<'de> for AuditChangeSet {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> crate::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -565,7 +565,7 @@ pub struct AuditChangeEntry {
 }
 
 impl serde::Serialize for AuditChangeEntry {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> crate::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -574,7 +574,7 @@ impl serde::Serialize for AuditChangeEntry {
 }
 
 impl<'de> serde::Deserialize<'de> for AuditChangeEntry {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> crate::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -623,7 +623,7 @@ impl AuditChangeEntry {
     ///
     /// ## 设计考量（Trade-offs）
     /// - 选择 `String` 作为错误类型，方便直接映射到 `serde` 的 `custom` 错误提示。
-    pub(crate) fn from_repr(repr: AuditChangeEntryRepr) -> Result<Self, String> {
+    pub(crate) fn from_repr(repr: AuditChangeEntryRepr) -> crate::Result<Self, String> {
         let key = ConfigKey::from_repr(repr.key)
             .map_err(|err| format!("invalid config key in change entry: {}", err))?;
         let value = ConfigValue::from_repr(repr.value)
@@ -642,7 +642,7 @@ pub struct AuditDeletedEntry {
 }
 
 impl serde::Serialize for AuditDeletedEntry {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> crate::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -651,7 +651,7 @@ impl serde::Serialize for AuditDeletedEntry {
 }
 
 impl<'de> serde::Deserialize<'de> for AuditDeletedEntry {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> crate::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -699,7 +699,7 @@ impl AuditDeletedEntry {
     ///
     /// ## 设计考量（Trade-offs）
     /// - 返回 `String` 以便与 `serde` 的 `custom` 错误无缝衔接。
-    pub(crate) fn from_repr(repr: AuditDeletedEntryRepr) -> Result<Self, String> {
+    pub(crate) fn from_repr(repr: AuditDeletedEntryRepr) -> crate::Result<Self, String> {
         let key = ConfigKey::from_repr(repr.key)
             .map_err(|err| format!("invalid config key in deleted entry: {}", err))?;
         Ok(Self { key })
@@ -772,9 +772,9 @@ pub(crate) struct AuditEventV1Repr {
 /// - `record`：同步写入事件。若返回错误，上游会视为此次变更失败并触发重试或熔断。
 /// - `flush`：可选的刷新钩子，默认返回成功；文件 Recorder 可在此同步落盘。
 pub trait AuditRecorder: Send + Sync {
-    fn record(&self, event: AuditEventV1) -> Result<(), AuditError>;
+    fn record(&self, event: AuditEventV1) -> crate::Result<(), AuditError>;
 
-    fn flush(&self) -> Result<(), AuditError> {
+    fn flush(&self) -> crate::Result<(), AuditError> {
         Ok(())
     }
 }
@@ -1016,7 +1016,7 @@ impl InMemoryAuditRecorder {
 
 #[cfg(feature = "std")]
 impl AuditRecorder for InMemoryAuditRecorder {
-    fn record(&self, event: AuditEventV1) -> Result<(), AuditError> {
+    fn record(&self, event: AuditEventV1) -> crate::Result<(), AuditError> {
         let mut guard = self
             .inner
             .lock()

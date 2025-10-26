@@ -22,7 +22,7 @@
 //!         subject: &IdentityDescriptor,
 //!         resource: &ResourcePattern,
 //!         context: &EvaluationContext,
-//!     ) -> Result<PolicyEffect, EvaluationError>;
+//!     ) -> crate::Result<PolicyEffect, EvaluationError>;
 //! }
 //!
 //! /// 上层可自定义的求值上下文与错误类型示例。

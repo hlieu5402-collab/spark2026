@@ -17,7 +17,7 @@ use core::{convert::TryFrom, fmt, num::NonZeroU16};
 struct FrameCharge(u64);
 
 impl FrameCharge {
-    fn new(len: usize) -> Result<Self, CoreError> {
+    fn new(len: usize) -> crate::Result<Self, CoreError> {
         u64::try_from(len).map(FrameCharge).map_err(|_| {
             CoreError::new(
                 codes::PROTOCOL_BUDGET_EXCEEDED,
@@ -118,7 +118,10 @@ impl<'a> EncodeContext<'a> {
     }
 
     /// 租借一个满足最小容量的可写缓冲区。
-    pub fn acquire_buffer(&self, min_capacity: usize) -> Result<Box<ErasedSparkBufMut>, CoreError> {
+    pub fn acquire_buffer(
+        &self,
+        min_capacity: usize,
+    ) -> crate::Result<Box<ErasedSparkBufMut>, CoreError> {
         self.allocator.acquire(min_capacity)
     }
 
@@ -159,7 +162,7 @@ impl<'a> EncodeContext<'a> {
     ///   - **后置条件**：若返回错误，内部状态（深度、预算）不发生变化。
     /// - **风险提示 (Trade-offs & Gotchas)**：
     ///   - 若调用方需要在失败后继续处理同一帧，需显式调用 [`Self::refund_budget`] 回滚此前的消费。
-    pub fn check_frame_constraints(&self, frame_len: usize) -> Result<(), CoreError> {
+    pub fn check_frame_constraints(&self, frame_len: usize) -> crate::Result<(), CoreError> {
         if let Some(max) = self.max_frame_size
             && frame_len > max
         {
@@ -208,7 +211,7 @@ impl<'a> EncodeContext<'a> {
     ///   - **输入**：无需显式传参，当前上下文自身携带上限信息。
     /// - **注意事项 (Trade-offs)**：
     ///   - `EncodeFrameGuard` 标记为 `#[must_use]`，若立即丢弃则无法真正进入下一层（相当于空操作）。
-    pub fn enter_frame(&mut self) -> Result<EncodeFrameGuard<'_, 'a>, CoreError> {
+    pub fn enter_frame(&mut self) -> crate::Result<EncodeFrameGuard<'_, 'a>, CoreError> {
         if let Some(limit) = self.max_recursion_depth
             && self.current_depth >= limit.get()
         {
@@ -359,5 +362,5 @@ pub trait Encoder: Send + Sync + 'static + Sealed {
         &self,
         item: &Self::Item,
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, CoreError>;
+    ) -> crate::Result<EncodedPayload, CoreError>;
 }

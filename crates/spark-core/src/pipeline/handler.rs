@@ -78,17 +78,17 @@ pub trait OutboundHandler: Send + Sync + 'static + Sealed {
         &self,
         ctx: &dyn Context,
         msg: PipelineMessage,
-    ) -> Result<super::channel::WriteSignal, CoreError>;
+    ) -> crate::Result<super::channel::WriteSignal, CoreError>;
 
     /// 刷新写缓冲。
-    fn on_flush(&self, ctx: &dyn Context) -> Result<(), CoreError>;
+    fn on_flush(&self, ctx: &dyn Context) -> crate::Result<(), CoreError>;
 
     /// 优雅关闭。
     fn on_close_graceful(
         &self,
         ctx: &dyn Context,
         deadline: Option<core::time::Duration>,
-    ) -> Result<(), CoreError>;
+    ) -> crate::Result<(), CoreError>;
 }
 
 /// 同时处理入站与出站事件的全双工 Handler。
@@ -199,11 +199,11 @@ impl OutboundHandler for BorrowedOutboundHandlerAdapter {
         &self,
         ctx: &dyn Context,
         msg: PipelineMessage,
-    ) -> Result<super::channel::WriteSignal, CoreError> {
+    ) -> crate::Result<super::channel::WriteSignal, CoreError> {
         self.inner.on_write(ctx, msg)
     }
 
-    fn on_flush(&self, ctx: &dyn Context) -> Result<(), CoreError> {
+    fn on_flush(&self, ctx: &dyn Context) -> crate::Result<(), CoreError> {
         self.inner.on_flush(ctx)
     }
 
@@ -211,7 +211,7 @@ impl OutboundHandler for BorrowedOutboundHandlerAdapter {
         &self,
         ctx: &dyn Context,
         deadline: Option<core::time::Duration>,
-    ) -> Result<(), CoreError> {
+    ) -> crate::Result<(), CoreError> {
         self.inner.on_close_graceful(ctx, deadline)
     }
 }

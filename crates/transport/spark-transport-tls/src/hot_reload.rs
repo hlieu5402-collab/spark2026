@@ -110,7 +110,10 @@ impl HotReloadingServerConfig {
     /// # 风险提示（Trade-offs & Gotchas）
     /// - 握手期间若底层连接中断，`tokio-rustls` 会返回 `io::Error`，上层需结合遥测判断是否触发熔断或重试；
     /// - 若配置包含需要外部资源的会话存储（如缓存引用），应确保其生命周期覆盖所有旧连接。
-    pub async fn accept<IO>(&self, stream: IO) -> Result<TlsStream<IO>, TlsHandshakeError>
+    pub async fn accept<IO>(
+        &self,
+        stream: IO,
+    ) -> spark_core::Result<TlsStream<IO>, TlsHandshakeError>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {

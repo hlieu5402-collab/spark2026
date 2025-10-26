@@ -22,21 +22,25 @@ impl WritableBuffer for NoopBuffer {
         0
     }
 
-    fn reserve(&mut self, _additional: usize) -> Result<(), CoreError> {
+    fn reserve(&mut self, _additional: usize) -> spark_core::Result<(), CoreError> {
         Ok(())
     }
 
-    fn put_slice(&mut self, _src: &[u8]) -> Result<(), CoreError> {
+    fn put_slice(&mut self, _src: &[u8]) -> spark_core::Result<(), CoreError> {
         Ok(())
     }
 
-    fn write_from(&mut self, _src: &mut dyn ReadableBuffer, _len: usize) -> Result<(), CoreError> {
+    fn write_from(
+        &mut self,
+        _src: &mut dyn ReadableBuffer,
+        _len: usize,
+    ) -> spark_core::Result<(), CoreError> {
         Ok(())
     }
 
     fn clear(&mut self) {}
 
-    fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+    fn freeze(self: Box<Self>) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
         Err(CoreError::new(
             codes::PROTOCOL_DECODE,
             "noop buffer does not support freeze",
@@ -48,15 +52,18 @@ impl WritableBuffer for NoopBuffer {
 struct TestAllocator;
 
 impl BufferPool for TestAllocator {
-    fn acquire(&self, _min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
+    fn acquire(
+        &self,
+        _min_capacity: usize,
+    ) -> spark_core::Result<Box<dyn WritableBuffer>, CoreError> {
         Ok(Box::new(NoopBuffer))
     }
 
-    fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+    fn shrink_to_fit(&self) -> spark_core::Result<usize, CoreError> {
         Ok(0)
     }
 
-    fn statistics(&self) -> Result<PoolStats, CoreError> {
+    fn statistics(&self) -> spark_core::Result<PoolStats, CoreError> {
         Ok(PoolStats::default())
     }
 }

@@ -91,7 +91,11 @@ impl QuicChannel {
         }
     }
 
-    pub async fn read(&self, ctx: &CallContext, buf: &mut [u8]) -> Result<usize, CoreError> {
+    pub async fn read(
+        &self,
+        ctx: &CallContext,
+        buf: &mut [u8],
+    ) -> spark_core::Result<usize, CoreError> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -106,7 +110,11 @@ impl QuicChannel {
         .await
     }
 
-    pub async fn write(&self, ctx: &CallContext, buf: &[u8]) -> Result<usize, CoreError> {
+    pub async fn write(
+        &self,
+        ctx: &CallContext,
+        buf: &[u8],
+    ) -> spark_core::Result<usize, CoreError> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -127,7 +135,7 @@ impl QuicChannel {
         Ok(result)
     }
 
-    pub async fn flush(&self, ctx: &CallContext) -> Result<(), CoreError> {
+    pub async fn flush(&self, ctx: &CallContext) -> spark_core::Result<(), CoreError> {
         if deadline_expired(ctx.deadline()) {
             return Err(error::timeout_error(FLUSH));
         }
@@ -141,7 +149,7 @@ impl QuicChannel {
         &self,
         ctx: &CallContext,
         direction: ShutdownDirection,
-    ) -> Result<(), CoreError> {
+    ) -> spark_core::Result<(), CoreError> {
         run_with_context(ctx, error::SHUTDOWN, async {
             match direction {
                 ShutdownDirection::Write => self.finish_send().await,
@@ -214,7 +222,7 @@ impl QuicChannel {
         self.inner.local_addr
     }
 
-    async fn finish_send(&self) -> Result<(), CoreError> {
+    async fn finish_send(&self) -> spark_core::Result<(), CoreError> {
         let mut guard = self.inner.send.lock().await;
         match guard.finish() {
             Ok(_) => Ok(()),
@@ -222,7 +230,7 @@ impl QuicChannel {
         }
     }
 
-    async fn stop_receive(&self) -> Result<(), CoreError> {
+    async fn stop_receive(&self) -> spark_core::Result<(), CoreError> {
         let mut guard = self.inner.recv.lock().await;
         if guard.stop(VarInt::from_u32(0)).is_err() {
             // 若流已关闭或重复调用，忽略错误以保持幂等。
@@ -237,25 +245,31 @@ impl TransportConnectionTrait for QuicChannel {
     type ReadyCtx<'ctx> = ExecutionContext<'ctx>;
 
     type ReadFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+        = Pin<
+        Box<dyn core::future::Future<Output = spark_core::Result<usize, CoreError>> + Send + 'ctx>,
+    >
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     type WriteFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+        = Pin<
+        Box<dyn core::future::Future<Output = spark_core::Result<usize, CoreError>> + Send + 'ctx>,
+    >
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     type ShutdownFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+        =
+        Pin<Box<dyn core::future::Future<Output = spark_core::Result<(), CoreError>> + Send + 'ctx>>
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     type FlushFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+        =
+        Pin<Box<dyn core::future::Future<Output = spark_core::Result<(), CoreError>> + Send + 'ctx>>
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;

@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// 查找首行并返回剩余部分。
-pub(crate) fn split_first_line(input: &str) -> Result<(&str, &str), SipParseError> {
+pub(crate) fn split_first_line(input: &str) -> spark_core::Result<(&str, &str), SipParseError> {
     match input.find("\r\n") {
         Some(idx) => Ok((&input[..idx], &input[idx + 2..])),
         None => Err(SipParseError::UnexpectedEof),
@@ -31,7 +31,7 @@ pub(crate) fn split_first_line(input: &str) -> Result<(&str, &str), SipParseErro
 }
 
 /// 将 header 与 body 分离。
-pub(crate) fn split_headers_body(input: &str) -> Result<(&str, &str), SipParseError> {
+pub(crate) fn split_headers_body(input: &str) -> spark_core::Result<(&str, &str), SipParseError> {
     match input.find("\r\n\r\n") {
         Some(idx) => Ok((&input[..idx], &input[idx + 4..])),
         None => Err(SipParseError::UnexpectedEof),
@@ -98,7 +98,7 @@ where
 }
 
 /// 解析 SIP URI。
-pub(crate) fn parse_sip_uri<'a>(input: &'a str) -> Result<SipUri<'a>, SipParseError> {
+pub(crate) fn parse_sip_uri<'a>(input: &'a str) -> spark_core::Result<SipUri<'a>, SipParseError> {
     let trimmed_start = skip_lws(input, 0);
     let trimmed_end = trim_lws_end(input, input.len());
     if trimmed_start >= trimmed_end {
@@ -186,6 +186,6 @@ pub(crate) fn parse_sip_uri<'a>(input: &'a str) -> Result<SipUri<'a>, SipParseEr
     })
 }
 
-fn parse_port(text: &str) -> Result<u16, SipParseError> {
+fn parse_port(text: &str) -> spark_core::Result<u16, SipParseError> {
     text.parse::<u16>().map_err(|_| SipParseError::InvalidUri)
 }

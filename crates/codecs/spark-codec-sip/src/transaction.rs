@@ -150,7 +150,10 @@ impl InviteServerTransaction {
     /// - **前置条件**：状态必须为 `Trying`/`Proceeding`，或在 `Completed` 且重复写入同一状态码；
     /// - **后置条件**：成功后状态进入 `Completed`；若 CANCEL 曾生成 487，再次写入其它状态码
     ///   会返回 [`SipTransactionError::FinalResponseConflict`]。
-    pub fn record_final_response(&mut self, status: u16) -> Result<(), SipTransactionError> {
+    pub fn record_final_response(
+        &mut self,
+        status: u16,
+    ) -> spark_core::Result<(), SipTransactionError> {
         match self.state {
             InviteServerTransactionState::Trying | InviteServerTransactionState::Proceeding => {
                 self.final_response = Some(status);
@@ -179,7 +182,7 @@ impl InviteServerTransaction {
     /// # 返回值
     /// - 成功时返回 [`CancelOutcome`]，其中 `cancelled_invite` 表示是否需要对 INVITE 发送 487；
     /// - 若事务已经终止，则返回 [`SipTransactionError::TransactionTerminated`]。
-    pub fn handle_cancel(&mut self) -> Result<CancelOutcome, SipTransactionError> {
+    pub fn handle_cancel(&mut self) -> spark_core::Result<CancelOutcome, SipTransactionError> {
         match self.state {
             InviteServerTransactionState::Trying | InviteServerTransactionState::Proceeding => {
                 if self.final_response.is_none() {

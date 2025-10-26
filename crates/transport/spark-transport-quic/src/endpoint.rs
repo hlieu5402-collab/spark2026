@@ -55,7 +55,7 @@ impl QuicEndpoint {
         addr: TransportSocketAddr,
         server_config: ServerConfig,
         client_config: Option<ClientConfig>,
-    ) -> Result<Self, CoreError> {
+    ) -> spark_core::Result<Self, CoreError> {
         let socket_addr = to_socket_addr(addr);
         let mut endpoint = Endpoint::server(server_config, socket_addr)
             .map_err(|err| error::map_io_error(error::BIND, err))?;
@@ -75,7 +75,7 @@ impl QuicEndpoint {
     pub async fn bind_client(
         addr: TransportSocketAddr,
         client_config: ClientConfig,
-    ) -> Result<Self, CoreError> {
+    ) -> spark_core::Result<Self, CoreError> {
         let socket_addr = to_socket_addr(addr);
         let mut endpoint =
             Endpoint::client(socket_addr).map_err(|err| error::map_io_error(error::BIND, err))?;
@@ -90,7 +90,7 @@ impl QuicEndpoint {
         })
     }
 
-    pub async fn accept(&self) -> Result<QuicConnection, CoreError> {
+    pub async fn accept(&self) -> spark_core::Result<QuicConnection, CoreError> {
         match self.mode {
             EndpointMode::Server => {
                 let incoming = self
@@ -114,7 +114,7 @@ impl QuicEndpoint {
         &self,
         addr: TransportSocketAddr,
         server_name: &str,
-    ) -> Result<QuicConnection, CoreError> {
+    ) -> spark_core::Result<QuicConnection, CoreError> {
         let socket_addr = to_socket_addr(addr);
         let connecting = self
             .endpoint
@@ -147,7 +147,7 @@ impl QuicConnection {
         self.local_addr
     }
 
-    pub async fn open_bi(&self) -> Result<QuicChannel, CoreError> {
+    pub async fn open_bi(&self) -> spark_core::Result<QuicChannel, CoreError> {
         let (send, recv) = self
             .connection
             .open_bi()
@@ -161,7 +161,7 @@ impl QuicConnection {
         ))
     }
 
-    pub async fn accept_bi(&self) -> Result<Option<QuicChannel>, CoreError> {
+    pub async fn accept_bi(&self) -> spark_core::Result<Option<QuicChannel>, CoreError> {
         match self.connection.accept_bi().await {
             Ok((send, recv)) => Ok(Some(QuicChannel::from_streams(
                 self.connection.clone(),

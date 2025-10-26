@@ -93,7 +93,7 @@ impl From<serde_json::Error> for BenchError {
 /// - 返回 `CliOptions`，包含是否快速模式以及可选的输出/阈值覆盖路径。
 /// - 前置条件：参数成对出现（例如 `--output` 后必须跟路径）。
 /// - 后置条件：若返回成功，`args` 中的所有标志均被识别并消费。
-fn parse_cli() -> Result<CliOptions, BenchError> {
+fn parse_cli() -> spark_core::Result<CliOptions, BenchError> {
     let mut quick_mode = false;
     let mut output = None;
     let mut threshold = None;
@@ -684,10 +684,10 @@ struct OperationThreshold {
 /// 6. 将结果写入 JSON。
 ///
 /// # What
-/// - 返回 `Result<(), BenchError>`：成功时说明阈值满足，失败时携带诊断信息。
+/// - 返回 `spark_core::Result<(), BenchError>`：成功时说明阈值满足，失败时携带诊断信息。
 /// - 前置条件：工作目录位于仓库根目录附近，使默认路径可解析。
 /// - 后置条件：若成功，`docs/reports/benchmarks` 中会出现最新报告。
-fn run() -> Result<(), BenchError> {
+fn run() -> spark_core::Result<(), BenchError> {
     let cli = parse_cli()?;
     let config = if cli.quick_mode {
         BenchConfig {
@@ -1118,7 +1118,10 @@ fn percentile_f64(sorted: &[f64], quantile: f64) -> f64 {
 /// - 输出：[`ModeThreshold`]，供 [`enforce_thresholds`] 使用。
 /// - 前置条件：JSON 顶层 `benchmark` 必须等于 `zerocopy_extremes`。
 /// - 后置条件：若模式缺失或名称不匹配，返回 `BenchError::Threshold`。
-fn load_thresholds(path: Option<&Path>, quick_mode: bool) -> Result<ModeThreshold, BenchError> {
+fn load_thresholds(
+    path: Option<&Path>,
+    quick_mode: bool,
+) -> spark_core::Result<ModeThreshold, BenchError> {
     let repo_root = resolve_repo_root();
     let default_path = repo_root
         .join("docs")
@@ -1163,7 +1166,7 @@ fn load_thresholds(path: Option<&Path>, quick_mode: bool) -> Result<ModeThreshol
 fn enforce_thresholds(
     report: &BenchmarkReport,
     thresholds: &ModeThreshold,
-) -> Result<(), BenchError> {
+) -> spark_core::Result<(), BenchError> {
     let mut violations = Vec::new();
     for scenario in &report.scenarios {
         let Some(limit) = thresholds
@@ -1248,7 +1251,7 @@ fn enforce_thresholds(
 fn persist_report(
     report: &BenchmarkReport,
     override_path: Option<&Path>,
-) -> Result<(), BenchError> {
+) -> spark_core::Result<(), BenchError> {
     let repo_root = resolve_repo_root();
     let default_file = if report.quick_mode {
         "zerocopy_extremes.quick.json"

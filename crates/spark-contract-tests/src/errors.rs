@@ -260,7 +260,7 @@ impl Controller for RecordingController {
         &self,
         _: &dyn spark_core::pipeline::Middleware,
         _: &spark_core::runtime::CoreServices,
-    ) -> Result<(), CoreError> {
+    ) -> spark_core::Result<(), CoreError> {
         Ok(())
     }
 
@@ -375,11 +375,11 @@ impl Channel for RecordingChannel {
 
     fn close(&self) {}
 
-    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>> {
+    fn closed(&self) -> BoxFuture<'static, spark_core::Result<(), SparkError>> {
         Box::pin(async { Ok(()) })
     }
 
-    fn write(&self, _msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+    fn write(&self, _msg: PipelineMessage) -> spark_core::Result<WriteSignal, CoreError> {
         Ok(WriteSignal::Accepted)
     }
 
@@ -491,7 +491,7 @@ impl Context for RecordingContext {
 
     fn forward_read(&self, _msg: PipelineMessage) {}
 
-    fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+    fn write(&self, msg: PipelineMessage) -> spark_core::Result<WriteSignal, CoreError> {
         self.channel.write(msg)
     }
 
@@ -507,7 +507,7 @@ impl Context for RecordingContext {
         self.channel.close_graceful(reason, deadline);
     }
 
-    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>> {
+    fn closed(&self) -> BoxFuture<'static, spark_core::Result<(), SparkError>> {
         self.channel.closed()
     }
 }
@@ -515,15 +515,18 @@ impl Context for RecordingContext {
 struct NoopBufferPool;
 
 impl spark_core::buffer::BufferPool for NoopBufferPool {
-    fn acquire(&self, _: usize) -> Result<Box<dyn spark_core::buffer::WritableBuffer>, CoreError> {
+    fn acquire(
+        &self,
+        _: usize,
+    ) -> spark_core::Result<Box<dyn spark_core::buffer::WritableBuffer>, CoreError> {
         Err(CoreError::new("buffer.disabled", "buffer pool disabled"))
     }
 
-    fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+    fn shrink_to_fit(&self) -> spark_core::Result<usize, CoreError> {
         Ok(0)
     }
 
-    fn statistics(&self) -> Result<spark_core::buffer::PoolStats, CoreError> {
+    fn statistics(&self) -> spark_core::Result<spark_core::buffer::PoolStats, CoreError> {
         Ok(spark_core::buffer::PoolStats {
             allocated_bytes: 0,
             resident_bytes: 0,

@@ -10,6 +10,17 @@
 
 extern crate alloc;
 
+/// `Result` 是传输层契约内部使用的统一返回别名，避免直接依赖 `spark-core` 造成循环引用。
+///
+/// # 设计背景（Why）
+/// - `spark-core` 依赖本 crate 暴露的接口，若在此直接引入 `spark-core::Result` 会导致依赖环。
+/// - 通过本地别名确保传输层仍遵循统一错误语义，调用方可以在上层将错误转换为框架标准形式。
+///
+/// # 使用方式（How）
+/// - 与 `core::result::Result` 完全等价，默认不指定错误类型，调用者需在签名中显式声明错误枚举。
+/// - 上层若需要转换为 `spark-core::Result`，可在桥接实现中直接 `map_err`。
+pub type Result<T, E> = core::result::Result<T, E>;
+
 pub mod addr;
 pub mod backpressure;
 pub mod budget;

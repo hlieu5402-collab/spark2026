@@ -50,13 +50,13 @@ pub trait DynService: Send + Sync + Sealed {
         &mut self,
         ctx: CallContext,
         req: PipelineMessage,
-    ) -> Result<PipelineMessage, SparkError>;
+    ) -> crate::Result<PipelineMessage, SparkError>;
 
     /// 通知服务执行优雅关闭逻辑。
     fn graceful_close(&mut self, reason: CloseReason);
 
     /// 等待服务完全关闭。
-    async fn closed(&mut self) -> Result<(), SparkError>;
+    async fn closed(&mut self) -> crate::Result<(), SparkError>;
 }
 
 /// 用于自定义关闭逻辑的钩子类型别名。
@@ -84,7 +84,7 @@ pub type CloseCallback<S> = dyn Fn(&mut S, CloseReason) + Send + Sync;
 pub struct ServiceObject<S, Request, Response, Decode, Encode>
 where
     S: Service<Request, Response = Response, Error = SparkError>,
-    Decode: Fn(PipelineMessage) -> Result<Request, SparkError> + Send + Sync + 'static,
+    Decode: Fn(PipelineMessage) -> crate::Result<Request, SparkError> + Send + Sync + 'static,
     Encode: Fn(Response) -> PipelineMessage + Send + Sync + 'static,
 {
     inner: S,
@@ -96,7 +96,7 @@ where
 impl<S, Request, Response, Decode, Encode> ServiceObject<S, Request, Response, Decode, Encode>
 where
     S: Service<Request, Response = Response, Error = SparkError>,
-    Decode: Fn(PipelineMessage) -> Result<Request, SparkError> + Send + Sync + 'static,
+    Decode: Fn(PipelineMessage) -> crate::Result<Request, SparkError> + Send + Sync + 'static,
     Encode: Fn(Response) -> PipelineMessage + Send + Sync + 'static,
 {
     /// 创建默认关闭钩子的适配器实例。
@@ -129,7 +129,7 @@ impl<S, Request, Response, Decode, Encode> DynService
     for ServiceObject<S, Request, Response, Decode, Encode>
 where
     S: Service<Request, Response = Response, Error = SparkError>,
-    Decode: Fn(PipelineMessage) -> Result<Request, SparkError> + Send + Sync + 'static,
+    Decode: Fn(PipelineMessage) -> crate::Result<Request, SparkError> + Send + Sync + 'static,
     Encode: Fn(Response) -> PipelineMessage + Send + Sync + 'static,
 {
     fn poll_ready_dyn(
@@ -144,7 +144,7 @@ where
         &mut self,
         ctx: CallContext,
         req: PipelineMessage,
-    ) -> Result<PipelineMessage, SparkError> {
+    ) -> crate::Result<PipelineMessage, SparkError> {
         let decode = Arc::clone(&self.decode);
         let encode = Arc::clone(&self.encode);
         let request = (decode.as_ref())(req)?;
@@ -156,7 +156,7 @@ where
         (self.on_close)(&mut self.inner, reason);
     }
 
-    async fn closed(&mut self) -> Result<(), SparkError> {
+    async fn closed(&mut self) -> crate::Result<(), SparkError> {
         Ok(())
     }
 }

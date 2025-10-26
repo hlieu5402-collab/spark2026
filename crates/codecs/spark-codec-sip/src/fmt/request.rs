@@ -22,7 +22,7 @@ pub fn write_request<W: fmt::Write>(
     line: &RequestLine<'_>,
     headers: &[Header<'_>],
     body: &[u8],
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     write_request_line(writer, line)?;
     writer.write_str("\r\n")?;
     write_headers(writer, headers)?;
@@ -35,7 +35,7 @@ pub fn write_request<W: fmt::Write>(
 pub fn write_request_line<W: fmt::Write>(
     writer: &mut W,
     line: &RequestLine<'_>,
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     writer.write_str(line.method.as_str())?;
     writer.write_char(' ')?;
     write_uri(writer, &line.uri)?;
@@ -44,7 +44,10 @@ pub fn write_request_line<W: fmt::Write>(
     Ok(())
 }
 
-fn write_body<W: fmt::Write>(writer: &mut W, body: &[u8]) -> Result<(), SipFormatError> {
+fn write_body<W: fmt::Write>(
+    writer: &mut W,
+    body: &[u8],
+) -> spark_core::Result<(), SipFormatError> {
     if body.is_empty() {
         return Ok(());
     }

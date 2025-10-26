@@ -117,10 +117,10 @@ pub trait Channel: Send + Sync + 'static + Sealed {
     fn close(&self);
 
     /// 等待连接完全关闭，用于满足“优雅关闭契约”。
-    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>>;
+    fn closed(&self) -> BoxFuture<'static, crate::Result<(), SparkError>>;
 
     /// 向通道写入消息，返回背压信号。
-    fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, CoreError>;
+    fn write(&self, msg: PipelineMessage) -> crate::Result<WriteSignal, CoreError>;
 
     /// 刷新底层缓冲。
     fn flush(&self);

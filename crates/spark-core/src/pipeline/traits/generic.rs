@@ -27,5 +27,5 @@ pub trait ControllerFactory: Send + Sync + 'static + Sealed {
     type Controller: Controller<HandleId = ControllerHandleId>;
 
     /// 构建控制器并装配完整 Pipeline 链路。
-    fn build(&self, core_services: &CoreServices) -> Result<Self::Controller, CoreError>;
+    fn build(&self, core_services: &CoreServices) -> crate::Result<Self::Controller, CoreError>;
 }

@@ -100,7 +100,7 @@ where
 impl<F, Request, Fut, Response, E> Service<Request> for SimpleServiceFn<F>
 where
     F: FnMut(CallContext, Request) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<Response, E>> + Send + 'static,
+    Fut: Future<Output = crate::Result<Response, E>> + Send + 'static,
     Response: Send + 'static,
     E: Error + Send + 'static,
 {
@@ -135,7 +135,7 @@ pub trait ServiceLogic<Request>: Send + Sync + 'static {
     /// 业务错误类型，需实现 [`Error`]。
     type Error: Error + Send + 'static;
     /// 具体的 Future 类型，实现者可返回 `async fn` 编译生成的匿名 Future。
-    type Future: Future<Output = Result<Self::Response, Self::Error>> + Send + 'static;
+    type Future: Future<Output = crate::Result<Self::Response, Self::Error>> + Send + 'static;
 
     /// 触发一次业务调用。
     ///
@@ -152,7 +152,7 @@ pub struct AsyncFnLogic<F>(pub F);
 impl<Request, F, Fut, Response, E> ServiceLogic<Request> for AsyncFnLogic<F>
 where
     F: FnMut(CallContext, Request) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<Response, E>> + Send + 'static,
+    Fut: Future<Output = crate::Result<Response, E>> + Send + 'static,
     Response: Send + 'static,
     E: Error + Send + 'static,
 {
@@ -232,7 +232,7 @@ pub struct GuardedFuture<Fut, Response, Error> {
 
 impl<Fut, Response, Error> GuardedFuture<Fut, Response, Error>
 where
-    Fut: Future<Output = Result<Response, Error>>,
+    Fut: Future<Output = crate::Result<Response, Error>>,
 {
     fn new(guard: ReadyFutureGuard, future: Fut) -> Self {
         Self {
@@ -245,9 +245,9 @@ where
 
 impl<Fut, Response, Error> Future for GuardedFuture<Fut, Response, Error>
 where
-    Fut: Future<Output = Result<Response, Error>>,
+    Fut: Future<Output = crate::Result<Response, Error>>,
 {
-    type Output = Result<Response, Error>;
+    type Output = crate::Result<Response, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
         // SAFETY: `self` 已被 Pin 固定，`GuardedFuture` 不会实现 `Unpin`，因此 `get_unchecked_mut`

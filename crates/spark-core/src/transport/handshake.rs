@@ -600,7 +600,7 @@ impl NegotiationAuditContext {
         local: Version,
         remote: Version,
         occurred_at: u64,
-    ) -> Result<(), HandshakeError> {
+    ) -> crate::Result<(), HandshakeError> {
         let prev_hash = self
             .chain_state
             .clone()
@@ -713,7 +713,7 @@ impl NegotiationAuditContext {
         local: Version,
         remote: Version,
         occurred_at: u64,
-    ) -> Result<(), HandshakeError> {
+    ) -> crate::Result<(), HandshakeError> {
         let prev_hash = self
             .chain_state
             .clone()
@@ -809,7 +809,7 @@ pub fn negotiate(
     remote: &HandshakeOffer,
     occurred_at: u64,
     mut audit: Option<&mut NegotiationAuditContext>,
-) -> Result<HandshakeOutcome, HandshakeError> {
+) -> crate::Result<HandshakeOutcome, HandshakeError> {
     if !local.version().is_compatible_with(&remote.version()) {
         let error = HandshakeError {
             kind: HandshakeErrorKind::MajorVersionMismatch {

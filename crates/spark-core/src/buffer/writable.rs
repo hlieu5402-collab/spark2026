@@ -41,17 +41,21 @@ pub trait WritableBuffer: Send + Sync + 'static + Sealed {
     fn written(&self) -> usize;
 
     /// 确保至少追加 `additional` 字节的可写空间。
-    fn reserve(&mut self, additional: usize) -> Result<(), CoreError>;
+    fn reserve(&mut self, additional: usize) -> crate::Result<(), CoreError>;
 
     /// 将切片写入缓冲末尾。
-    fn put_slice(&mut self, src: &[u8]) -> Result<(), CoreError>;
+    fn put_slice(&mut self, src: &[u8]) -> crate::Result<(), CoreError>;
 
     /// 从 `ReadableBuffer` 转写 `len` 字节。
-    fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> Result<(), CoreError>;
+    fn write_from(
+        &mut self,
+        src: &mut dyn ReadableBuffer,
+        len: usize,
+    ) -> crate::Result<(), CoreError>;
 
     /// 清空已写内容但保留容量，便于重复使用。
     fn clear(&mut self);
 
     /// 冻结缓冲区，转换为只读视图。
-    fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError>;
+    fn freeze(self: Box<Self>) -> crate::Result<Box<dyn ReadableBuffer>, CoreError>;
 }

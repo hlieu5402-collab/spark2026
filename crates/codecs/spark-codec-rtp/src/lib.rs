@@ -111,7 +111,7 @@ impl RtpHeader {
     /// 设置 CSRC 列表。
     ///
     /// - **Contract**：输入切片长度不得超过 15；调用后 `csrc_count` 将被更新为切片长度。
-    pub fn set_csrcs(&mut self, csrcs: &[u32]) -> Result<(), RtpEncodeError> {
+    pub fn set_csrcs(&mut self, csrcs: &[u32]) -> spark_core::Result<(), RtpEncodeError> {
         if csrcs.len() > MAX_CSRC_COUNT {
             return Err(RtpEncodeError::InvalidField("csrc_count"));
         }
@@ -205,7 +205,7 @@ pub struct RtpPacket<'a> {
 /// - **返回值**：成功时返回携带零拷贝引用的 `RtpPacket`；失败时返回 `RtpParseError`。
 /// - **前置条件**：调用期间底层缓冲不可被修改或释放，确保 `RtpPacket` 内的视图有效。
 /// - **后置条件**：若成功，`payload()`/`extension()` 均可在不复制底层字节的情况下访问原始数据。
-pub fn parse_rtp<'a>(buffer: &'a dyn BufView) -> Result<RtpPacket<'a>, RtpParseError> {
+pub fn parse_rtp<'a>(buffer: &'a dyn BufView) -> spark_core::Result<RtpPacket<'a>, RtpParseError> {
     let view: &'a dyn BufView = buffer;
     let total_len = view.len();
     if total_len < RTP_HEADER_MIN_LEN {
@@ -644,7 +644,11 @@ impl<'a> RtpPacketBuilder<'a> {
     }
 
     /// 配置 header 扩展数据。
-    pub fn extension_bytes(mut self, profile: u16, data: &'a [u8]) -> Result<Self, RtpEncodeError> {
+    pub fn extension_bytes(
+        mut self,
+        profile: u16,
+        data: &'a [u8],
+    ) -> spark_core::Result<Self, RtpEncodeError> {
         if data.len() % 4 != 0 {
             return Err(RtpEncodeError::HeaderMismatch(
                 "扩展数据长度必须是 32-bit word 的整数倍",
@@ -664,7 +668,7 @@ impl<'a> RtpPacketBuilder<'a> {
     /// 将 RTP 报文编码到输出缓冲中，并返回实际写入字节数。
     ///
     /// - **错误条件**：当 header 字段不符合契约或输出缓冲过小时返回 `RtpEncodeError`。
-    pub fn encode_into(self, dst: &mut [u8]) -> Result<usize, RtpEncodeError> {
+    pub fn encode_into(self, dst: &mut [u8]) -> spark_core::Result<usize, RtpEncodeError> {
         if self.header.version != RTP_VERSION {
             return Err(RtpEncodeError::InvalidField("version"));
         }

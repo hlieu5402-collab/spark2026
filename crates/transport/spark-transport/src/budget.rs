@@ -18,7 +18,7 @@ use alloc::boxed::Box;
 /// - 如果实现需要零分配，可自定义结构体实现该 trait 并在 `BudgetGuard::new` 中复用静态闭包。
 pub trait Budget: Send + Sync {
     /// 消耗指定数量的预算。
-    fn try_acquire<'a>(&'a self, amount: u32) -> Result<BudgetGuard<'a>, &'static str>;
+    fn try_acquire<'a>(&'a self, amount: u32) -> crate::Result<BudgetGuard<'a>, &'static str>;
 }
 
 /// 预算占用的生命周期守卫，负责在 `Drop` 时归还配额。
