@@ -209,8 +209,8 @@ jobs:
         with:
           tool: cargo-deny@0.16.4
 
-      - name: Check advisories, bans, licenses, and sources
-        run: cargo deny check advisories bans licenses sources
+      - name: Check bans, licenses, advisories, and sources
+        run: cargo deny check bans licenses advisories sources
 
   miri:
     name: Miri smoke tests
