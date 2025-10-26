@@ -1,43 +1,25 @@
 # spark-codec-sdp
 
-## 契约映射
-- 负责 Session Description Protocol (SDP) 的解析与生成，承载 SIP 信令和 RTP/RTCP 数据面的能力协商。`SessionDesc`、`MediaDesc` 等结构遵循 `spark-core` 的零拷贝契约，与 `CallContext` 生命周期保持一致。
-- 解析函数 `parse_sdp` 与 `format_sdp` 将文本行映射为结构化数据，方便后续传输层根据媒体参数调整背压策略（带宽、码率、ICE 候选等）。
-- 通过 `TypedCodecFactory`（规划中）可直接注册至 `CodecRegistry`，使得 SDP 套件也能遵循统一的半关闭与 ReadyState 语义。
+## 职责边界
+- 提供 Session Description Protocol (SDP) 的最小解析与生成骨架，连接 SIP 信令与 RTP/RTCP 数据面。
+- 通过零拷贝结构与 `CallContext` 生命周期对齐，为未来的媒体属性、ICE/DTLS 参数扩展预留空间。
+- 配合 `spark-core` 的编解码契约，为 `spark-impl-tck` 与媒体相关的契约测试提供类型占位与能力声明。
 
-## 错误分类
-- 使用 `SdpParseError`/`SdpFormatError`（位于 `error` 模块）标识语法或格式失败，后续由 `spark-core` 转译为 `ErrorCategory::ProtocolViolation`。
-- 对于媒体行缺失或属性非法的场景，推荐调用方将错误映射为 `ReadyState::Busy` 并记录 `CloseReason::ProtocolViolation`。
-- 若 body 超出协商范围（例如码率超过预算），可以结合 `CallContext::budget` 返回 `ErrorCategory::ResourceExhausted`，触发自动背压。
+## 公共接口入口
+- [`src/lib.rs`](./src/lib.rs)：导出 `parse_sdp`/`format_sdp` 以及 `SessionDesc`、`MediaDesc`、`SdpCodecScaffold` 等数据结构。
+- [`src/offer_answer.rs`](./src/offer_answer.rs)：实现最小的 RFC 3264 Offer/Answer 协商逻辑，支持 PCMU/PCMA 与 DTMF 能力选择。
 
-## 背压语义
-- 当 `parse_sdp` 遇到不完整的媒体块（例如 ICE 属性尚未到齐），可返回半结构并提示上游保持 `Pending` 状态，等待完整协商信息。
-- 对于解析成功但资源需求超过预算的 SDP（如多路视频流），应由上游根据 `MediaDesc` 中的带宽、码率将 `ReadyState` 置为 `RetryAfter` 或 `BudgetExhausted`。
-- 编码阶段若输出缓冲不足，会使用 `CoreError::new` 返回预算错误，从而触发 `ReadyState::BudgetExhausted`。
+## 状态机与错误域
+- 当前实现仍处于骨架阶段，解析失败通过 `Result` 的错误支路返回；所有错误需映射到 `ErrorCategory::ProtocolViolation`，以符合 [`docs/error-category-matrix.md`](../../../docs/error-category-matrix.md)。
+- 对于未覆盖的属性或媒体块，会以“占位”形式忽略；调用方应结合 [`docs/state_machines.md`](../../../docs/state_machines.md) 将此类情况视作 `ReadyState::Pending` 或记录告警。
+- 当协商结果无法满足本地能力时，`offer_answer` 模块使用 `AudioAnswer::Rejected` 表示拒绝，调用方需转换为 `ReadyState::RetryAfter` 或终止会话。
 
-## TLS/QUIC 注意事项
-- SDP 可携带 `a=fingerprint`、`a=setup` 等 DTLS/QUIC 参数：
-  - 本 crate 不直接校验证书，但会保留原始字段供 `spark-transport-tls`/`quic` 检查；
-  - 若握手协商失败，宿主会通过 `CallContext` 取消流程，解析函数需立即退出并传播 `ErrorCategory::SecurityViolation`。
-- QUIC 下的多流场景需确保 SDP 协商完成后再打开数据流，本 crate 的结构体提供 `media` 列表供调度器判定背压策略。
+## 关联契约与测试
+- 与 [`crates/spark-contract-tests`](../../spark-contract-tests) 的 configuration 与 graceful_shutdown 主题协作，验证配置热更新、重协商流程。
+- `offer_answer` 的能力枚举会被 [`crates/spark-impl-tck`](../../spark-impl-tck) 引用，用于端到端互操作测试。
+- 若扩展实际的 SDP 行，请同步在 [`docs/transport-handshake-negotiation.md`](../../../docs/transport-handshake-negotiation.md) 中登记字段含义。
 
-## 半关闭顺序
-- 在 `close_graceful` 期间：
-  1. 停止解析新的 SDP 消息，仅处理已收到的文本块；
-  2. 若媒体描述尚未完成，则返回部分结果并提示 `Pending`，让宿主决定是否等待；
-  3. 当 `closed()` 完成后不再引用底层缓冲，避免破坏 FIN → 等待读确认 → 释放的顺序。
-
-## ReadyState 映射表
-| 场景 | ReadyState | 说明 |
-| --- | --- | --- |
-| SDP 解析/生成成功 | `Ready` | 可继续协商后续媒体参数 |
-| ICE/媒体属性缺失导致协商暂挂 | `Pending` | 等候对端补齐，保持 CallContext 存活 |
-| SDP 中声明的资源需求超限 | `BudgetExhausted` | 依据 `BudgetKind::Flow`/`Bandwidth` 的决策 |
-| 解析遇到语法错误 | `Busy` | 报告依赖异常，触发观测告警 |
-| 需要退避重新谈判（如重邀请） | `RetryAfter` | 结合重试策略给出退避窗口 |
-| 握手安全参数无效 | `Busy` + `CloseReason::SecurityViolation` | 终止协商并通知安全系统 |
-
-## 超时/取消来源（CallContext）
-- `CallContext::deadline()` 用于限制 SDP 协商时间：超时后必须调用 `close_force()` 并打断等待中的 `Pending` 状态。
-- `CallContext::cancellation_token()` 在媒体重协商或上层释放资源时触发；一旦收到取消信号，应停止解析新的 SDP 内容。
-- 预算 (`CallContext::budget`) 可结合媒体带宽、并发流数量，提前阻止超配。若预算被拒绝，调用方应广播 `ReadyState::BudgetExhausted` 并回收资源。
+## 集成注意事项
+- 目前仅覆盖 PCMU/PCMA + DTMF，其他编解码器与属性需在扩展时补充解析逻辑，并更新 README 与根索引。
+- SDP 安全字段（如 `a=fingerprint`）尚未深入解析；在 TLS/QUIC 握手失败时，应由上层转换为 `ErrorCategory::SecurityViolation`。
+- 当半关闭流程开始时，请停止解析新数据，仅保留已接收内容，并在 `closed()` 完成后释放引用，遵循 [`docs/graceful-shutdown-contract.md`](../../../docs/graceful-shutdown-contract.md)。

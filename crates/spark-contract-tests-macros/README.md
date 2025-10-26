@@ -1,36 +1,26 @@
 # spark-contract-tests-macros
 
-## 契约映射
-- 提供 `#[spark_tck]` 属性宏，为模块自动注入契约测试入口，确保各 crate 在 CI 中执行 `spark-contract-tests` 的标准套件。
-- 宏根据 `suites(...)` 参数选择主题（背压、取消、错误、状态机等），并生成对应的 `run_*_suite` 调用，与 `spark-core` 契约保持一致。
-- 默认套件覆盖 ReadyState、CallContext、半关闭等核心行为，调用方无需手工维护测试入口即可对齐契约。
+## 职责边界
+- 提供 `#[spark_tck]` 属性宏，为测试模块自动注册 `crates/spark-contract-tests` 中定义的标准套件，减少重复样板。
+- 负责在编译期校验套件声明与参数，防止遗漏关键契约主题（半关闭、背压、错误分类等）。
+- 作为合规模板的一部分，被 `make ci-lints` 与 `make ci-doc-warning` 等流程调用，保证所有实现共享同一测试入口。
 
-## 错误分类
-- 宏展开失败时返回编译错误，提醒使用者检查属性参数；这类错误被视为 `ErrorCategory::ImplementationError`，在 CI 阶段即被发现。
-- 运行时若某套件失败，测试框架会保留原始错误分类（如 `ResourceExhausted`），宏不会重写分类，确保诊断信息准确。
+## 公共接口入口
+- [`src/lib.rs`](./src/lib.rs)：定义 `spark_tck` 属性宏及辅助宏，解析传入的主题列表。
+- [`src/defaults.rs`](./src/defaults.rs)：维护默认套件集合，与 [`docs/state_machines.md`](../../docs/state_machines.md) 和 [`docs/error-category-matrix.md`](../../docs/error-category-matrix.md) 保持同步。
+- [`src/render.rs`](./src/render.rs)：负责生成测试函数 AST，将声明映射到 `spark-contract-tests` 的 `run_*_suite` 调用。
 
-## 背压语义
-- 通过注入标准套件，间接验证背压行为（ReadyState Busy/RetryAfter/预算决策）。宏保证所有被测实现都执行这些断言，维持背压契约一致。
-- 当新增背压相关套件时，只需在 `default_suite_idents` 中登记，即可覆盖所有使用宏的模块。
+## 状态机与错误域
+- 默认套件涵盖 ReadyState、错误分类、安全事件等主题，具体断言由 `spark-contract-tests` 落地；宏需确保所有主题均被注册。
+- 编译期错误统一通过 `syn::Error` 报告，提醒开发者修正参数或引用路径，归类为实现错误。
+- 若需要扩展错误域，例如新增 `observability` 分类，需同步更新 `defaults.rs` 与相关文档链接。
 
-## TLS/QUIC 注意事项
-- `spark_tck` 套件包含 TLS/QUIC 用例（如 0-RTT 重放、握手超时）；宏自动拉起这些测试，确保实现不会遗漏安全场景。
-- 调用方可通过 `suites(quic_security)` 等方式显式开启扩展主题，验证 QUIC 特定的 ReadyState/半关闭行为。
+## 关联契约与测试
+- 依赖 [`crates/spark-contract-tests`](../spark-contract-tests) 暴露的 Runner API；升级核心测试后必须同步调整宏生成的函数签名。
+- 与 [`crates/spark-impl-tck`](../spark-impl-tck) 协同：impl TCK 可选择附加套件，宏负责保证最小集合始终包含核心契约。
+- 使用示例可参考 [`docs/ci/redline.md`](../../docs/ci/redline.md) 所描述的 CI 红线流程，确保在本地执行到相同的测试矩阵。
 
-## 半关闭顺序
-- `graceful_shutdown` 套件默认纳入测试，宏在生成的测试函数中调用 `run_graceful_shutdown_suite()`，验证“写半关闭 → 等待确认 → 释放资源”序列。
-- 若实现需要额外的半关闭变体，可通过宏参数追加自定义套件，确保测试覆盖完整。
-
-## ReadyState 映射表
-| 套件 | ReadyState | 说明 |
-| --- | --- | --- |
-| `backpressure` | `Busy`/`RetryAfter`/`BudgetExhausted` | 验证背压映射 |
-| `errors` | `RetryAfter`/`BudgetExhausted`/静默 | 确保错误分类触发正确信号 |
-| `cancellation` | `Pending` → 取消 | 验证取消令牌传播 |
-| `state_machine` | 各 ReadyState | 确认状态机转换矩阵 |
-| `observability` | `Ready` | 确保观测链路不引入额外背压 |
-| `hot_swap` | `Pending` | 验证滚动升级期间的等待语义 |
-
-## 超时/取消来源（CallContext）
-- 所有被宏注入的套件都会构造带 `Deadline` 与 `Cancellation` 的 `CallContext`，验证实现能正确处理超时与取消。
-- 若实现忽略超时或取消，相关测试会失败并输出 ReadyState/CloseReason 序列，帮助定位问题。
+## 集成注意事项
+- 属性宏默认以模块命名生成函数，需确保测试模块名称在同一 crate 内唯一，避免符号冲突。
+- 若在工作区外部使用，需要在 `Cargo.toml` 中将本 crate 标记为 `dev-dependencies` 并启用 `proc-macro` 支持。
+- 扩展自定义套件时，请确认目标主题已经在 README 与根索引中登记，避免文档与实际测试集脱节。

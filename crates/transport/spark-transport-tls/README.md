@@ -1,44 +1,31 @@
 # spark-transport-tls
 
-## 契约映射
-- 基于 `spark-transport-tcp` 构建 TLS 1.3 通道，使用 `TlsAcceptor` 包装 `TcpChannel` 并返回 `TlsChannel`，遵循 `spark-core::transport::channel` 契约。
-- `TlsChannel` 继承 `CallContext` 的取消、截止、预算逻辑，并在握手成功后更新 `SecurityContextSnapshot`，供上层记录证书、ALPN。
-- `hot_reload` 模块通过 `ArcSwap` 支持证书/密钥热更新，确保运行时契约稳定。
+## 职责边界
+- 在 `spark-transport-tcp` 基础上提供 TLS 1.3 通道，保证握手、会话恢复与加密数据流符合 `spark-core::transport::channel` 契约。
+- 继承 `CallContext` 的取消、截止、预算语义，并更新 `SecurityContextSnapshot` 以供观测与审计链路使用。
+- 提供证书热更新与会话缓存管理，确保长连接服务在不中断流量的情况下轮换密钥。
 
-## 错误分类
-- 握手失败（证书、协议版本、ALPN）归类为 `ErrorCategory::SecurityViolation`，并在 `CloseReason` 中记录详细原因。
-- 资源耗尽（线程池、会话缓存）映射到 `ErrorCategory::ResourceExhausted`，提示上游执行退避或扩容。
-- 临时网络故障返回 `ErrorCategory::Retryable`，交给重试策略处理；内部 bug 归类为 `ImplError`。
+## 公共接口入口
+- [`src/lib.rs`](./src/lib.rs)：导出 `TlsAcceptor`, `TlsChannel` 等核心类型。
+- [`src/acceptor.rs`](./src/acceptor.rs)：包装 `rustls` 接受器并连接到 `TcpListener`，处理握手与 ALPN。
+- [`src/channel.rs`](./src/channel.rs)：实现加密数据流的 `poll_ready`、`read`、`write`、`close_graceful` 与 `close_force`。
+- [`src/hot_reload.rs`](./src/hot_reload.rs)：基于 `ArcSwap` 提供证书与密钥的热更新能力。
+- [`src/error.rs`](./src/error.rs)：定义 `TlsError`/`TlsHandshakeError` 并映射到 `ErrorCategory`。
 
-## 背压语义
-- 握手阶段遵循 ReadyState 契约：
-  - 证书加载/CRL 检查耗时 -> `Pending`；
-  - 会话缓存饱和 -> `Busy(BusyReason::queue_full)`；
-  - 需要退避重试（如 OCSP 查询失败） -> `RetryAfter`。
-- 数据通道继承 TCP 的背压逻辑，写缓冲耗尽时广播 `Busy`，预算不足时返回 `BudgetExhausted`。
+## 状态机与错误域
+- 握手阶段的 ReadyState 映射：等待证书/OCSP → `Pending`，会话缓存饱和 → `Busy`，需要退避 → `RetryAfter`。
+- 错误分类遵循 [`docs/error-category-matrix.md`](../../../docs/error-category-matrix.md)：
+  - 证书/协议失败 → `SecurityViolation`
+  - 资源耗尽 → `ResourceExhausted`
+  - 内部 bug → `ImplementationError`
+- 半关闭顺序与 `CloseNotify` 行为参照 [`docs/graceful-shutdown-contract.md`](../../../docs/graceful-shutdown-contract.md)。
 
-## TLS/QUIC 注意事项
-- 专注 TLS：
-  - 握手参数（SNI、ALPN、证书链）通过 `SecurityContextSnapshot` 传递给上层，供 QUIC/TLS 统一审计；
-  - 若未来启用 QUIC over TLS（非标准），需要复用相同的错误分类与半关闭逻辑；
-  - 支持 0-RTT/会话恢复时必须校验 ReadyState，防止重放攻击污染状态。
+## 关联契约与测试
+- 契约测试通过 [`crates/spark-contract-tests`](../../spark-contract-tests) 的 security、graceful_shutdown 与 backpressure 主题验证握手、证书更新与半关闭流程。
+- [`crates/spark-impl-tck`](../../spark-impl-tck) 的 TLS 套件会在真实证书环境下执行端到端测试，包括 0-RTT 与会话恢复。
+- 观测指标在 [`docs/observability/dashboards/transport-health.json`](../../../docs/observability/dashboards/transport-health.json) 中配置，需确保字段与 `SecurityContextSnapshot` 一致。
 
-## 半关闭顺序
-- `close_graceful` 先调用 `rustls::StreamOwned::writer().close()` 发送 TLS CloseNotify，再等待对端回送确认；
-- 对端未在 `Deadline` 内返回 CloseNotify 时触发 `close_force()`，记录 `CloseReason::Timeout` 并关闭底层 TCP；
-- `CallContext` 取消会导致立即发送 CloseNotify 并退出，确保与 FIN 顺序一致。
-
-## ReadyState 映射表
-| TLS 阶段 | ReadyState | 说明 |
-| --- | --- | --- |
-| 握手成功 | `Ready` | 可开始读写应用数据 |
-| 等待证书/OCSP 完成 | `Pending` | 暂停数据平面，等待外部依赖 |
-| 会话缓存/线程池饱和 | `Busy(BusyReason::queue_full)` | 建议上游降载 |
-| 需要退避（重试 OCSP/CRL） | `RetryAfter` | 返回建议等待时间 |
-| 密码套件或证书被拒绝 | `Busy` + `CloseReason::SecurityViolation` | 立即终止连接 |
-| 写入预算耗尽 | `BudgetExhausted` | 遵循 TCP 层预算控制 |
-
-## 超时/取消来源（CallContext）
-- `CallContext::deadline()` 限制握手与半关闭时长，超时会触发 `TlsHandshakeError::Timeout` 并执行 `close_force()`。
-- `CallContext::cancellation_token()` 用于热升级或会话迁移，取消后立即发送 CloseNotify 并关闭底层连接。
-- `CallContext::budget` 控制加密开销（如记录级别压缩/解压），预算不足时向上游广播 `ReadyState::BudgetExhausted`。
+## 集成注意事项
+- 证书热更新需通过 `hot_reload::TlsReloadHandle` 触发；更新前请确认新证书链已通过安全审计。
+- 当 `CallContext::deadline()` 触发时必须立即调用 `close_force()`，避免握手过程阻塞导致资源泄漏。
+- 若启用 0-RTT，需在 README 与文档中记录退避策略与重放防御措施，确保契约测试覆盖该分支。
