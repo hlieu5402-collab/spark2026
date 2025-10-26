@@ -6,9 +6,7 @@
 - 作为合规模板的一部分，被 `make ci-lints` 与 `make ci-doc-warning` 等流程调用，保证所有实现共享同一测试入口。
 
 ## 公共接口入口
-- [`src/lib.rs`](./src/lib.rs)：定义 `spark_tck` 属性宏及辅助宏，解析传入的主题列表。
-- [`src/defaults.rs`](./src/defaults.rs)：维护默认套件集合，与 [`docs/state_machines.md`](../../docs/state_machines.md) 和 [`docs/error-category-matrix.md`](../../docs/error-category-matrix.md) 保持同步。
-- [`src/render.rs`](./src/render.rs)：负责生成测试函数 AST，将声明映射到 `spark-contract-tests` 的 `run_*_suite` 调用。
+- [`src/lib.rs`](./src/lib.rs)：实现 `spark_tck` 属性宏，内联包含默认套件解析、AST 注入与代码生成逻辑（`parse_suites`、`inject_tests` 等）。
 
 ## 状态机与错误域
 - 默认套件涵盖 ReadyState、错误分类、安全事件等主题，具体断言由 `spark-contract-tests` 落地；宏需确保所有主题均被注册。

@@ -6,9 +6,7 @@
 - 在编译期对 Service 声明进行语义校验，补充文档中定义的调用约束，避免运行期才暴露契约违规。
 
 ## 公共接口入口
-- [`src/lib.rs`](./src/lib.rs)：暴露 `service` 过程宏，并在宏展开时注入 `CallContext`、`ReadyState` 等类型。
-- [`src/diagnostics.rs`](./src/diagnostics.rs)：封装编译期诊断信息，确保错误信息与 [`docs/error-category-matrix.md`](../../docs/error-category-matrix.md) 中“实现错误”分类一致。
-- [`src/render`](./src/render)：包含 Service 模板与 `poll_ready`/`call` 实现细节，保证生成代码满足 [`docs/state_machines.md`](../../docs/state_machines.md) 的 ReadyState 协议。
+- [`src/lib.rs`](./src/lib.rs)：暴露 `service` 过程宏，并内联 `expand_service`、`extract_result_types` 等辅助逻辑以生成符合契约的 Service 模板。
 
 ## 状态机与错误域
 - 宏生成的 `poll_ready` 会自动映射业务返回值到 `ReadyState`，并补充 `BusyReason`，对应 [`docs/graceful-shutdown-contract.md`](../../docs/graceful-shutdown-contract.md) 对半关闭顺序的要求。

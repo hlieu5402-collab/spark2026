@@ -44,6 +44,9 @@ jobs:
       - name: Check documentation density
         run: python3 tools/check_doc_density.py
 
+      - name: Check internal documentation links
+        run: python3 tools/check_doc_links.py
+
       - name: Register TODOs
         run: rg -n "TODO|FIXME|HACK" | tee docs/TODO.md
 
