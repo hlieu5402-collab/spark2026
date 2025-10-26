@@ -8,7 +8,7 @@
 ## 公共接口入口
 - [`src/contract.rs`](./src/contract.rs)：公开 `CallContext`、`Budget`、`Deadline` 等运行期契约，同时封装取消、关闭原因与安全上下文。
 - [`src/status/mod.rs`](./src/status/mod.rs)：维护 `ReadyState` 状态机、`BusyReason` 与 `RetryAdvice`，用于背压、退避与半关闭流程。
-- [`src/error/mod.rs`](./src/error/mod.rs)：提供 `CoreError`、`DomainError`、`ErrorCategory` 及编码常量；所有扩展 crate 需通过 `IntoCoreError` 对齐分类。
+- [`src/error.rs`](./src/error.rs)：提供 `CoreError`、`DomainError`、`ErrorCategory` 及编码常量；所有扩展 crate 需通过 `IntoCoreError` 对齐分类。
 - [`src/codec/mod.rs`](./src/codec/mod.rs)：定义 `Codec`/`DecodeOutcome` 接口与 `CodecRegistry` 注册机制，连接编解码扩展与运行时。
 - [`src/host/mod.rs`](./src/host/mod.rs) 与 [`src/runtime/mod.rs`](./src/runtime/mod.rs)：规定宿主生命周期、组件注册与任务调度 API，是 `transport` 与 `sdk` 层实现的基线。
 

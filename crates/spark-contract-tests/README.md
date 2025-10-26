@@ -7,9 +7,10 @@
 
 ## 公共接口入口
 - [`src/lib.rs`](./src/lib.rs)：导出 Runner 与主题化测试入口，允许调用方挑选需要的测试集。
-- [`src/backpressure`](./src/backpressure)：验证 `ReadyState`、`BudgetDecision` 与 `BusyReason` 的组合，涵盖队列、线程池、订阅预算等场景。
-- [`src/graceful_shutdown`](./src/graceful_shutdown)：根据 [`docs/graceful-shutdown-contract.md`](../../docs/graceful-shutdown-contract.md) 检查半关闭流程。
-- [`src/errors`](./src/errors)：断言 `ErrorCategory`/`CloseReason` 的映射符合 [`docs/error-category-matrix.md`](../../docs/error-category-matrix.md)。
+- [`src/backpressure.rs`](./src/backpressure.rs)：验证 `ReadyState`、`BudgetDecision` 与 `BusyReason` 的组合，涵盖队列、线程池、订阅预算等场景。
+- [`src/graceful_shutdown.rs`](./src/graceful_shutdown.rs)：根据 [`docs/graceful-shutdown-contract.md`](../../docs/graceful-shutdown-contract.md) 检查半关闭流程。
+- [`src/errors.rs`](./src/errors.rs)：断言 `ErrorCategory`/`CloseReason` 的映射符合 [`docs/error-category-matrix.md`](../../docs/error-category-matrix.md)。
+- [`src/cancellation.rs`](./src/cancellation.rs)：覆盖取消语义与竞态处理，确认为超时、显式取消提供统一断言。
 
 ## 状态机与错误域
 - 所有 ReadyState 断言以 [`docs/state_machines.md`](../../docs/state_machines.md) 规定的状态转移为基线；若实现发出未知状态，测试会失败并提示差异。

@@ -6,10 +6,10 @@
 - 为 `crates/transport/*` 与外部实现提供参考样例，作为 `make ci-bench-smoke` 的一部分评估性能与行为一致性。
 
 ## 公共接口入口
-- [`src/lib.rs`](./src/lib.rs)：暴露 `run_*` 系列函数，用于按需执行 TCP、TLS、QUIC、UDP 等主题套件。
-- [`src/tcp`](./src/tcp)：覆盖半关闭、背压、超时与取消的主线场景，复用 `spark-contract-tests` 的断言并连接真实 socket。
-- [`src/tls`](./src/tls) 与 [`src/quic`](./src/quic)：验证握手、证书热更新、0-RTT 重放防御等安全契约。
-- [`src/udp`](./src/udp)：检验无连接环境下的预算传播、NAT keepalive 与 `ReadyState` 映射。
+- [`src/lib.rs`](./src/lib.rs)：保留传输契约测试的占位模块，并在 `transport` 测试集中组装半关闭、背压等端到端场景。
+- [`src/sip/mod.rs`](./src/sip/mod.rs)：聚焦 SIP INVITE/CANCEL 竞态，当前提供 `cancel_race` 套件覆盖多线程状态机竞争。
+- [`src/sdp/mod.rs`](./src/sdp/mod.rs)：承载 SDP Offer/Answer 单元测试，确保协商逻辑在 crate 内即可快速验证。
+- [`src/rtcp/mod.rs`](./src/rtcp/mod.rs)：组织 RTCP 解析与统计相关测试专题（如 `parse_compound`、`stats`）。
 
 ## 状态机与错误域
 - ReadyState 与错误分类判定直接复用 `spark-contract-tests` 的断言实现；若被测对象返回未知状态，会在此 crate 中抛出带上下文的 panic。

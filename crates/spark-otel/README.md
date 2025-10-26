@@ -6,9 +6,7 @@
 - 维护 Trace Context 与 W3C 标准的一致性，确保 `CallContext` 与外部系统的标识保持同步。
 
 ## 公共接口入口
-- [`src/lib.rs`](./src/lib.rs)：暴露 `install`、`HandlerSpanTracer`、`TraceContext` 等核心 API。
-- [`src/propagation`](./src/propagation)：负责 W3C TraceContext 与自定义字段的互转。
-- [`src/exporter`](./src/exporter)：封装与 OTel SDK 的连接点，支持批量导出与速率控制。
+- [`src/lib.rs`](./src/lib.rs)：集中实现 `install`、W3C TraceContext 互转、`HandlerSpanTracer` 注册与导出器集成等核心逻辑。
 
 ## 状态机与错误域
 - 观测链路默认不引入新的 ReadyState，除非检测到导出器阻塞或预算耗尽；这些状态需遵循 [`docs/state_machines.md`](../../docs/state_machines.md) 中的背压定义。
