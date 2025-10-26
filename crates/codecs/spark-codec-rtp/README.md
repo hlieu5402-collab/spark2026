@@ -6,9 +6,8 @@
 - 提供可复用的时钟同步、序列号管理与统计数据，供传输实现和观测链路（参见 [`docs/observability/metrics.md`](../../../docs/observability/metrics.md)）消费。
 
 ## 公共接口入口
-- [`src/lib.rs`](./src/lib.rs)：暴露 `RtpCodec`、`RtpPacket` 以及主要的 encode/decode API。
-- [`src/error.rs`](./src/error.rs)：定义 `RtpError` 并映射到 `CoreError`，区分协议违例、资源不足与实现缺陷。
-- [`src/sequence`](./src/sequence)：实现序列号回绕、丢包追踪与抖动计算逻辑。
+- [`src/lib.rs`](./src/lib.rs)：提供 `parse_rtp`、`RtpPacketBuilder`、序列号比较等核心 API，并定义错误类型与零拷贝视图。
+- [`src/dtmf.rs`](./src/dtmf.rs)：实现 RFC 4733 DTMF 扩展的编解码，演示如何在不破坏主数据面的情况下扩展事件处理。
 
 ## 状态机与错误域
 - 解码流程在分片不足时返回 `DecodeOutcome::Incomplete`，要求上游传播 `ReadyState::Pending`，符合 [`docs/state_machines.md`](../../../docs/state_machines.md)。

@@ -8,7 +8,7 @@
 ## 公共接口入口
 - [`src/lib.rs`](./src/lib.rs)：暴露 `RtcpCodec`、`RtcpPacket` 以及辅助构造器。
 - [`src/error.rs`](./src/error.rs)：定义 `RtcpError` 并映射到 `CoreError`/`ErrorCategory`。
-- [`src/parser`](./src/parser)：实现复合包解码状态机，处理截断、长度异常与报告类型分发。
+- [`src/parse.rs`](./src/parse.rs)：实现复合包解码状态机，处理截断、长度异常与报告类型分发。
 
 ## 状态机与错误域
 - 解析流程遵循 [`docs/state_machines.md`](../../../docs/state_machines.md) 的 Pending/Ready 语义：复合包待补齐时返回 `DecodeOutcome::Incomplete`，触发 `ReadyState::Pending`。

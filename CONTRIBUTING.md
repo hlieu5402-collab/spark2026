@@ -19,7 +19,7 @@
 
 ## 仓库结构约定
 
-本项目采用 [ADR 0001](docs/adr/0001-crate-structure-and-governance.md) 统一管理 crate 结构与边界：
+本项目采用 [ADR 0001](docs/adr/0001-crate-structure-and-governance.md) 与 [ADR 0002](docs/adr/0002-codecs-transport-layering.md) 统一管理 crate 结构与边界：
 
 - 新建 crate 需位于 `crates/`、`examples/` 或 `sdk/` 等约定目录，并遵守命名规范。
 - 引入或调整依赖前必须检查现有实现，避免重复引入第三方库。
@@ -54,6 +54,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo build --workspace --no-default-features --features alloc
 cargo doc --workspace
 cargo bench --workspace -- --quick
+cargo deny check advisories bans licenses sources
+python3 tools/ci/check_docs_links.py
 make ci-lints
 make ci-zc-asm
 make ci-no-std-alloc
