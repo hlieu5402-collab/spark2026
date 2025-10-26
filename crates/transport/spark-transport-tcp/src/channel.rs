@@ -9,7 +9,7 @@ use spark_core::{
     contract::CallContext,
     error::CoreError,
     status::ready::{PollReady, ReadyCheck, ReadyState},
-    transport::TransportSocketAddr,
+    transport::{ShutdownDirection, TransportSocketAddr},
 };
 use std::{
     io::{self, IoSlice},
@@ -107,7 +107,7 @@ struct TcpChannelInner {
 ///   与截止时间；
 /// - 背压信号由内部 `BackpressureState` 统计 `WouldBlock` 与锁竞争次数，并映射为
 ///   [`ReadyState`]；
-/// - `ShutdownDirection` 封装标准库的半关闭语义，便于调用方显式声明关闭方向。
+/// - [`spark_core::transport::ShutdownDirection`] 封装标准库的半关闭语义，便于调用方显式声明关闭方向。
 ///
 /// ## 契约 (What)
 /// - `connect`：根据 `CallContext` 建立到目标地址的连接；
@@ -467,27 +467,6 @@ impl TcpChannel {
             read_until_eof(guard.deref_mut()).await
         })
         .await
-    }
-}
-
-/// 表示半关闭的方向。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ShutdownDirection {
-    /// 关闭写半部。
-    Write,
-    /// 关闭读半部。
-    Read,
-    /// 同时关闭读写半部。
-    Both,
-}
-
-impl From<ShutdownDirection> for StdShutdown {
-    fn from(value: ShutdownDirection) -> Self {
-        match value {
-            ShutdownDirection::Write => StdShutdown::Write,
-            ShutdownDirection::Read => StdShutdown::Read,
-            ShutdownDirection::Both => StdShutdown::Both,
-        }
     }
 }
 

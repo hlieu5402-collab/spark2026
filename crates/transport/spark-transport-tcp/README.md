@@ -29,7 +29,7 @@
   1. `close_graceful` 首先调用 `TcpStream::shutdown(Write)` 发送 FIN；
   2. 持续读取直到对端确认读半关闭或 `Deadline` 超时；
   3. 若超时触发 `close_force`，记录 `CloseReason::Timeout` 并关闭 socket。
-- `ShutdownDirection` 枚举确保调用方显式声明关闭方向，防止顺序错误。
+- `spark-core::transport::ShutdownDirection` 枚举确保调用方显式声明关闭方向，防止顺序错误，实现与 QUIC/TLS 的共用语义。
 
 ## ReadyState 映射表
 | Socket 状态 | ReadyState | 说明 |

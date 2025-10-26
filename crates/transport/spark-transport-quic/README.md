@@ -28,7 +28,7 @@
   1. `QuicChannel::shutdown(Write)` 发送 FIN 帧；
   2. 等待对端确认写半关闭，并继续读取直到读半关闭完成；
   3. 若 `Deadline` 到期仍未完成，调用 `close_force()` 终止流并记录 `CloseReason::Timeout`。
-- `ShutdownDirection` 确保调用方显式指定方向，防止误关闭整个连接。
+- `spark-core::transport::ShutdownDirection` 确保调用方显式指定方向，防止误关闭整个连接，并在所有传输实现之间提供一致语义。
 
 ## ReadyState 映射表
 | 流状态 | ReadyState | 说明 |

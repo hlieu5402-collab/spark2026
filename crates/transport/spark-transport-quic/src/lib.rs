@@ -13,7 +13,7 @@
 - `QuicEndpoint`：负责 UDP Socket 绑定、监听与发起连接。
 - `QuicConnection`：表示一次 QUIC 连接，可打开/接受双向流。
 - `QuicChannel`：封装 `quinn::SendStream/RecvStream`，提供读写、半关闭与背压探测。
-- `ShutdownDirection`：定义半关闭方向。
+- `ShutdownDirection`：定义半关闭方向，由 `spark-core` 提供统一抽象，这里通过再导出供调用方使用。
 
 ## 实现策略（How）
 - 通过 `run_with_context` 注入 `CallContext` 的取消/截止语义，确保 QUIC IO 与框架契约一致。
@@ -32,5 +32,6 @@ mod endpoint;
 mod error;
 mod util;
 
-pub use channel::{QuicChannel, ShutdownDirection};
+pub use channel::QuicChannel;
 pub use endpoint::{QuicConnection, QuicEndpoint};
+pub use spark_core::transport::ShutdownDirection;

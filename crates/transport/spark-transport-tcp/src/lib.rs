@@ -14,7 +14,8 @@
 - **输入条件**：调用方必须在 Tokio 运行时中使用本实现，并显式传递
   `CallContext`/`ExecutionContext`；
 - **输出保障**：监听、通道读写、半关闭与背压检查均返回语义化结果，
-  出错时附带稳定错误码及 [`ErrorCategory`](spark_core::error::ErrorCategory)；
+  出错时附带稳定错误码及 [`ErrorCategory`](spark_core::error::ErrorCategory)；半关闭方向采用
+  `spark-core::transport::ShutdownDirection` 统一表述。
 - **前置约束**：当前版本仅实现单连接的直接操作，尚未与 Pipeline 控制器
   集成；后续版本会继续对接 `spark-core::transport` 的泛型工厂。
 
@@ -41,5 +42,6 @@ mod error;
 mod listener;
 mod util;
 
-pub use channel::{ShutdownDirection, TcpChannel, TcpChannelParts, TcpSocketConfig};
+pub use channel::{TcpChannel, TcpChannelParts, TcpSocketConfig};
 pub use listener::TcpListener;
+pub use spark_core::transport::ShutdownDirection;

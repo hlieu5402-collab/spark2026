@@ -10,7 +10,7 @@ use spark_core::{
     contract::CallContext,
     error::CoreError,
     status::ready::{PollReady, ReadyCheck},
-    transport::TransportSocketAddr,
+    transport::{ShutdownDirection, TransportSocketAddr},
 };
 use std::{
     pin::Pin,
@@ -215,12 +215,4 @@ impl QuicChannel {
         }
         Ok(())
     }
-}
-
-/// QUIC 半关闭方向定义。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ShutdownDirection {
-    Write,
-    Read,
-    Both,
 }
