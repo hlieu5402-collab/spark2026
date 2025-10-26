@@ -11,6 +11,42 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  minimal-gates:
+    name: Minimal guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: minimal-guardrails
+          cache-on-failure: true
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -D warnings
+
+      - name: Build workspace
+        run: cargo build --workspace
+
+      - name: Check documentation density
+        run: python3 tools/check_doc_density.py
+
+      - name: Register TODOs
+        run: rg -n "TODO|FIXME|HACK" | tee docs/TODO.md
+
   lint-and-docs:
     name: Lints & docs (MSRV)
     runs-on: ubuntu-latest
