@@ -15,8 +15,9 @@
 # 运行流程（How）：
 # 1. 通过 `cargo run` 执行文档生成器，覆盖写入 `docs/observability-contract.md`；
 # 2. 编译 `spark-core` 以触发构建脚本写出 `observability/keys.rs`；
-# 3. 使用 `git diff` 检查上述两个产物是否存在未提交的差异；
-# 4. 如有差异，输出详细说明并返回失败，提示开发者重新生成后提交。
+# 3. 使用 `cargo fmt` 对生成产物进行一次格式化（避免 rustfmt 与代码生成器之间的风格差异反复打架）；
+# 4. 使用 `git diff` 检查上述两个产物是否存在未提交的差异；
+# 5. 如有差异，输出详细说明并返回失败，提示开发者重新生成后提交。
 #
 # 风险与权衡（Trade-offs）：
 # - 选择直接编译 `spark-core` 触发构建脚本，虽然耗时略高，但避免实现额外的重复生成逻辑；
@@ -29,6 +30,9 @@ cd "${ROOT_DIR}" || exit 1
 cargo run --quiet -p spark-core --bin gen_observability_doc \
   --features std,observability_contract_doc
 cargo build --quiet -p spark-core
+cargo fmt --quiet -- \
+  crates/spark-core/src/configuration/events.rs \
+  crates/spark-core/src/observability/keys.rs
 
 if ! git diff --quiet -- crates/spark-core/src/observability/keys.rs; then
   echo "可观测性键名生成文件与合约不同步：请运行构建并提交 \"crates/spark-core/src/observability/keys.rs\"。" >&2
