@@ -9,7 +9,7 @@
 //! - **设计策略**：本实现交付零拷贝解析、序列回绕比较与基础报文生成三项基线能力，为未来的完整媒体通道实现奠定测试契约。
 //!
 //! ## 交互契约（What）
-//! - **依赖输入**：基于 `spark-core` 的 `BufView` 抽象获取原始字节视图，避免提前复制网络包。
+//! - **依赖输入**：基于 `spark-codecs` 聚合的 `BufView` 抽象获取原始字节视图，避免提前复制网络包。
 //! - **输出职责**：
 //!   1. `RtpHeader`/`RtpPacket` 提供结构化访问与零拷贝数据窗口；
 //!   2. `parse_rtp` 将 `BufView` 解析为 `RtpPacket`；
@@ -33,7 +33,7 @@ pub mod dtmf;
 use alloc::vec::Vec;
 use core::{fmt, time::Duration};
 
-use spark_core::buffer::{BufView, Chunks};
+use spark_codecs::buffer::{BufView, Chunks};
 
 #[doc = "RFC 4733 电话事件编解码 API 的便捷导出。"]
 pub use dtmf::{DtmfDecodeError, DtmfEncodeError, DtmfEvent, decode_dtmf, encode_dtmf};

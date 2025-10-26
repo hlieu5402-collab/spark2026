@@ -12,7 +12,7 @@
 use alloc::vec::Vec;
 use core::{fmt, mem, str};
 
-use spark_core::buffer::BufView;
+use spark_codecs::buffer::BufView;
 
 /// WebSocket 数据帧在 SIP 映射中的语义分类。
 ///

@@ -18,7 +18,7 @@
 
 use core::fmt;
 
-use spark_core::error::{self, ErrorCategory};
+use spark_codecs::error::{self, ErrorCategory};
 
 /// 将 SIP 解析或事务错误映射为结构化的 [`ErrorCategory`]。
 ///

@@ -1,12 +1,12 @@
 use alloc::{format, string::String};
 
-use spark_core::CoreError;
-use spark_core::buffer::ErasedSparkBuf;
-use spark_core::codec::{
+use spark_codecs::CoreError;
+use spark_codecs::buffer::ErasedSparkBuf;
+use spark_codecs::codes;
+use spark_codecs::{
     Codec, CodecDescriptor, ContentEncoding, ContentType, DecodeContext, DecodeOutcome,
     EncodeContext, EncodedPayload,
 };
-use spark_core::error::codes;
 
 const NEWLINE: u8 = b'\n';
 
@@ -182,8 +182,8 @@ impl Codec for LineDelimitedCodec {
 mod tests {
     use super::*;
     use alloc::vec::Vec;
-    use spark_core::buffer::{BufferPool, PoolStats, ReadableBuffer, WritableBuffer};
-    use spark_core::codec::{DecodeContext, DecodeOutcome, EncodeContext};
+    use spark_codecs::buffer::{BufferPool, PoolStats, ReadableBuffer, WritableBuffer};
+    use spark_codecs::{DecodeContext, DecodeOutcome, EncodeContext};
 
     /// 简易内存缓冲池，向编码/解码上下文提供堆分配缓冲。
     ///

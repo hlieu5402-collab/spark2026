@@ -12,11 +12,12 @@ bench = false
 
 [features]
 default = ["std"]
-alloc = ["spark-core/alloc"]
-std = ["alloc", "spark-core/std"]
-compat_v0 = ["spark-core/compat_v0"]
+alloc = ["spark-codecs/alloc"]
+std = ["alloc", "spark-codecs/std"]
+compat_v0 = ["spark-codecs/compat_v0"]
 
 [dependencies]
+spark-codecs = { path = "../spark-codecs", default-features = false }
 spark-core = { workspace = true, default-features = false }
 
 [dev-dependencies]
