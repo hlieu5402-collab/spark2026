@@ -18,6 +18,7 @@ compat_v0 = ["spark-codecs/compat_v0"]
 
 [dependencies]
 spark-codecs = { path = "../spark-codecs", default-features = false }
+spark-core = { workspace = true, default-features = false }
 
 [dev-dependencies]
 # Tests rely on std utilities only when `std` feature is active via default features.

@@ -12,16 +12,25 @@ bench = false
 
 [dependencies]
 spark-core = { path = "../../spark-core" }
-spark-transport-tcp = { path = "../spark-transport-tcp" }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
-rustls = { workspace = true, default-features = false, features = ["std"] }
-tokio-rustls = { workspace = true }
-arc-swap = { workspace = true }
+spark-transport-tcp = { path = "../spark-transport-tcp", default-features = false }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"], optional = true }
+rustls = { workspace = true, default-features = false, features = ["std"], optional = true }
+tokio-rustls = { workspace = true, optional = true }
+arc-swap = { workspace = true, optional = true }
+spark-core = { workspace = true, features = ["std"] }
+spark-transport-tcp = { workspace = true }
 thiserror = { workspace = true }
 
 [features]
-default = []
-batch-udp-unix = ["socket2"]
+default = ["runtime-tokio"]
+runtime-tokio = [
+    "dep:tokio",
+    "dep:tokio-rustls",
+    "dep:rustls",
+    "dep:arc-swap",
+    "spark-transport-tcp/runtime-tokio",
+]
+batch-udp-unix = ["runtime-tokio", "dep:socket2"]
 
 [dependencies.socket2]
 workspace = true

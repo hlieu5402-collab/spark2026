@@ -11,16 +11,17 @@ license = "Apache-2.0"
 bench = false
 
 [dependencies]
-spark-core = { path = "../../spark-core" }
+spark-core = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
-quinn = { workspace = true }
-quinn-proto = { workspace = true }
-futures = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"], optional = true }
+quinn = { workspace = true, optional = true }
+quinn-proto = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
 
 [features]
-default = []
-batch-udp-unix = ["socket2"]
+default = ["runtime-tokio"]
+runtime-tokio = ["dep:tokio", "dep:quinn", "dep:quinn-proto", "dep:futures"]
+batch-udp-unix = ["runtime-tokio", "dep:socket2"]
 
 [dependencies.socket2]
 workspace = true

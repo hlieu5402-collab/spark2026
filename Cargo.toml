@@ -57,9 +57,20 @@ spin = { version = "0.9", default-features = false, features = ["rwlock", "mutex
 socket2 = "0.6"
 spark-contract-tests = { path = "crates/spark-contract-tests" }
 spark-contract-tests-macros = { path = "crates/spark-contract-tests-macros" }
-spark-core = { path = "crates/spark-core" }
+spark-core = { path = "crates/spark-core", default-features = false }
 spark-macros = { path = "crates/spark-macros" }
 spark-otel = { path = "crates/spark-otel" }
+spark-codec-line = { path = "crates/codecs/spark-codec-line" }
+spark-codec-rtcp = { path = "crates/codecs/spark-codec-rtcp" }
+spark-codec-rtp = { path = "crates/codecs/spark-codec-rtp" }
+spark-codec-sdp = { path = "crates/codecs/spark-codec-sdp" }
+spark-codec-sip = { path = "crates/codecs/spark-codec-sip" }
+spark-impl-tck = { path = "crates/spark-impl-tck" }
+spark-transport-quic = { path = "crates/transport/spark-transport-quic" }
+spark-transport-tcp = { path = "crates/transport/spark-transport-tcp" }
+spark-transport-tls = { path = "crates/transport/spark-transport-tls" }
+spark-transport-udp = { path = "crates/transport/spark-transport-udp" }
+syn = { version = "2.0", features = ["full"] }
 thiserror = "1.0"
 tokio = { version = "1.48.0", default-features = false }
 tokio-rustls = "0.26"

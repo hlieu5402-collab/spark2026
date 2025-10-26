@@ -14,17 +14,17 @@ path = "src/lib.rs"
 bench = false
 
 [features]
-default = ["std"]
+default = ["alloc"]
 # 兼容功能开关：默认关闭，后续按业务域逐步启用旧版信号的适配层。
 compat_v0 = []
 # 所有 API 契约均依赖 `alloc` 类型（Box/Arc/Vec）；禁用 `alloc` 无法构建对象安全 Future/Stream。
 alloc = []
-std = []
-loom-model = ["dep:loom"]
-std_json = ["dep:serde_json"]
-error_contract_doc = ["dep:toml"]
-observability_contract_doc = ["dep:toml"]
-configuration_event_doc = ["dep:toml"]
+std = ["alloc"]
+loom-model = ["dep:loom", "std"]
+std_json = ["std", "dep:serde_json"]
+error_contract_doc = ["std", "dep:toml"]
+observability_contract_doc = ["std", "dep:toml"]
+configuration_event_doc = ["std", "dep:toml"]
 
 [dependencies]
 async-trait = { workspace = true, default-features = false }

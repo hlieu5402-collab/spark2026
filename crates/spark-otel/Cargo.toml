@@ -18,7 +18,7 @@ default = []
 test-util = ["dep:futures-util"]
 
 [dependencies]
-spark-core = { workspace = true }
+spark-core = { workspace = true, features = ["std"] }
 opentelemetry = { workspace = true, default-features = false, features = ["trace"] }
 opentelemetry-sdk = { workspace = true, default-features = false, features = ["trace"] }
 tracing = { workspace = true }
