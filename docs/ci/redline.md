@@ -10,6 +10,7 @@
 | 构建矩阵 | `Builds & benches (MSRV)` | `rustc 1.89.0` | `make ci-zc-asm`、`make ci-no-std-alloc`、`make ci-doc-warning`、`make ci-bench-smoke` | 任一命令非 0 即 fail |
 | 语义版本兼容性 | `SemVer compatibility (MSRV)` | `rustc 1.89.0` | `cargo semver-checks --manifest-path crates/spark-core/Cargo.toml --baseline-root crates/spark-core` | 检测到破坏性变更即 fail |
 | 许可证与安全 | `License & advisory audit` | `rustc 1.89.0` | `cargo deny check advisories bans licenses sources` | 触发 deny 规则即 fail |
+| 文档链接 | `Docs link check (MSRV)` | `rustc 1.89.0` | `python3 tools/ci/check_docs_links.py` | 任一缺失链接即 fail |
 | Miri 抽样 | `Miri smoke tests` | `nightly-2024-12-31`（含 `miri`） | `cargo +nightly-2024-12-31 miri setup/test` | 任一命令非 0 即 fail |
 | Loom 抽样 | `Loom model checks (MSRV)` | `rustc 1.89.0` | `RUSTFLAGS="--cfg loom" cargo test --features loom-model,std --lib --tests` | 任一命令非 0 即 fail |
 
@@ -26,7 +27,8 @@
    - 任何警告升级为错误，确保提交物保持零警告状态。
 3. 文档检查
    - `cargo doc --workspace --no-deps` 用于快速验证公开 API 文档是否可生成。
-   - `make ci-doc-warning` 再次执行完整文档构建，配合 `RUSTDOCFLAGS=-Dwarnings` 捕捉依赖引入的警告。
+ - `make ci-doc-warning` 再次执行完整文档构建，配合 `RUSTDOCFLAGS=-Dwarnings` 捕捉依赖引入的警告。
+  - `python3 tools/ci/check_docs_links.py` 校验所有 Markdown 相对链接，保证文档导航零失效。
 4. 构建矩阵
    - `make ci-zc-asm`：常规构建，覆盖默认特性组合。
    - `make ci-no-std-alloc`：校验 `alloc` 配置，避免误用 `std`。
