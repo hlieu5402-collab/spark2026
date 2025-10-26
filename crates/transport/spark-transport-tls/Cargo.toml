@@ -14,15 +14,15 @@ bench = false
 spark-core = { path = "../../spark-core" }
 spark-transport-tcp = { path = "../spark-transport-tcp" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
-rustls = "0.23"
-tokio-rustls = "0.26"
-arc-swap = "1.7"
-thiserror = "1.0"
+rustls = { workspace = true, default-features = false, features = ["std"] }
+tokio-rustls = { workspace = true }
+arc-swap = { workspace = true }
+thiserror = { workspace = true }
 
 [features]
 default = []
 batch-udp-unix = ["socket2"]
 
 [dependencies.socket2]
-version = "0.6"
+workspace = true
 optional = true

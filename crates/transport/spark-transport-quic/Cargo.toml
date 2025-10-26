@@ -12,16 +12,16 @@ bench = false
 
 [dependencies]
 spark-core = { path = "../../spark-core" }
-thiserror = "1.0"
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
-quinn = "0.11"
-quinn-proto = "0.11"
-futures = "0.3"
+quinn = { workspace = true }
+quinn-proto = { workspace = true }
+futures = { workspace = true }
 
 [features]
 default = []
 batch-udp-unix = ["socket2"]
 
 [dependencies.socket2]
-version = "0.6"
+workspace = true
 optional = true

@@ -18,13 +18,13 @@ default = []
 test-util = ["dep:futures-util"]
 
 [dependencies]
-spark-core = { path = "../spark-core" }
-opentelemetry = { version = "0.22", default-features = false, features = ["trace"] }
-opentelemetry-sdk = { package = "opentelemetry_sdk", version = "0.22", default-features = false, features = ["trace"] }
-tracing = "0.1"
-tracing-opentelemetry = "0.23"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-futures-util = { version = "0.3", default-features = false, features = ["std"], optional = true }
+spark-core = { workspace = true }
+opentelemetry = { workspace = true, default-features = false, features = ["trace"] }
+opentelemetry-sdk = { workspace = true, default-features = false, features = ["trace"] }
+tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
+futures-util = { workspace = true, default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
-tracing-test = "0.2"
+tracing-test = { workspace = true }
