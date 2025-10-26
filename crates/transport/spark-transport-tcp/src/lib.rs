@@ -35,13 +35,30 @@
 - **扩展计划**：后续将引入连接工厂、管道集成及观测指标，当前版本着重
   提供最小可测试能力。
 "#]
+#![cfg_attr(
+    not(feature = "runtime-tokio"),
+    doc = r#"## 功能开关：`runtime-tokio`
 
+默认构建启用 Tokio 运行时实现；若在最小依赖或文档生成场景需要跳过 Tokio，可禁用默认特性。
+此时 crate 仅保留文档与契约说明，不会编译具体的传输实现。
+
+启用方式：`spark-transport-tcp = { features = ["runtime-tokio"] }` 或使用默认特性。
+"#
+)]
+
+#[cfg(feature = "runtime-tokio")]
 mod backpressure;
+#[cfg(feature = "runtime-tokio")]
 mod channel;
+#[cfg(feature = "runtime-tokio")]
 mod error;
+#[cfg(feature = "runtime-tokio")]
 mod listener;
+#[cfg(feature = "runtime-tokio")]
 mod util;
 
+#[cfg(feature = "runtime-tokio")]
 pub use channel::{TcpChannel, TcpChannelParts, TcpSocketConfig};
+#[cfg(feature = "runtime-tokio")]
 pub use listener::TcpListener;
 pub use spark_core::transport::ShutdownDirection;

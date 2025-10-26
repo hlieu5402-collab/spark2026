@@ -21,14 +21,32 @@
 - 轮询式取消存在毫秒级延迟，但能在 Tokio 上保持实现简单；
 - 当前实现聚焦服务端接入，后续若需客户端支持或会话缓存，可在现有结构上扩展。
 "#]
+#![cfg_attr(
+    not(feature = "runtime-tokio"),
+    doc = r#"## 功能开关：`runtime-tokio`
 
+默认启用 Tokio + rustls 组合的 TLS 实现；当需要最小依赖或在文档构建阶段排除 Tokio，可禁用默认特性。
+此时 crate 仅保留能力说明与类型文档，不会链接实际 TLS 代码。
+
+启用方式：`spark-transport-tls = { features = ["runtime-tokio"] }` 或沿用默认特性。
+"#
+)]
+
+#[cfg(feature = "runtime-tokio")]
 mod hot_reload;
 
+#[cfg(feature = "runtime-tokio")]
 pub use hot_reload::{HotReloadingServerConfig, TlsHandshakeError};
+#[cfg(feature = "runtime-tokio")]
 mod acceptor;
+#[cfg(feature = "runtime-tokio")]
 mod channel;
+#[cfg(feature = "runtime-tokio")]
 mod error;
+#[cfg(feature = "runtime-tokio")]
 mod util;
 
+#[cfg(feature = "runtime-tokio")]
 pub use acceptor::TlsAcceptor;
+#[cfg(feature = "runtime-tokio")]
 pub use channel::TlsChannel;

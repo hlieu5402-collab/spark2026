@@ -71,7 +71,7 @@ impl fmt::Debug for HotReloadWriteGuard<'_> {
 
 /// 热更新应用耗时的计时器封装，兼容 `std` 与 `no_std` (alloc) 构建模式。
 ///
-/// - 在 `std` 环境下内部记录 [`std::time::Instant`]，提供真实的耗时；
+/// - 在 `std` 环境下内部记录 `std::time::Instant`，提供真实的耗时；
 /// - 在 `no_std + alloc` 下为空结构，`elapsed` 恒返回 `None`，调用方可选择性忽略直方图打点。
 #[derive(Clone, Copy, Debug)]
 pub struct HotReloadApplyTimer {

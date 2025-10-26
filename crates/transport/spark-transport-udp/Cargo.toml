@@ -13,11 +13,12 @@ bench = false
 [dependencies]
 spark-core = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"], optional = true }
 
 [features]
-default = []
-batch-udp-unix = ["socket2", "nix"]
+default = ["runtime-tokio"]
+runtime-tokio = ["dep:tokio"]
+batch-udp-unix = ["runtime-tokio", "dep:socket2", "dep:nix"]
 
 [dependencies.socket2]
 workspace = true
