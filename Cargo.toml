@@ -16,9 +16,9 @@ members = [
     "crates/transport/spark-transport-tls",
     "crates/transport/spark-transport-udp",
     "examples/tck-mock-transport",
-    "tools/deprecation-lint",
+    "tools/spark-deprecation-lint",
 ]
-exclude = ["fuzz"]
+exclude = ["spark2026-fuzz"]
 resolver = "2"
 
 [workspace.package]
