@@ -1,41 +1,26 @@
 # spark-macros
 
-## 契约映射
-- 提供 `#[spark::service]` 过程宏，自动生成符合 `spark_core::service::Service` 契约的实现，避免业务侧手写 `poll_ready`/`call` 逻辑。
-- 宏生成的 Service 会引用 `CallContext`、`ReadyState` 与 `CloseReason`，确保与 `spark-core` 的调度、半关闭语义保持一致。
-- 通过公开 re-export (`spark_core::spark`) 统一入口，保证所有 crate 均以相同路径使用宏，降低版本演进的破碎风险。
+## 职责边界
+- 提供 `#[spark::service]` 等过程宏，生成符合 `spark-core` 契约的 `Service` 实现，统一调度、背压与关闭语义。
+- 承担跨 crate 的 API 稳定层：通过在 `spark-core` 中的 re-export，保障业务方只依赖一个命名空间即可升级。
+- 在编译期对 Service 声明进行语义校验，补充文档中定义的调用约束，避免运行期才暴露契约违规。
 
-## 错误分类
-- 宏展开阶段的校验错误通过编译期 `syn::Error` 抛出，最终在编译日志中以 `ErrorCategory::ImplementationError` 定位（编译器错误）。
-- 运行期错误仍由生成的 Service 使用 `CoreError`/`DomainError` 分类：宏保证自动引入的模板不会吞掉错误分类或改变业务语义。
-- 当宏使用方式不当（如缺少重命名 `use spark_core as spark;`）会触发编译错误，编译器提示指导开发者修正。
+## 公共接口入口
+- [`src/lib.rs`](./src/lib.rs)：暴露 `service` 过程宏，并在宏展开时注入 `CallContext`、`ReadyState` 等类型。
+- [`src/diagnostics.rs`](./src/diagnostics.rs)：封装编译期诊断信息，确保错误信息与 [`docs/error-category-matrix.md`](../../docs/error-category-matrix.md) 中“实现错误”分类一致。
+- [`src/render`](./src/render)：包含 Service 模板与 `poll_ready`/`call` 实现细节，保证生成代码满足 [`docs/state_machines.md`](../../docs/state_machines.md) 的 ReadyState 协议。
 
-## 背压语义
-- 生成的 Service 自动实现 `poll_ready`，在 Pending 状态下记录 waker 并等待业务 Future 完成，确保背压信号通过 `ReadyState` 正确传播。
-- 当业务返回 `ReadyCheck::Pending` 时，宏生成的代码会遵循 `spark-core` 的 `ReadyState` 契约，不会遗漏唤醒或误报 `Ready`。
-- 宏模板保留调用方对 `CallContext::budget` 的访问能力，使自定义背压策略与预算判断得以保留。
+## 状态机与错误域
+- 宏生成的 `poll_ready` 会自动映射业务返回值到 `ReadyState`，并补充 `BusyReason`，对应 [`docs/graceful-shutdown-contract.md`](../../docs/graceful-shutdown-contract.md) 对半关闭顺序的要求。
+- 编译期校验捕获的非法声明（缺少 `use spark_core as spark;`、异步签名错误等）会产生 `syn::Error`，最终落在 `ErrorCategory::ImplementationError`。
+- 运行期错误保持业务返回的 `CoreError` 或 `DomainError`，宏不会包裹或改写错误分类，以免破坏 [`crates/spark-contract-tests`](../spark-contract-tests) 的断言。
 
-## TLS/QUIC 注意事项
-- 过程宏生成的 Service 不直接依赖 TLS/QUIC，但需确保：
-  - 业务函数能接收来自 TLS/QUIC 传输层的 `CallContext`，以便在握手失败或会话迁移时响应取消；
-  - 若业务逻辑涉及握手阶段的异步等待，宏生成的 `poll_ready` 会正确尊重 `CallContext::deadline()`，确保半关闭流程可被打断。
+## 关联契约与测试
+- 与 [`crates/spark-core`](../spark-core) 紧耦合：任何宏语义变更需要同时更新 core 中的 re-export 与文档示例。
+- [`crates/spark-contract-tests-macros`](../spark-contract-tests-macros) 提供针对过程宏的编译期测试，覆盖 Service 生命周期、背压信号与错误透传。
+- 示例服务定义可参考 [`docs/getting-started.md`](../../docs/getting-started.md) 与 [`docs/context-sugar.md`](../../docs/context-sugar.md)，确保宏使用姿势一致。
 
-## 半关闭顺序
-- 宏生成的 `call` 函数会在 Future 完成后调用 `CallContext::close_graceful()` 或上游提供的关闭接口（取决于业务逻辑）。
-- 当 `close_graceful` 触发后，宏模板保证不会再次访问请求体/上下文，遵守“写半关闭 → 等待读确认 → 释放资源”的顺序。
-- 若 `CallContext::deadline()` 到期，生成代码会传播 `ErrorCategory::Timeout`，驱动宿主执行 `close_force()`。
-
-## ReadyState 映射表
-| 场景 | ReadyState | 说明 |
-| --- | --- | --- |
-| 业务 Future 立即可用 | `Ready` | `poll_ready` 返回 `ReadyCheck::Ready(ReadyState::Ready)` |
-| 业务 Future 尚未完成 | `Pending` | 存储 waker，等待完成后唤醒 |
-| 业务预算耗尽 | `BudgetExhausted` | 调用方自定义逻辑通过 `CallContext::budget` 返回 |
-| 依赖暂不可用 | `Busy` | 由业务在返回值中指定 `BusyReason`，宏负责透传 |
-| 需要退避或重试 | `RetryAfter` | 结合重试策略返回 `ReadyState::RetryAfter` |
-| TLS/QUIC 取消/安全违规 | `Busy` + `CloseReason::SecurityViolation` | `CallContext` 的关闭原因会被透传到生成代码 |
-
-## 超时/取消来源（CallContext）
-- 生成代码会在 `call` Future 内部轮询 `CallContext::cancellation_token()`，一旦被取消立即返回 `CoreError::cancelled()`。
-- `CallContext::deadline()` 由宏模板传递给业务 Future，若超时则返回 `ErrorCategory::Timeout`，触发宿主的强制关闭。
-- 宏不引入额外定时器，而是复用调用方提供的 `CallContext`，保证所有 crate 对超时/取消的认知一致。
+## 集成注意事项
+- 宏默认依赖调用方在模块顶层执行 `use spark_core as spark;`，否则路径无法解析；该约束在编译期会给出指向性提示。
+- 生成代码假定调用方在 `no_std + alloc` 环境下可用，如需纯 `no_std` 支持需关注 [`docs/no-std-compatibility-report.md`](../../docs/no-std-compatibility-report.md) 的后续迭代。
+- 若需要自定义过程宏或扩展属性，请在 issue 中描述预期状态机与错误分类，避免破坏既有契约。
