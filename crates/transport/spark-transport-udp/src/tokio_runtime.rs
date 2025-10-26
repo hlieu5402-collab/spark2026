@@ -1,43 +1,35 @@
-#![doc = r#"
-# spark-transport-udp
-
-## 模块使命（Why）
-- **统一 UDP 通路**：为 Spark 运行时提供一套围绕 Tokio `UdpSocket` 的轻量封装，使上层能够通过 `spark-core` 的抽象以一致方式访问无连接传输能力。
-- **SIP 互操作诉求**：面向 SIP 协议的 `rport` 语义进行解析与回写，保证经由 NAT 的终端也能可靠接收响应。
-- **NAT Keepalive 基石**：暴露回源路由（`UdpReturnRoute`）描述，使业务侧能够基于最近一次报文持续发送心跳维持 NAT 映射。
-
-## 核心契约（What）
-- `UdpEndpoint` 负责套接字生命周期管理，并提供 `recv_from`/`send_to` 的异步接口。
-- `UdpReturnRoute` 用于描述回应路径及是否需要在 SIP `Via` 头中填充 `rport`。
-- 约束：调用方必须运行在 Tokio 多线程运行时，且所有报文按 UTF-8 解析 SIP 头（遇到非法 UTF-8 将优雅退化为原样转发）。
-
-## 实现策略（How）
-- 绑定及收发直接委托给 Tokio `UdpSocket`，并通过 `TransportSocketAddr` 与 `std::net::SocketAddr` 互转保持与 `spark-core` 协调。
-- `recv_from` 在读取后解析首个 `Via` 头提取 `rport`，生成回源路由；`send_to` 在必要时重写 `rport` 并把报文发送至 NAT 可达端口。
-- 解析与改写均采用纯字节扫描，以避免正则表达式开销，并明确记录大小写不敏感匹配逻辑，兼顾性能与可读性。
-"#]
-#![cfg_attr(
-    not(feature = "runtime-tokio"),
-    doc = r#"## 功能开关：`runtime-tokio`
-
 use std::{
     borrow::Cow,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    pin::Pin,
 };
 
-use spark_transport::{DatagramEndpoint, TransportSocketAddr};
+use spark_core::transport::TransportSocketAddr;
 use thiserror::Error;
 use tokio::net::UdpSocket;
 
-#[cfg(feature = "runtime-tokio")]
-pub mod batch;
+/// 表示 UDP 传输层在处理 SIP 报文时的 `rport` 状态。
+///
+/// # 设计动机（Why）
+/// - SIP 要求服务端在响应中回写客户端透出的 `rport`，以便 NAT 后端口可达。
+/// - 若请求中未声明 `rport`，则无需额外动作；若声明但无值，表示需要服务端填写。
+///
+/// # 契约说明（What）
+/// - `Absent`：请求未携带 `rport` 参数，发送响应时不做改写。
+/// - `Advertised(u16)`：请求显式指定回源端口，响应应沿用原值。
+/// - `Requested`：请求声明了 `;rport` 或 `;rport=`，但未提供端口，需要服务端填入实际源端口。
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SipViaRportDisposition {
+    Absent,
+    Advertised(u16),
+    Requested,
+}
 
-#[cfg(feature = "runtime-tokio")]
-mod tokio_runtime;
-
-#[cfg(feature = "runtime-tokio")]
-pub use tokio_runtime::*;
+impl SipViaRportDisposition {
+    /// 判断该 `rport` 状态是否要求服务端在响应中主动改写端口。
+    fn requires_rewrite(self) -> bool {
+        matches!(self, SipViaRportDisposition::Requested)
+    }
+}
 
 /// 描述一次 UDP 收包后可用的回源路径信息。
 ///
@@ -196,61 +188,6 @@ impl UdpEndpoint {
             .await
             .map_err(UdpError::Send)
     }
-}
-
-impl DatagramEndpoint for UdpEndpoint {
-    type Error = UdpError;
-    type CallCtx<'ctx> = ();
-    type InboundMeta = UdpIncoming;
-    type OutboundMeta = UdpReturnRoute;
-
-    type RecvFuture<'ctx>
-        = Pin<
-        Box<
-            dyn core::future::Future<Output = Result<(usize, UdpIncoming), UdpError>> + Send + 'ctx,
-        >,
-    >
-    where
-        Self: 'ctx,
-        Self::CallCtx<'ctx>: 'ctx;
-
-    type SendFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<usize, UdpError>> + Send + 'ctx>>
-    where
-        Self: 'ctx,
-        Self::CallCtx<'ctx>: 'ctx;
-
-    fn local_addr(&self) -> Result<TransportSocketAddr, UdpError> {
-        UdpEndpoint::local_addr(self)
-    }
-
-    fn recv<'ctx>(
-        &'ctx self,
-        _ctx: &'ctx Self::CallCtx<'ctx>,
-        buf: &'ctx mut [u8],
-    ) -> Self::RecvFuture<'ctx> {
-        Box::pin(async move {
-            let incoming = self.recv_from(buf).await?;
-            let len = incoming.len;
-            Ok((len, incoming))
-        })
-    }
-
-    fn send<'ctx>(
-        &'ctx self,
-        _ctx: &'ctx Self::CallCtx<'ctx>,
-        payload: &'ctx [u8],
-        meta: &'ctx Self::OutboundMeta,
-    ) -> Self::SendFuture<'ctx> {
-        Box::pin(async move { self.send_to(payload, meta).await })
-    }
-}
-
-#[allow(dead_code)]
-fn _assert_udp_datagram_endpoint()
-where
-    UdpEndpoint: DatagramEndpoint<Error = UdpError>,
-{
 }
 
 /// UDP 接收结果描述。

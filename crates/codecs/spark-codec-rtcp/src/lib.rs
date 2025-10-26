@@ -9,7 +9,7 @@
 //! - **设计策略**：在占位结构之上补充 RTCP 复合包解析能力，使 `spark-impl-tck` 可以加载真实测试载荷。
 //!
 //! ## 交互契约（What）
-//! - **依赖输入**：依托 `spark-core` 的 [`BufView`](spark_core::buffer::BufView) 实现，从零拷贝缓冲视图中提取字节流。
+//! - **依赖输入**：依托 `spark-codecs` 聚合的 [`BufView`](spark_codecs::buffer::BufView) 实现，从零拷贝缓冲视图中提取字节流。
 //! - **输出职责**：提供 `parse_rtcp` 函数，将 SR/RR/SDES/BYE 等报文解析为结构化的 [`RtcpPacket`] 列表。
 //! - **前置约束**：运行环境需具备与 RTP 相同的时钟/缓冲支持；当 `no_std` 启用时必须提供 `alloc` 支持以保存解析结果。
 //!

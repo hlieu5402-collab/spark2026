@@ -23,6 +23,7 @@ Spark 2026 是面向高性能、协议无关场景的异步通信契约集合，
 - 错误分类矩阵：[docs/error-category-matrix.md](docs/error-category-matrix.md)
 - 优雅关闭契约：[docs/graceful-shutdown-contract.md](docs/graceful-shutdown-contract.md)
 - 观测与指标：[docs/observability](docs/observability)
+- Feature 策略：[docs/feature-policy.md](docs/feature-policy.md)
 
 ## 快速开始
 

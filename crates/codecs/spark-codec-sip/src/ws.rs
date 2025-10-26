@@ -19,7 +19,7 @@ pub mod frame_text_binary;
 
 use core::{fmt, str};
 
-use spark_core::buffer::{BufView, Chunks};
+use spark_codecs::buffer::{BufView, Chunks};
 
 use crate::{
     SipFormatError, SipParseError,

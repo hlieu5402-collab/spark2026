@@ -13,12 +13,13 @@ bench = false
 
 [features]
 default = ["std"]
-alloc = ["spark-core/alloc"]
-std = ["alloc", "spark-core/std"]
-compat_v0 = ["spark-core/compat_v0"]
+alloc = ["spark-codecs/alloc"]
+std = ["alloc", "spark-codecs/std"]
+compat_v0 = ["spark-codecs/compat_v0"]
 
 [dependencies]
-spark-core = { path = "../../spark-core", default-features = false }
+spark-codecs = { path = "../spark-codecs", default-features = false }
+spark-core = { workspace = true, default-features = false }
 smallvec = { version = "1.13", default-features = false, features = ["const_generics", "union"] }
 
 [dev-dependencies]

@@ -21,10 +21,8 @@
 //! - 错误路径统一返回 `CoreError`，便于与框架其他组件协同；示例中遇到 `DecodeOutcome::Incomplete` 会转换为错误退出。
 
 use spark_codec_line::LineDelimitedCodec;
-use spark_core::buffer::{PoolStats, ReadableBuffer, WritableBuffer};
-use spark_core::codec::{DecodeContext, DecodeOutcome, EncodeContext};
-use spark_core::error::codes;
-use spark_core::{BufferPool, Codec, CoreError};
+use spark_codecs::buffer::{BufferPool, PoolStats, ReadableBuffer, WritableBuffer};
+use spark_codecs::{Codec, CoreError, DecodeContext, DecodeOutcome, EncodeContext, codes};
 use std::mem;
 
 /// `SimpleBufferPool` 提供最简 Mock，实现 `BufferPool` 契约以支撑示例运行。
