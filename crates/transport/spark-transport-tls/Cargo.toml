@@ -11,8 +11,8 @@ license = "Apache-2.0"
 bench = false
 
 [dependencies]
-spark-core = { path = "../../spark-core" }
-spark-transport-tcp = { path = "../spark-transport-tcp" }
+spark-core = { workspace = true, features = ["std"] }
+spark-transport-tcp = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
 rustls = { workspace = true, default-features = false, features = ["std"] }
 tokio-rustls = { workspace = true }
