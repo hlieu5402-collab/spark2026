@@ -59,6 +59,9 @@ jobs:
           shared-key: msrv-1.89
           cache-on-failure: true
 
+      - name: Check documentation density and TODO register
+        run: python3 tools/check_doc_density.py
+
       - name: Run formatting, clippy, and deprecation lints
         run: make ci-lints
 
