@@ -19,7 +19,7 @@ std = []
 alloc = ["std"]
 
 [dependencies]
-spark-core = { workspace = true }
-spark-codec-line = { path = "../codecs/spark-codec-line" }
+spark-core = { workspace = true, features = ["std"] }
+spark-codec-line = { workspace = true }
 spark-contract-tests-macros = { workspace = true }
 parking_lot = { workspace = true }

@@ -13,7 +13,7 @@ description = "演示项目：如何在第三方传输层实现中集成 spark-c
 bench = false
 
 [dependencies]
-spark-core = { workspace = true }
+spark-core = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 spark-contract-tests = { workspace = true }
