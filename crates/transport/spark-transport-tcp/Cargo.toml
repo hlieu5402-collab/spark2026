@@ -12,6 +12,7 @@ bench = false
 
 [dependencies]
 spark-core = { path = "../../spark-core" }
+spark-transport = { path = "../spark-transport" }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }
 

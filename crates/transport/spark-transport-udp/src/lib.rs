@@ -20,9 +20,10 @@
 use std::{
     borrow::Cow,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    pin::Pin,
 };
 
-use spark_core::transport::TransportSocketAddr;
+use spark_transport::{DatagramEndpoint, TransportSocketAddr};
 use thiserror::Error;
 use tokio::net::UdpSocket;
 
@@ -209,6 +210,61 @@ impl UdpEndpoint {
             .await
             .map_err(UdpError::Send)
     }
+}
+
+impl DatagramEndpoint for UdpEndpoint {
+    type Error = UdpError;
+    type CallCtx<'ctx> = ();
+    type InboundMeta = UdpIncoming;
+    type OutboundMeta = UdpReturnRoute;
+
+    type RecvFuture<'ctx>
+        = Pin<
+        Box<
+            dyn core::future::Future<Output = Result<(usize, UdpIncoming), UdpError>> + Send + 'ctx,
+        >,
+    >
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type SendFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<usize, UdpError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    fn local_addr(&self) -> Result<TransportSocketAddr, UdpError> {
+        UdpEndpoint::local_addr(self)
+    }
+
+    fn recv<'ctx>(
+        &'ctx self,
+        _ctx: &'ctx Self::CallCtx<'ctx>,
+        buf: &'ctx mut [u8],
+    ) -> Self::RecvFuture<'ctx> {
+        Box::pin(async move {
+            let incoming = self.recv_from(buf).await?;
+            let len = incoming.len;
+            Ok((len, incoming))
+        })
+    }
+
+    fn send<'ctx>(
+        &'ctx self,
+        _ctx: &'ctx Self::CallCtx<'ctx>,
+        payload: &'ctx [u8],
+        meta: &'ctx Self::OutboundMeta,
+    ) -> Self::SendFuture<'ctx> {
+        Box::pin(async move { self.send_to(payload, meta).await })
+    }
+}
+
+#[allow(dead_code)]
+fn _assert_udp_datagram_endpoint()
+where
+    UdpEndpoint: DatagramEndpoint<Error = UdpError>,
+{
 }
 
 /// UDP 接收结果描述。

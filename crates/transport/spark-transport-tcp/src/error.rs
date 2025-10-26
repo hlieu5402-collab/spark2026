@@ -35,6 +35,10 @@ pub(crate) const WRITE_VECTORED: OperationKind = OperationKind {
     code: "spark.transport.tcp.writev_failed",
     message: "tcp write_vectored",
 };
+pub(crate) const FLUSH: OperationKind = OperationKind {
+    code: "spark.transport.tcp.flush_failed",
+    message: "tcp flush",
+};
 pub(crate) const SHUTDOWN: OperationKind = OperationKind {
     code: "spark.transport.tcp.shutdown_failed",
     message: "tcp shutdown",

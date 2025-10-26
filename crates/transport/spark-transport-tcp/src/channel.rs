@@ -1,6 +1,6 @@
 use crate::{
     backpressure::BackpressureState,
-    error::{self, CONFIGURE, map_io_error},
+    error::{self, CONFIGURE, FLUSH, map_io_error},
     util::{deadline_expired, deadline_remaining, run_with_context, to_socket_addr},
 };
 use socket2::SockRef;
@@ -11,10 +11,15 @@ use spark_core::{
     status::ready::{PollReady, ReadyCheck, ReadyState},
     transport::{ShutdownDirection, TransportSocketAddr},
 };
+use spark_transport::{
+    BackpressureDecision, BackpressureMetrics, TransportConnection as TransportConnectionTrait,
+};
+use std::borrow::Cow;
 use std::{
     io::{self, IoSlice},
     net::Shutdown as StdShutdown,
     ops::DerefMut,
+    pin::Pin,
     sync::{Arc, Mutex},
     task::Poll,
     time::Duration,
@@ -245,6 +250,35 @@ impl TcpChannel {
         Ok(written)
     }
 
+    /// 刷新底层写缓冲。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 显式暴露 `flush`，让上层在批量写入后能强制冲刷套接字缓冲，
+    ///   与 `TransportConnection::flush` 契约对齐；
+    /// - 统一 TCP/TLS/QUIC 等实现的刷新语义，便于测试用例验证写入完成时机。
+    ///
+    /// ## 契约（What）
+    /// - `ctx`：继承取消/超时语义的 [`CallContext`]；
+    /// - **前置条件**：调用方确保当前写缓冲存在待冲刷数据；
+    /// - **后置条件**：返回 `Ok(())` 表示刷新完成，失败时返回结构化 [`CoreError`]。
+    ///
+    /// ## 风险提示（Trade-offs）
+    /// - 频繁刷新会增加系统调用频率，应仅在需要强一致性时调用；
+    /// - 若 `ctx` 即将超时，该操作可能提前中断并返回 `Timeout` 错误。
+    pub async fn flush(&self, ctx: &CallContext) -> Result<(), CoreError> {
+        run_with_context(ctx, FLUSH, async {
+            let mut guard = self.inner.stream.lock().await;
+            guard.flush().await
+        })
+        .await?;
+        if let Ok(mut state) = self.inner.backpressure.lock() {
+            state.on_ready();
+        }
+        Ok(())
+    }
+
     /// 使用 vectored IO 写入多个缓冲区。仅执行一次写入尝试。
     pub async fn writev(
         &self,
@@ -468,6 +502,106 @@ impl TcpChannel {
         })
         .await
     }
+}
+
+impl TransportConnectionTrait for TcpChannel {
+    type Error = CoreError;
+    type CallCtx<'ctx> = CallContext;
+    type ReadyCtx<'ctx> = ExecutionContext<'ctx>;
+
+    type ReadFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type WriteFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type ShutdownFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    type FlushFuture<'ctx>
+        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx,
+        Self::CallCtx<'ctx>: 'ctx;
+
+    fn id(&self) -> Cow<'_, str> {
+        Cow::Owned(format!(
+            "tcp:{}->{}",
+            self.inner.local_addr, self.inner.peer_addr
+        ))
+    }
+
+    fn peer_addr(&self) -> Option<TransportSocketAddr> {
+        Some(self.inner.peer_addr)
+    }
+
+    fn local_addr(&self) -> Option<TransportSocketAddr> {
+        Some(self.inner.local_addr)
+    }
+
+    fn read<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::CallCtx<'ctx>,
+        buf: &'ctx mut [u8],
+    ) -> Self::ReadFuture<'ctx> {
+        Box::pin(async move { TcpChannel::read(self, ctx, buf).await })
+    }
+
+    fn write<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::CallCtx<'ctx>,
+        buf: &'ctx [u8],
+    ) -> Self::WriteFuture<'ctx> {
+        Box::pin(async move { TcpChannel::write(self, ctx, buf).await })
+    }
+
+    fn flush<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx<'ctx>) -> Self::FlushFuture<'ctx> {
+        Box::pin(async move { TcpChannel::flush(self, ctx).await })
+    }
+
+    fn shutdown<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::CallCtx<'ctx>,
+        direction: ShutdownDirection,
+    ) -> Self::ShutdownFuture<'ctx> {
+        Box::pin(async move { TcpChannel::shutdown(self, ctx, direction).await })
+    }
+
+    fn classify_backpressure(
+        &self,
+        ctx: &Self::ReadyCtx<'_>,
+        _metrics: &BackpressureMetrics,
+    ) -> BackpressureDecision {
+        match self.poll_ready(ctx) {
+            Poll::Pending => BackpressureDecision::Busy,
+            Poll::Ready(ReadyCheck::Ready(ReadyState::Ready)) => BackpressureDecision::Ready,
+            Poll::Ready(ReadyCheck::Ready(ReadyState::Busy(_))) => BackpressureDecision::Busy,
+            Poll::Ready(ReadyCheck::Ready(ReadyState::RetryAfter(advice))) => {
+                BackpressureDecision::RetryAfter { delay: advice.wait }
+            }
+            Poll::Ready(ReadyCheck::Ready(ReadyState::BudgetExhausted(_))) => {
+                BackpressureDecision::BudgetExhausted
+            }
+            Poll::Ready(ReadyCheck::Err(_)) => BackpressureDecision::Rejected,
+            Poll::Ready(_) => BackpressureDecision::Busy,
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn _assert_tcp_transport_connection()
+where
+    TcpChannel: TransportConnectionTrait<Error = CoreError>,
+{
 }
 
 fn sync_shutdown(stream: &TokioTcpStream, direction: StdShutdown) -> io::Result<()> {
