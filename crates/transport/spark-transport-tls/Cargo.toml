@@ -17,6 +17,8 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "ne
 rustls = { workspace = true, default-features = false, features = ["std"], optional = true }
 tokio-rustls = { workspace = true, optional = true }
 arc-swap = { workspace = true, optional = true }
+spark-core = { workspace = true, features = ["std"] }
+spark-transport-tcp = { workspace = true }
 thiserror = { workspace = true }
 
 [features]
