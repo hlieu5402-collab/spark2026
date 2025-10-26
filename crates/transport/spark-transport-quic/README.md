@@ -26,6 +26,27 @@
 - [`crates/spark-impl-tck`](../../spark-impl-tck) 的 QUIC 套件运行真实握手、连接迁移与 0-RTT 流程，校验 ReadyState 序列与错误分类。
 - 观测仪表与 SLO 在 [`docs/observability/dashboards/transport-health.json`](../../../docs/observability/dashboards/transport-health.json) 中维护，确保字段同步。
 
+## 半关闭顺序
+- QUIC 流半关闭遵循：
+  1. `QuicChannel::shutdown(Write)` 发送 FIN 帧；
+  2. 等待对端确认写半关闭，并继续读取直到读半关闭完成；
+  3. 若 `Deadline` 到期仍未完成，调用 `close_force()` 终止流并记录 `CloseReason::Timeout`。
+- `spark-core::transport::ShutdownDirection` 确保调用方显式指定方向，防止误关闭整个连接，并在所有传输实现之间提供一致语义。
+
+## ReadyState 映射表
+| 流状态 | ReadyState | 说明 |
+| --- | --- | --- |
+| 流可写且拥塞正常 | `Ready` | 可继续发送帧 |
+| 流量控制 credit 耗尽 | `Pending` | 等待对端更新窗口 |
+| 拥塞窗口收缩/排队增长 | `Busy(BusyReason::downstream)` | 提醒调度器减速 |
+| 需要退避（探测丢包/路径验证） | `RetryAfter` | 携带退避建议 |
+| Budget 或 connection 限制 | `BudgetExhausted` | 由 `QuicBackpressure` 判定 |
+| 握手/密钥失败 | `Busy` + `CloseReason::SecurityViolation` | 立即终止流 |
+
+## 超时/取消来源（CallContext）
+- `CallContext::deadline()` 控制握手、流建立与半关闭时长，超时触发 `close_force()` 并报告 `CloseReason::Timeout`。
+- `CallContext::cancellation_token()` 支持连接迁移或上游中断，取消后立即停止打开新流并关闭现有流。
+- `CallContext::budget` 可绑定到 QUIC 的流量控制窗口，超限时通过 `BudgetDecision` 阻止进一步发送并广播 `ReadyState::BudgetExhausted`。
 ## 集成注意事项
 - 连接迁移需刷新 `CallContext` 中的远端地址与安全属性，防止旧上下文在新路径上生效。
 - 在启用 0-RTT 时必须启用重放防御：被拒绝的 0-RTT 请求需保持 ReadyState 空列表，并仅通过 `CloseReason::SecurityViolation` 上报。
