@@ -39,12 +39,13 @@
 //! - 唤醒源只列举 `IoReady`/`Timer`/`ConfigReload`，与文档保持一致；新增来源时需同时更新文档与本测试。
 //! - 性质 1 与 2 分离，便于分别定位“状态机不可达”与“唤醒缺失”两类问题。
 //!
-//! # 风险与 TODO (Gotchas)
+//! # 风险与跟踪任务 (Gotchas & Tracking)
 //!
 //! - 若未来 ReadyState 引入新分支，需要补充 `ReadyLeafState` 与转换逻辑；否则生成器会遗漏新状态。
 //! - 当 Pending 区间允许多个唤醒源时，`SequenceBuilder` 当前策略是固定使用集合中的第一个源；未来可扩展为随机选择，
 //!   但需确保唤醒记录正确更新。
-//! - TODO：若 ReadyState 状态机引入更多上下文（例如错误码），可考虑扩展模型记录以支持更细粒度的性质检查。
+//! - 跟踪事项：若 ReadyState 状态机引入更多上下文（例如错误码），需扩展模型记录以支持更细粒度的性质检查；
+//!   详见《docs/tracking/T107.md#readystate-model-telemetry》，跟踪者负责在模型、生成器与文档间保持一致。
 
 use std::collections::BTreeSet;
 
