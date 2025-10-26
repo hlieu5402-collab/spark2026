@@ -9,7 +9,7 @@ set -euo pipefail
 #    - 位于 `tools/ci/`，与其它守门脚本并列；由 GitHub Actions 的 runtime matrix 调用，
 #      将外部适配层纳入统一的 CI 防线。
 # 3. 方法 (How)
-#    - 解析运行时参数 → 构造 `adapters/runtime-*/Cargo.toml` 路径 → 调用 `cargo test`；
+#    - 解析运行时参数 → 映射至 `adapters/spark-runtime-*-adapter/Cargo.toml` → 调用 `cargo test`；
 #      对 glommio 增加 memlock 提示，避免 io_uring 初始化失败。
 # 4. 契约 (What)
 #    - 输入：单个运行时名称（tokio、async-std、smol、glommio）。
@@ -38,7 +38,23 @@ case "${runtime}" in
 esac
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-MANIFEST="${REPO_ROOT}/adapters/runtime-${runtime}/Cargo.toml"
+
+case "${runtime}" in
+    tokio)
+        crate_dir="adapters/spark-runtime-tokio-adapter"
+        ;;
+    async-std)
+        crate_dir="adapters/spark-runtime-async-std-adapter"
+        ;;
+    smol)
+        crate_dir="adapters/spark-runtime-smol-adapter"
+        ;;
+    glommio)
+        crate_dir="adapters/spark-runtime-glommio-adapter"
+        ;;
+esac
+
+MANIFEST="${REPO_ROOT}/${crate_dir}/Cargo.toml"
 
 if [[ ! -f "${MANIFEST}" ]]; then
     printf '错误：未找到运行时 "%s" 的适配 crate：%s\n' "${runtime}" "${MANIFEST}" >&2
