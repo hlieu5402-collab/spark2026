@@ -387,7 +387,7 @@ pub trait Controller: Send + Sync + 'static + Sealed {
         &self,
         middleware: &dyn Middleware,
         services: &CoreServices,
-    ) -> Result<(), CoreError>;
+    ) -> crate::Result<(), CoreError>;
 
     /// 将通道标记为活跃并广播事件。
     fn emit_channel_activated(&self);
@@ -825,7 +825,7 @@ impl Controller for HotSwapController {
         &self,
         _middleware: &dyn Middleware,
         _services: &CoreServices,
-    ) -> Result<(), CoreError> {
+    ) -> crate::Result<(), CoreError> {
         Err(CoreError::new(
             "spark.pipeline.install_middleware",
             "HotSwapController::install_middleware 尚未实现：请通过 add_handler_after 装配",
@@ -1018,7 +1018,7 @@ impl PipelineContext for HotSwapContext {
         }
     }
 
-    fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+    fn write(&self, msg: PipelineMessage) -> crate::Result<WriteSignal, CoreError> {
         self.channel.write(msg)
     }
 
@@ -1030,7 +1030,7 @@ impl PipelineContext for HotSwapContext {
         self.channel.close_graceful(reason, deadline);
     }
 
-    fn closed(&self) -> crate::future::BoxFuture<'static, Result<(), SparkError>> {
+    fn closed(&self) -> crate::future::BoxFuture<'static, crate::Result<(), SparkError>> {
         self.channel.closed()
     }
 }

@@ -128,14 +128,14 @@ const RESERVED_BIT_MASK: u8 = 0x80;
 const END_BIT_MASK: u8 = 0x40;
 const VOLUME_MASK: u8 = 0x3F;
 
-fn ensure_payload_type(pt: u8) -> Result<(), DtmfDecodeError> {
+fn ensure_payload_type(pt: u8) -> spark_core::Result<(), DtmfDecodeError> {
     if !(DTMF_DYNAMIC_PAYLOAD_MIN..=DTMF_DYNAMIC_PAYLOAD_MAX).contains(&pt) {
         return Err(DtmfDecodeError::InvalidPayloadType(pt));
     }
     Ok(())
 }
 
-fn ensure_payload_type_for_encode(pt: u8) -> Result<(), DtmfEncodeError> {
+fn ensure_payload_type_for_encode(pt: u8) -> spark_core::Result<(), DtmfEncodeError> {
     if !(DTMF_DYNAMIC_PAYLOAD_MIN..=DTMF_DYNAMIC_PAYLOAD_MAX).contains(&pt) {
         return Err(DtmfEncodeError::InvalidPayloadType(pt));
     }
@@ -159,7 +159,10 @@ fn ensure_payload_type_for_encode(pt: u8) -> Result<(), DtmfEncodeError> {
 /// - 使用 `chunks_exact(4)` 遍历所有事件块，逐块校验保留位与事件号一致性；
 /// - 仅保留最后一个块的 `end`/`volume`/`duration` 作为最终输出；
 /// - 解析过程中不复制 payload，完全基于引用与位运算。
-pub fn decode_dtmf(payload_type: u8, payload: &[u8]) -> Result<DtmfEvent, DtmfDecodeError> {
+pub fn decode_dtmf(
+    payload_type: u8,
+    payload: &[u8],
+) -> spark_core::Result<DtmfEvent, DtmfDecodeError> {
     ensure_payload_type(payload_type)?;
 
     if payload.len() < DTMF_BLOCK_LEN {
@@ -221,7 +224,7 @@ pub fn encode_dtmf(
     payload_type: u8,
     event: &DtmfEvent,
     output: &mut [u8],
-) -> Result<usize, DtmfEncodeError> {
+) -> spark_core::Result<usize, DtmfEncodeError> {
     ensure_payload_type_for_encode(payload_type)?;
 
     if output.len() < DTMF_BLOCK_LEN {

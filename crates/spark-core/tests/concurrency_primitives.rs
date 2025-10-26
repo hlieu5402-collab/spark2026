@@ -213,7 +213,7 @@ impl TestChannel {
         self.state.swap(value, Ordering::AcqRel)
     }
 
-    fn compare_exchange_state(&self, current: u8, new: u8) -> Result<u8, u8> {
+    fn compare_exchange_state(&self, current: u8, new: u8) -> spark_core::Result<u8, u8> {
         self.state
             .compare_exchange(current, new, Ordering::AcqRel, Ordering::Acquire)
     }
@@ -293,11 +293,11 @@ impl Channel for TestChannel {
         }
     }
 
-    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>> {
+    fn closed(&self) -> BoxFuture<'static, spark_core::Result<(), SparkError>> {
         Box::pin(async { Ok(()) })
     }
 
-    fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+    fn write(&self, msg: PipelineMessage) -> spark_core::Result<WriteSignal, CoreError> {
         let _ = msg;
         Ok(WriteSignal::Accepted)
     }
@@ -379,7 +379,7 @@ impl Controller for NullController {
         &self,
         _middleware: &dyn spark_core::pipeline::middleware::Middleware,
         _services: &CoreServices,
-    ) -> Result<(), CoreError> {
+    ) -> spark_core::Result<(), CoreError> {
         Ok(())
     }
 

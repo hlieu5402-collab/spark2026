@@ -30,7 +30,7 @@ use tokio::{runtime::Builder as RuntimeBuilder, sync::oneshot, task::JoinError};
 ///   - **后置条件**：所有 TCP 通道在基准结束前关闭，避免悬挂任务影响后续基准。
 /// - **设计取舍 (Trade-offs)**：
 ///   - 选择“固定单连接 + 回显”而非多连接并发，以降低结果噪声并强调 `TcpChannel` 基线；若未来要覆盖多连接场景，可在保持 JSON 格式的前提下扩展字段。
-fn main() -> Result<(), BenchError> {
+fn main() -> spark_core::Result<(), BenchError> {
     let cli = CliOptions::parse_from_env()?;
     let runtime = RuntimeBuilder::new_multi_thread()
         .worker_threads(cli.worker_threads)
@@ -163,7 +163,7 @@ impl CliOptions {
     /// - **契约 (What)**：返回的 [`CliOptions`] 至少保证一次采样，且包含固定 4 次预热；
     ///   若输入非法（如 `--iterations=0`），立即返回错误。
     /// - **风险提示 (Trade-offs)**：目前未暴露 worker 数量的 CLI 控制，但保留字段以便后续扩展；当未来需要调整线程数时，可直接新增参数解析分支。
-    fn parse_from_env() -> Result<Self, BenchError> {
+    fn parse_from_env() -> spark_core::Result<Self, BenchError> {
         let mut iterations = DEFAULT_ITERATIONS;
         let mut quick_mode = false;
         for arg in env::args().skip(1) {
@@ -256,7 +256,7 @@ struct PercentileStats {
 async fn run_payload_benchmark(
     payload_bytes: usize,
     cli: &CliOptions,
-) -> Result<PayloadReport, BenchError> {
+) -> spark_core::Result<PayloadReport, BenchError> {
     let total_iterations = cli.warmup_iterations + cli.iterations;
     let listener_addr = TransportSocketAddr::from(SocketAddr::from(([127, 0, 0, 1], 0)));
     let listener = TcpListener::bind(listener_addr).await?;
@@ -322,7 +322,7 @@ async fn run_payload_benchmark(
 ///   3. 对每个轮次执行“读满 payload → 写回 payload”，直至完成所有预定轮次。
 /// - **契约 (What)**：
 ///   - **输入**：监听器、上下文、负载大小、总轮次以及 `oneshot::Sender`；
-///   - **输出**：`Result<(), CoreError>`，表示回显循环是否顺利完成；
+///   - **输出**：`spark_core::Result<(), CoreError>`，表示回显循环是否顺利完成；
 ///   - **前置条件**：调用方负责保证 `payload_bytes > 0` 与 `total_iterations > 0`；
 ///   - **后置条件**：一旦返回，TCP 连接上的所有期望数据都已被处理。
 async fn run_server_loop(
@@ -332,7 +332,7 @@ async fn run_server_loop(
     payload_bytes: usize,
     total_iterations: usize,
     ready_tx: oneshot::Sender<()>,
-) -> Result<(), CoreError> {
+) -> spark_core::Result<(), CoreError> {
     let (channel, _) = listener.accept(&accept_ctx).await?;
     let _ = ready_tx.send(());
     let mut buffer = vec![0_u8; payload_bytes];
@@ -362,7 +362,7 @@ async fn perform_roundtrip(
     payload: &[u8],
     scratch: &mut [u8],
     verify_echo: bool,
-) -> Result<(), CoreError> {
+) -> spark_core::Result<(), CoreError> {
     channel.write(ctx, payload).await?;
     read_exact(channel, ctx, scratch, payload.len()).await?;
     if verify_echo && scratch[..payload.len()] != *payload {
@@ -389,7 +389,7 @@ async fn read_exact(
     ctx: &CallContext,
     buffer: &mut [u8],
     expected_len: usize,
-) -> Result<(), CoreError> {
+) -> spark_core::Result<(), CoreError> {
     let mut offset = 0;
     while offset < expected_len {
         let bytes = channel.read(ctx, &mut buffer[offset..expected_len]).await?;

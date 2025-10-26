@@ -15,9 +15,9 @@ spark-core = { path = "../../spark-core" }
 spark-transport-tcp = { path = "../spark-transport-tcp" }
 spark-transport = { path = "../spark-transport" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"], optional = true }
-rustls = { workspace = true, default-features = false, features = ["std"] }
-tokio-rustls = { workspace = true }
-arc-swap = { workspace = true }
+rustls = { workspace = true, default-features = false, features = ["std"], optional = true }
+tokio-rustls = { workspace = true, optional = true }
+arc-swap = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [features]

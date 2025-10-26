@@ -60,7 +60,7 @@ impl SipMessage {
     /// - **后置条件**：成功返回的实例保证 `frame_kind == FrameKind::Text` 且内部字节与输入
     ///   完全一致。
     /// - **逻辑摘要 (How)**：收集字节 -> 验证 UTF-8 -> 构建结构体。
-    pub fn text<P>(payload: P) -> Result<Self, WsSipError>
+    pub fn text<P>(payload: P) -> spark_core::Result<Self, WsSipError>
     where
         P: Into<Vec<u8>>,
     {
@@ -217,7 +217,7 @@ impl From<str::Utf8Error> for WsSipError {
 ///   - 任意解析错误将立即返回 `Err`，不产生部分结果。
 /// - **注意事项 (Trade-offs)**：实现为了保持可读性，将 `BufView` flatten 为连续缓冲后再解析，
 ///   牺牲了极端场景的零拷贝；若后续需要提升性能，可在解析阶段直接遍历分片。
-pub fn ws_to_sip(frames: &[&dyn BufView]) -> Result<Vec<SipMessage>, WsSipError> {
+pub fn ws_to_sip(frames: &[&dyn BufView]) -> spark_core::Result<Vec<SipMessage>, WsSipError> {
     let mut messages = Vec::new();
     let mut assembling = Vec::new();
     let mut current_kind: Option<FrameKind> = None;
@@ -313,7 +313,7 @@ pub fn sip_to_ws(message: &SipMessage, out_frames: &mut Vec<Vec<u8>>) {
 }
 
 /// 解析单个 WebSocket 帧。
-fn parse_frame(view: &dyn BufView) -> Result<Frame, WsSipError> {
+fn parse_frame(view: &dyn BufView) -> spark_core::Result<Frame, WsSipError> {
     let raw = flatten_view(view);
     if raw.len() < 2 {
         return Err(WsSipError::FrameTooShort { actual: raw.len() });

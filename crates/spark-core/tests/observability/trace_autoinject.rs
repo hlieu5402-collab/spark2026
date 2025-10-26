@@ -341,11 +341,11 @@ impl Channel for TestChannel {
 
     fn close(&self) {}
 
-    fn closed(&self) -> BoxFuture<'static, Result<(), SparkError>> {
+    fn closed(&self) -> BoxFuture<'static, spark_core::Result<(), SparkError>> {
         Box::pin(async { Ok(()) })
     }
 
-    fn write(&self, _msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+    fn write(&self, _msg: PipelineMessage) -> spark_core::Result<WriteSignal, CoreError> {
         Ok(WriteSignal::Accepted)
     }
 
@@ -416,15 +416,18 @@ impl Stream for EmptyStream {
 struct NoopBufferPool;
 
 impl BufferPool for NoopBufferPool {
-    fn acquire(&self, _min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
+    fn acquire(
+        &self,
+        _min_capacity: usize,
+    ) -> spark_core::Result<Box<dyn WritableBuffer>, CoreError> {
         Err(CoreError::new("test.buffer", "测试中不应触发 acquire"))
     }
 
-    fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+    fn shrink_to_fit(&self) -> spark_core::Result<usize, CoreError> {
         Ok(0)
     }
 
-    fn statistics(&self) -> Result<spark_core::buffer::PoolStats, CoreError> {
+    fn statistics(&self) -> spark_core::Result<spark_core::buffer::PoolStats, CoreError> {
         Ok(Default::default())
     }
 }

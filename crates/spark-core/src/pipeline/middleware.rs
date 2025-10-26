@@ -115,5 +115,5 @@ pub trait Middleware: Send + Sync + 'static + Sealed {
         &self,
         chain: &mut dyn ChainBuilder,
         services: &CoreServices,
-    ) -> Result<(), CoreError>;
+    ) -> crate::Result<(), CoreError>;
 }

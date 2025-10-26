@@ -428,7 +428,7 @@ impl ReadyMachine {
     }
 
     /// 对单个事件求值。
-    fn apply(&mut self, event: &MachineEvent) -> Result<(), MachineError> {
+    fn apply(&mut self, event: &MachineEvent) -> spark_core::Result<(), MachineError> {
         match event {
             MachineEvent::Poll(PollOutcome::State(state)) => {
                 let current = self.node;

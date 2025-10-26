@@ -85,7 +85,11 @@ impl TlsChannel {
     /// - `ctx`: 需要遵循的取消/截止上下文；
     /// - `buf`: 目标缓冲区；
     /// - **返回值**：实际读取的字节数。
-    pub async fn read(&self, ctx: &CallContext, buf: &mut [u8]) -> Result<usize, CoreError> {
+    pub async fn read(
+        &self,
+        ctx: &CallContext,
+        buf: &mut [u8],
+    ) -> spark_core::Result<usize, CoreError> {
         run_with_context(
             ctx,
             error::READ,
@@ -99,7 +103,11 @@ impl TlsChannel {
     }
 
     /// 写入明文数据并由 TLS 层加密。
-    pub async fn write(&self, ctx: &CallContext, buf: &[u8]) -> Result<usize, CoreError> {
+    pub async fn write(
+        &self,
+        ctx: &CallContext,
+        buf: &[u8],
+    ) -> spark_core::Result<usize, CoreError> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -117,7 +125,7 @@ impl TlsChannel {
     }
 
     /// 刷新 TLS 会话缓冲区，确保待发送的密文全部写出。
-    pub async fn flush(&self, ctx: &CallContext) -> Result<(), CoreError> {
+    pub async fn flush(&self, ctx: &CallContext) -> spark_core::Result<(), CoreError> {
         run_with_context(
             ctx,
             FLUSH,
@@ -131,7 +139,7 @@ impl TlsChannel {
     }
 
     /// 发送 TLS `close_notify` 并关闭写方向。
-    pub async fn shutdown(&self, ctx: &CallContext) -> Result<(), CoreError> {
+    pub async fn shutdown(&self, ctx: &CallContext) -> spark_core::Result<(), CoreError> {
         run_with_context(
             ctx,
             error::SHUTDOWN,
@@ -171,25 +179,31 @@ impl TransportConnectionTrait for TlsChannel {
     type ReadyCtx<'ctx> = ExecutionContext<'ctx>;
 
     type ReadFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+        = Pin<
+        Box<dyn core::future::Future<Output = spark_core::Result<usize, CoreError>> + Send + 'ctx>,
+    >
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     type WriteFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<usize, CoreError>> + Send + 'ctx>>
+        = Pin<
+        Box<dyn core::future::Future<Output = spark_core::Result<usize, CoreError>> + Send + 'ctx>,
+    >
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     type ShutdownFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+        =
+        Pin<Box<dyn core::future::Future<Output = spark_core::Result<(), CoreError>> + Send + 'ctx>>
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;
 
     type FlushFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+        =
+        Pin<Box<dyn core::future::Future<Output = spark_core::Result<(), CoreError>> + Send + 'ctx>>
     where
         Self: 'ctx,
         Self::CallCtx<'ctx>: 'ctx;

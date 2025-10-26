@@ -416,7 +416,10 @@ pub mod raw {
         /// - **输出**：`Ok((ntp_timestamp, rtp_timestamp))`，两者均已经过 mod 处理；
         /// - **前置条件**：`capture_time >= origin_time`；否则返回 [`BuildError::ClockWentBackwards`]；
         /// - **后置条件**：返回的 NTP/RTP 时间戳指向相同的物理时刻，可直接写入 SR。
-        pub fn snapshot(&self, capture_time: SystemTime) -> Result<(u64, u32), BuildError> {
+        pub fn snapshot(
+            &self,
+            capture_time: SystemTime,
+        ) -> spark_core::Result<(u64, u32), BuildError> {
             let ntp = system_time_to_ntp(capture_time)?;
             let delta = capture_time
                 .duration_since(self.origin_time)
@@ -519,7 +522,7 @@ pub mod raw {
         clock: &RtpClockMapper,
         sender_stat: &SenderStat<'_>,
         out: &mut Vec<u8>,
-    ) -> Result<(), BuildError> {
+    ) -> spark_core::Result<(), BuildError> {
         validate_report_constraints(sender_stat.reports, sender_stat.profile_extensions)?;
         let (ntp_timestamp, rtp_timestamp) = clock.snapshot(sender_stat.capture_time)?;
 
@@ -547,7 +550,10 @@ pub mod raw {
     /// - 校验报告块数量与扩展字段对齐；
     /// - 无需进行 NTP/RTP 映射；
     /// - 输出缓冲追加完整 RR 报文。
-    pub fn build_rr_raw(recv_stat: &ReceiverStat<'_>, out: &mut Vec<u8>) -> Result<(), BuildError> {
+    pub fn build_rr_raw(
+        recv_stat: &ReceiverStat<'_>,
+        out: &mut Vec<u8>,
+    ) -> spark_core::Result<(), BuildError> {
         validate_report_constraints(recv_stat.reports, recv_stat.profile_extensions)?;
         let report_count = recv_stat.reports.len();
         let payload_len = 4 // reporter_ssrc
@@ -567,7 +573,7 @@ pub mod raw {
     fn validate_report_constraints(
         reports: &[ReceptionStat],
         profile_extensions: &[u8],
-    ) -> Result<(), BuildError> {
+    ) -> spark_core::Result<(), BuildError> {
         if reports.len() > 31 {
             return Err(BuildError::TooManyReports {
                 count: reports.len(),
@@ -602,7 +608,7 @@ pub mod raw {
     fn write_reception_reports(
         out: &mut Vec<u8>,
         reports: &[ReceptionStat],
-    ) -> Result<(), BuildError> {
+    ) -> spark_core::Result<(), BuildError> {
         for report in reports {
             out.extend_from_slice(&report.source_ssrc.to_be_bytes());
             out.push(report.fraction_lost);
@@ -617,7 +623,7 @@ pub mod raw {
     }
 
     /// 将 24-bit 的 `cumulative_lost` 编码为网络字节序字节数组。
-    fn encode_cumulative_lost(value: i32) -> Result<[u8; 3], BuildError> {
+    fn encode_cumulative_lost(value: i32) -> spark_core::Result<[u8; 3], BuildError> {
         if !(MIN_CUMULATIVE_LOST..=MAX_CUMULATIVE_LOST).contains(&value) {
             return Err(BuildError::CumulativeLostOutOfRange { value });
         }
@@ -630,7 +636,7 @@ pub mod raw {
     }
 
     /// 将 `SystemTime` 转换为 64-bit NTP 时间戳。
-    fn system_time_to_ntp(time: SystemTime) -> Result<u64, BuildError> {
+    fn system_time_to_ntp(time: SystemTime) -> spark_core::Result<u64, BuildError> {
         let since_unix = time
             .duration_since(UNIX_EPOCH)
             .map_err(|_| BuildError::SystemTimeBeforeNtpEpoch)?;

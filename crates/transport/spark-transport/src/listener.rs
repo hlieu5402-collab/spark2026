@@ -35,7 +35,7 @@ pub trait TransportListener: Send + Sync + 'static {
     type Connection: TransportConnection<Error = Self::Error>;
 
     /// 接受连接的 Future 类型。
-    type AcceptFuture<'ctx>: Future<Output = Result<(Self::Connection, TransportSocketAddr), Self::Error>>
+    type AcceptFuture<'ctx>: Future<Output = crate::Result<(Self::Connection, TransportSocketAddr), Self::Error>>
         + Send
         + 'ctx
     where
@@ -43,7 +43,7 @@ pub trait TransportListener: Send + Sync + 'static {
         Self::AcceptCtx<'ctx>: 'ctx;
 
     /// 优雅关闭的 Future 类型。
-    type ShutdownFuture<'ctx>: Future<Output = Result<(), Self::Error>> + Send + 'ctx
+    type ShutdownFuture<'ctx>: Future<Output = crate::Result<(), Self::Error>> + Send + 'ctx
     where
         Self: 'ctx,
         Self::ShutdownCtx<'ctx>: 'ctx;
@@ -52,7 +52,7 @@ pub trait TransportListener: Send + Sync + 'static {
     fn scheme(&self) -> &'static str;
 
     /// 查询监听器实际绑定的地址。
-    fn local_addr(&self) -> Result<TransportSocketAddr, Self::Error>;
+    fn local_addr(&self) -> crate::Result<TransportSocketAddr, Self::Error>;
 
     /// 接受一个入站连接。
     fn accept<'ctx>(&'ctx self, ctx: &'ctx Self::AcceptCtx<'ctx>) -> Self::AcceptFuture<'ctx>;

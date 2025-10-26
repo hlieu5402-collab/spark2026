@@ -94,7 +94,7 @@ pub trait Context: Send + Sync + Sealed {
     fn forward_read(&self, msg: PipelineMessage);
 
     /// 写消息。
-    fn write(&self, msg: PipelineMessage) -> Result<super::WriteSignal, crate::CoreError>;
+    fn write(&self, msg: PipelineMessage) -> crate::Result<super::WriteSignal, crate::CoreError>;
 
     /// 刷新缓冲。
     fn flush(&self);
@@ -103,5 +103,5 @@ pub trait Context: Send + Sync + Sealed {
     fn close_graceful(&self, reason: CloseReason, deadline: Option<Deadline>);
 
     /// 等待关闭完成。
-    fn closed(&self) -> crate::future::BoxFuture<'static, Result<(), crate::SparkError>>;
+    fn closed(&self) -> crate::future::BoxFuture<'static, crate::Result<(), crate::SparkError>>;
 }

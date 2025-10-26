@@ -26,7 +26,8 @@ use super::generic::ControllerFactory;
 /// - 相较泛型层，多一次 `Arc` 克隆与虚表跳转；若可静态确定类型仍推荐使用泛型接口。
 pub trait DynControllerFactory: Send + Sync + Sealed {
     /// 构建对象层控制器句柄。
-    fn build_dyn(&self, core_services: &CoreServices) -> Result<ControllerHandle, CoreError>;
+    fn build_dyn(&self, core_services: &CoreServices)
+    -> crate::Result<ControllerHandle, CoreError>;
 }
 
 /// `ControllerHandle` 持有对象层控制器，实现 [`Controller`] 以便在泛型上下文复用。
@@ -96,7 +97,7 @@ impl Controller for ControllerHandle {
         &self,
         middleware: &dyn crate::pipeline::Middleware,
         services: &crate::runtime::CoreServices,
-    ) -> Result<(), CoreError> {
+    ) -> crate::Result<(), CoreError> {
         self.inner.install_middleware(middleware, services)
     }
 
@@ -185,7 +186,10 @@ impl<F> DynControllerFactory for ControllerFactoryObject<F>
 where
     F: ControllerFactory,
 {
-    fn build_dyn(&self, core_services: &CoreServices) -> Result<ControllerHandle, CoreError> {
+    fn build_dyn(
+        &self,
+        core_services: &CoreServices,
+    ) -> crate::Result<ControllerHandle, CoreError> {
         let controller = self.inner.build(core_services)?;
         Ok(ControllerHandle::from_controller(controller))
     }
@@ -206,7 +210,7 @@ impl DynControllerFactoryAdapter {
 impl ControllerFactory for DynControllerFactoryAdapter {
     type Controller = ControllerHandle;
 
-    fn build(&self, core_services: &CoreServices) -> Result<Self::Controller, CoreError> {
+    fn build(&self, core_services: &CoreServices) -> crate::Result<Self::Controller, CoreError> {
         self.inner.build_dyn(core_services)
     }
 }

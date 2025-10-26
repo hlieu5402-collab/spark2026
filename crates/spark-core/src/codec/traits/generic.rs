@@ -38,14 +38,14 @@ pub trait Codec: Send + Sync + 'static + Sealed {
         &self,
         item: &Self::Outgoing,
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, CoreError>;
+    ) -> crate::Result<EncodedPayload, CoreError>;
 
     /// 解码字节流。
     fn decode(
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Self::Incoming>, CoreError>;
+    ) -> crate::Result<DecodeOutcome<Self::Incoming>, CoreError>;
 }
 
 impl<T> Encoder for T
@@ -62,7 +62,7 @@ where
         &self,
         item: &Self::Item,
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, CoreError> {
+    ) -> crate::Result<EncodedPayload, CoreError> {
         Codec::encode(self, item, ctx)
     }
 }
@@ -81,7 +81,7 @@ where
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Self::Item>, CoreError> {
+    ) -> crate::Result<DecodeOutcome<Self::Item>, CoreError> {
         Codec::decode(self, src, ctx)
     }
 }

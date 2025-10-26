@@ -61,7 +61,7 @@ impl TlsAcceptor {
         &self,
         ctx: &CallContext,
         channel: TcpChannel,
-    ) -> Result<TlsChannel, CoreError> {
+    ) -> spark_core::Result<TlsChannel, CoreError> {
         let parts = channel
             .try_into_parts()
             .map_err(|_| error::exclusive_channel_error())?;

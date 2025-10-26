@@ -27,7 +27,7 @@ use tokio::time::Instant as TokioInstant;
 /// - 单调基准通过 `OnceLock` 缓存第一次读取的时间点，后续调用以差值形式获得 `MonotonicTimePoint`。
 ///
 /// ## 契约（What）
-/// - `run_with_context` 要求传入的 Future 返回 `Result<T, CoreError>`，若 Future 成功则原样返回；
+/// - `run_with_context` 要求传入的 Future 返回 `spark_core::Result<T, CoreError>`，若 Future 成功则原样返回；
 /// - **前置条件**：调用方须确保传入的 `CallContext` 来自框架构造器，且生命周期覆盖 Future 执行；
 /// - **后置条件**：一旦触发取消/超时，将返回带有相应错误码的 `CoreError`，并不会继续执行 Future。
 ///
@@ -70,9 +70,9 @@ pub(crate) async fn run_with_context<'a, F, T>(
     ctx: &CallContext,
     kind: OperationKind,
     future: F,
-) -> Result<T, CoreError>
+) -> spark_core::Result<T, CoreError>
 where
-    F: Future<Output = Result<T, CoreError>> + Send + 'a,
+    F: Future<Output = spark_core::Result<T, CoreError>> + Send + 'a,
     T: Send + 'a,
 {
     if deadline_expired(ctx.deadline()) {

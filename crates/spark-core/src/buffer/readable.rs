@@ -36,16 +36,16 @@ pub trait ReadableBuffer: Send + Sync + 'static + Sealed {
     fn chunk(&self) -> &[u8];
 
     /// 拆分出前 `len` 字节，返回新的缓冲区实例。
-    fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError>;
+    fn split_to(&mut self, len: usize) -> crate::Result<Box<dyn ReadableBuffer>, CoreError>;
 
     /// 将读指针前移 `len` 字节，丢弃对应数据。
-    fn advance(&mut self, len: usize) -> Result<(), CoreError>;
+    fn advance(&mut self, len: usize) -> crate::Result<(), CoreError>;
 
     /// 将缓冲内容复制到 `dst`，兼容传统基于切片的 API。
-    fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError>;
+    fn copy_into_slice(&mut self, dst: &mut [u8]) -> crate::Result<(), CoreError>;
 
     /// 尝试将剩余数据扁平化为 `Vec<u8>`，供一次性消费场景使用。
-    fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError>;
+    fn try_into_vec(self: Box<Self>) -> crate::Result<Vec<u8>, CoreError>;
 
     /// 判断缓冲区是否已读空。
     fn is_empty(&self) -> bool {

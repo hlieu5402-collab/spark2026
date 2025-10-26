@@ -52,11 +52,16 @@ pub trait HostLifecycle: Sealed {
     type Error: Error;
 
     /// 通知组件宿主正在启动。
-    fn on_starting(&self, ctx: &HostContext, phase: StartupPhase) -> Result<(), Self::Error>;
+    fn on_starting(&self, ctx: &HostContext, phase: StartupPhase)
+    -> crate::Result<(), Self::Error>;
 
     /// 通知组件宿主已经就绪。
-    fn on_ready(&self, ctx: &HostContext) -> Result<(), Self::Error>;
+    fn on_ready(&self, ctx: &HostContext) -> crate::Result<(), Self::Error>;
 
     /// 通知组件宿主准备关闭。
-    fn on_shutdown(&self, ctx: &HostContext, reason: ShutdownReason) -> Result<(), Self::Error>;
+    fn on_shutdown(
+        &self,
+        ctx: &HostContext,
+        reason: ShutdownReason,
+    ) -> crate::Result<(), Self::Error>;
 }

@@ -226,7 +226,7 @@ struct EchoMessage {
 async fn macro_generated_echo(
     _ctx: spark::CallContext,
     req: PipelineMessage,
-) -> Result<PipelineMessage, SparkError> {
+) -> spark_core::Result<PipelineMessage, SparkError> {
     process_request(req)
 }
 
@@ -377,7 +377,7 @@ fn measure_scenario(
 /// - **风险提示 (Trade-offs & Gotchas)**：`try_into_user` 在失败时会返回原消息，本基准选择直接抛错以显式暴露类型不匹配，
 ///   便于定位调用方是否使用了错误的基准载荷。
 #[allow(clippy::result_large_err)]
-fn process_request(req: PipelineMessage) -> Result<PipelineMessage, SparkError> {
+fn process_request(req: PipelineMessage) -> spark_core::Result<PipelineMessage, SparkError> {
     let echo = req.try_into_user::<EchoMessage>().map_err(|_| {
         SparkError::new(
             "bench.payload_mismatch",

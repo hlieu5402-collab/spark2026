@@ -16,7 +16,7 @@ use super::{request::write_request, response::write_response};
 pub fn write_message<W: fmt::Write>(
     writer: &mut W,
     message: &SipMessage<'_>,
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     match &message.start_line {
         StartLine::Request(line) => write_request(writer, line, &message.headers, message.body),
         StartLine::Response(line) => write_response(writer, line, &message.headers, message.body),

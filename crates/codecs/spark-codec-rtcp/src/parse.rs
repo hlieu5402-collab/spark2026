@@ -55,7 +55,7 @@ pub const DEFAULT_COMPOUND_CAPACITY: usize = 4;
 /// - Padding 校验会检查末尾字节必须为零（符合规范推荐），否则返回 `TrailingNonZeroPadding`。
 /// - 若输入为空或长度不足 4 字节，会分别触发 `EmptyCompound` 与 `PacketTooShort` 错误。
 #[allow(clippy::too_many_lines)]
-pub fn parse_rtcp(view: &(impl BufView + ?Sized)) -> Result<RtcpPacketVec, RtcpError> {
+pub fn parse_rtcp(view: &(impl BufView + ?Sized)) -> spark_core::Result<RtcpPacketVec, RtcpError> {
     let buffer = flatten_view(view);
 
     if buffer.is_empty() {
@@ -150,7 +150,10 @@ fn flatten_view(view: &(impl BufView + ?Sized)) -> Vec<u8> {
     buffer
 }
 
-fn parse_sender_report(count: usize, payload: &[u8]) -> Result<SenderReport, RtcpError> {
+fn parse_sender_report(
+    count: usize,
+    payload: &[u8],
+) -> spark_core::Result<SenderReport, RtcpError> {
     const FIXED_LEN: usize = 24;
     if payload.len() < FIXED_LEN {
         return Err(RtcpError::ReceptionReportTruncated {
@@ -204,7 +207,10 @@ fn parse_sender_report(count: usize, payload: &[u8]) -> Result<SenderReport, Rtc
     })
 }
 
-fn parse_receiver_report(count: usize, payload: &[u8]) -> Result<ReceiverReport, RtcpError> {
+fn parse_receiver_report(
+    count: usize,
+    payload: &[u8],
+) -> spark_core::Result<ReceiverReport, RtcpError> {
     if payload.len() < 4 {
         return Err(RtcpError::ReceptionReportTruncated {
             expected_blocks: count,
@@ -243,7 +249,7 @@ fn parse_receiver_report(count: usize, payload: &[u8]) -> Result<ReceiverReport,
     })
 }
 
-fn parse_sdes(count: usize, payload: &[u8]) -> Result<SourceDescription, RtcpError> {
+fn parse_sdes(count: usize, payload: &[u8]) -> spark_core::Result<SourceDescription, RtcpError> {
     let mut cursor = 0usize;
     let mut chunks = Vec::with_capacity(count);
 
@@ -321,7 +327,7 @@ fn parse_sdes(count: usize, payload: &[u8]) -> Result<SourceDescription, RtcpErr
     Ok(SourceDescription { chunks })
 }
 
-fn parse_bye(count: usize, payload: &[u8]) -> Result<Goodbye, RtcpError> {
+fn parse_bye(count: usize, payload: &[u8]) -> spark_core::Result<Goodbye, RtcpError> {
     let required = count.saturating_mul(4);
     if payload.len() < required {
         return Err(RtcpError::ByeSourcesTruncated {

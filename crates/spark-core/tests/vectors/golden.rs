@@ -240,7 +240,7 @@ impl Codec for VectorEchoCodec {
         &self,
         item: &Self::Outgoing,
         _ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, CoreError> {
+    ) -> spark_core::Result<EncodedPayload, CoreError> {
         let buffer = OwnedReadableBuffer::new(item.body.as_bytes().to_vec());
         Ok(EncodedPayload::from_buffer(Box::new(buffer)))
     }
@@ -249,7 +249,7 @@ impl Codec for VectorEchoCodec {
         &self,
         src: &mut ErasedSparkBuf,
         _ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Self::Incoming>, CoreError> {
+    ) -> spark_core::Result<DecodeOutcome<Self::Incoming>, CoreError> {
         let remaining = src.remaining();
         let mut buf = vec![0u8; remaining];
         src.copy_into_slice(&mut buf)?;
@@ -296,7 +296,7 @@ struct VectorEchoServiceState {
 }
 
 impl VectorEchoServiceState {
-    fn handle(&mut self, req: VectorRequest) -> Result<VectorResponse, CoreError> {
+    fn handle(&mut self, req: VectorRequest) -> spark_core::Result<VectorResponse, CoreError> {
         match req.body.as_str() {
             "ping" => Ok(VectorResponse {
                 body: "pong".to_string(),
@@ -341,18 +341,21 @@ impl Default for VectorEchoServiceState {
 struct DeterministicAllocator;
 
 impl BufferPool for DeterministicAllocator {
-    fn acquire(&self, _min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
+    fn acquire(
+        &self,
+        _min_capacity: usize,
+    ) -> spark_core::Result<Box<dyn WritableBuffer>, CoreError> {
         Err(CoreError::new(
             "test.alloc_disabled",
             "allocator disabled for golden vector test",
         ))
     }
 
-    fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+    fn shrink_to_fit(&self) -> spark_core::Result<usize, CoreError> {
         Ok(0)
     }
 
-    fn statistics(&self) -> Result<PoolStats, CoreError> {
+    fn statistics(&self) -> spark_core::Result<PoolStats, CoreError> {
         Ok(PoolStats::default())
     }
 }
@@ -388,7 +391,7 @@ impl ReadableBuffer for OwnedReadableBuffer {
         &self.data[self.cursor..]
     }
 
-    fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+    fn split_to(&mut self, len: usize) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
         if len > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -401,7 +404,7 @@ impl ReadableBuffer for OwnedReadableBuffer {
         Ok(Box::new(OwnedReadableBuffer::new(slice)))
     }
 
-    fn advance(&mut self, len: usize) -> Result<(), CoreError> {
+    fn advance(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
         if len > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -412,7 +415,7 @@ impl ReadableBuffer for OwnedReadableBuffer {
         Ok(())
     }
 
-    fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
+    fn copy_into_slice(&mut self, dst: &mut [u8]) -> spark_core::Result<(), CoreError> {
         if dst.len() > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -425,7 +428,7 @@ impl ReadableBuffer for OwnedReadableBuffer {
         Ok(())
     }
 
-    fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
+    fn try_into_vec(self: Box<Self>) -> spark_core::Result<Vec<u8>, CoreError> {
         let remaining = self.data[self.cursor..].to_vec();
         Ok(remaining)
     }
@@ -454,7 +457,7 @@ fn to_hex(bytes: &[u8]) -> String {
 }
 
 /// 将小写十六进制解析为字节。
-fn from_hex(hex: &str) -> Result<Vec<u8>, String> {
+fn from_hex(hex: &str) -> spark_core::Result<Vec<u8>, String> {
     if hex.len() % 2 != 0 {
         return Err(format!("hex string length must be even, got {}", hex.len()));
     }

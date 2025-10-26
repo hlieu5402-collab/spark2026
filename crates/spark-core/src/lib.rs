@@ -115,7 +115,7 @@ pub use contract::{
 };
 pub use error::{
     CoreError, DomainError, DomainErrorKind, ErrorCategory, ErrorCause, ImplError, ImplErrorKind,
-    IntoCoreError, IntoDomainError, SparkError,
+    IntoCoreError, IntoDomainError, Result, SparkError,
 };
 pub use future::{BoxFuture, BoxStream, LocalBoxFuture, Stream};
 pub use host::{

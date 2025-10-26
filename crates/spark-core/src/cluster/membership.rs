@@ -277,7 +277,7 @@ pub trait ClusterMembership: Send + Sync + 'static + Sealed {
     async fn snapshot(
         &self,
         scope: ClusterMembershipScope,
-    ) -> Result<ClusterMembershipSnapshot, ClusterError>;
+    ) -> crate::Result<ClusterMembershipSnapshot, ClusterError>;
 
     /// 订阅指定范围的增量事件。
     fn subscribe(
@@ -288,5 +288,5 @@ pub trait ClusterMembership: Send + Sync + 'static + Sealed {
     ) -> SubscriptionStream<ClusterMembershipEvent>;
 
     /// 获取当前节点的画像。
-    async fn self_profile(&self) -> Result<ClusterNodeProfile, ClusterError>;
+    async fn self_profile(&self) -> crate::Result<ClusterNodeProfile, ClusterError>;
 }

@@ -50,7 +50,7 @@ use super::WritableBuffer;
 ///         &self.data[self.cursor..]
 ///     }
 ///
-///     fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+///     fn split_to(&mut self, len: usize) -> crate::Result<Box<dyn ReadableBuffer>, CoreError> {
 ///         if len > self.remaining() {
 ///             return Err(CoreError::new(codes::PROTOCOL_DECODE, "split exceeds remaining bytes"));
 ///         }
@@ -60,7 +60,7 @@ use super::WritableBuffer;
 ///         Ok(Box::new(FrozenBuffer { data: slice, cursor: 0 }))
 ///     }
 ///
-///     fn advance(&mut self, len: usize) -> Result<(), CoreError> {
+///     fn advance(&mut self, len: usize) -> crate::Result<(), CoreError> {
 ///         if len > self.remaining() {
 ///             return Err(CoreError::new(codes::PROTOCOL_DECODE, "advance exceeds remaining bytes"));
 ///         }
@@ -68,7 +68,7 @@ use super::WritableBuffer;
 ///         Ok(())
 ///     }
 ///
-///     fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
+///     fn copy_into_slice(&mut self, dst: &mut [u8]) -> crate::Result<(), CoreError> {
 ///         if dst.len() > self.remaining() {
 ///             return Err(CoreError::new(codes::PROTOCOL_DECODE, "insufficient data for copy"));
 ///         }
@@ -78,7 +78,7 @@ use super::WritableBuffer;
 ///         Ok(())
 ///     }
 ///
-///     fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
+///     fn try_into_vec(self: Box<Self>) -> crate::Result<Vec<u8>, CoreError> {
 ///         Ok(self.data)
 ///     }
 /// }
@@ -107,17 +107,17 @@ use super::WritableBuffer;
 ///         self.data.len()
 ///     }
 ///
-///     fn reserve(&mut self, additional: usize) -> Result<(), CoreError> {
+///     fn reserve(&mut self, additional: usize) -> crate::Result<(), CoreError> {
 ///         self.data.reserve(additional);
 ///         Ok(())
 ///     }
 ///
-///     fn put_slice(&mut self, src: &[u8]) -> Result<(), CoreError> {
+///     fn put_slice(&mut self, src: &[u8]) -> crate::Result<(), CoreError> {
 ///         self.data.extend_from_slice(src);
 ///         Ok(())
 ///     }
 ///
-///     fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> Result<(), CoreError> {
+///     fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> crate::Result<(), CoreError> {
 ///         if len > src.remaining() {
 ///             return Err(CoreError::new(codes::PROTOCOL_DECODE, "source buffer exhausted"));
 ///         }
@@ -131,7 +131,7 @@ use super::WritableBuffer;
 ///         self.data.clear();
 ///     }
 ///
-///     fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+///     fn freeze(self: Box<Self>) -> crate::Result<Box<dyn ReadableBuffer>, CoreError> {
 ///         Ok(Box::new(FrozenBuffer { data: self.data, cursor: 0 }))
 ///     }
 /// }
@@ -143,7 +143,7 @@ use super::WritableBuffer;
 /// }
 ///
 /// impl BufferPool for InMemoryPool {
-///     fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
+///     fn acquire(&self, min_capacity: usize) -> crate::Result<Box<dyn WritableBuffer>, CoreError> {
 ///         let mut stats = self.snapshot.lock().expect("mutex poisoned");
 ///         stats.allocated_bytes = stats.allocated_bytes.saturating_add(min_capacity);
 ///         stats.available_bytes = stats.available_bytes.saturating_add(min_capacity);
@@ -151,11 +151,11 @@ use super::WritableBuffer;
 ///         Ok(Box::new(SimpleBuffer::with_capacity(min_capacity)))
 ///     }
 ///
-///     fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+///     fn shrink_to_fit(&self) -> crate::Result<usize, CoreError> {
 ///         Ok(0)
 ///     }
 ///
-///     fn statistics(&self) -> Result<PoolStats, CoreError> {
+///     fn statistics(&self) -> crate::Result<PoolStats, CoreError> {
 ///         Ok(self.snapshot.lock().expect("mutex poisoned").clone())
 ///     }
 /// }
@@ -170,13 +170,13 @@ use super::WritableBuffer;
 /// ```
 pub trait BufferPool: Send + Sync + 'static + Sealed {
     /// 租借一个最少具备 `min_capacity` 可写空间的缓冲区。
-    fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError>;
+    fn acquire(&self, min_capacity: usize) -> crate::Result<Box<dyn WritableBuffer>, CoreError>;
 
     /// 主动收缩池内冗余内存，返回实际回收的字节数。
-    fn shrink_to_fit(&self) -> Result<usize, CoreError>;
+    fn shrink_to_fit(&self) -> crate::Result<usize, CoreError>;
 
     /// 返回池当前的核心统计指标（例如 `usage_bytes`、`lease_count`）。
-    fn statistics(&self) -> Result<PoolStats, CoreError>;
+    fn statistics(&self) -> crate::Result<PoolStats, CoreError>;
 }
 
 /// 池统计快照，帮助调用方观测内存行为并执行自适应调度。

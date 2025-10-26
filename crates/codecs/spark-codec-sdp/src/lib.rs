@@ -317,7 +317,7 @@ pub struct SessionDesc<'a> {
 /// - 暂未处理重复的必需行，若出现将覆盖前值；若需严格校验可在后续增强。
 /// - 不解析 `r=`、`b=` 等扩展行，确保忽略策略符合“忽略未知行”的要求。
 /// - 属性行若在任何媒体块之前出现，将归属于会话级。
-pub fn parse_sdp<'a>(input: &'a str) -> Result<SessionDesc<'a>, SdpParseError> {
+pub fn parse_sdp<'a>(input: &'a str) -> spark_core::Result<SessionDesc<'a>, SdpParseError> {
     let mut version: Option<&'a str> = None;
     let mut origin: Option<Origin<'a>> = None;
     let mut session_name: Option<&'a str> = None;
@@ -513,7 +513,7 @@ fn push_media(buffer: &mut String, media: &MediaDesc<'_>) {
     }
 }
 
-fn parse_origin<'a>(value: &'a str) -> Result<Origin<'a>, SdpParseError> {
+fn parse_origin<'a>(value: &'a str) -> spark_core::Result<Origin<'a>, SdpParseError> {
     let mut parts = value.split_whitespace();
     let username = parts.next();
     let session_id = parts.next();
@@ -550,7 +550,7 @@ fn parse_origin<'a>(value: &'a str) -> Result<Origin<'a>, SdpParseError> {
     }
 }
 
-fn parse_connection<'a>(value: &'a str) -> Result<Connection<'a>, SdpParseError> {
+fn parse_connection<'a>(value: &'a str) -> spark_core::Result<Connection<'a>, SdpParseError> {
     let mut parts = value.split_whitespace();
     let net_type = parts.next();
     let addr_type = parts.next();
@@ -567,7 +567,7 @@ fn parse_connection<'a>(value: &'a str) -> Result<Connection<'a>, SdpParseError>
     }
 }
 
-fn parse_timing<'a>(value: &'a str) -> Result<Timing<'a>, SdpParseError> {
+fn parse_timing<'a>(value: &'a str) -> spark_core::Result<Timing<'a>, SdpParseError> {
     let mut parts = value.split_whitespace();
     let start = parts.next();
     let stop = parts.next();
@@ -579,7 +579,7 @@ fn parse_timing<'a>(value: &'a str) -> Result<Timing<'a>, SdpParseError> {
     }
 }
 
-fn parse_media<'a>(value: &'a str) -> Result<MediaDesc<'a>, SdpParseError> {
+fn parse_media<'a>(value: &'a str) -> spark_core::Result<MediaDesc<'a>, SdpParseError> {
     let mut parts = value.split_whitespace();
     let media = parts.next();
     let port = parts.next();

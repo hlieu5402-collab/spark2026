@@ -283,7 +283,7 @@ mod tests {
                     &self,
                     _: &dyn spark_core::pipeline::Middleware,
                     _: &spark_core::runtime::CoreServices,
-                ) -> Result<(), CoreError> {
+                ) -> spark_core::Result<(), CoreError> {
                     Ok(())
                 }
 
@@ -399,11 +399,17 @@ mod tests {
 
                 fn close(&self) {}
 
-                fn closed(&self) -> BoxFuture<'static, Result<(), spark_core::SparkError>> {
+                fn closed(
+                    &self,
+                ) -> BoxFuture<'static, spark_core::Result<(), spark_core::SparkError>>
+                {
                     Box::pin(async { Ok(()) })
                 }
 
-                fn write(&self, _msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+                fn write(
+                    &self,
+                    _msg: PipelineMessage,
+                ) -> spark_core::Result<WriteSignal, CoreError> {
                     Ok(WriteSignal::Accepted)
                 }
 
@@ -517,7 +523,10 @@ mod tests {
 
                 fn forward_read(&self, _msg: PipelineMessage) {}
 
-                fn write(&self, msg: PipelineMessage) -> Result<WriteSignal, CoreError> {
+                fn write(
+                    &self,
+                    msg: PipelineMessage,
+                ) -> spark_core::Result<WriteSignal, CoreError> {
                     self.channel.write(msg)
                 }
 
@@ -529,7 +538,10 @@ mod tests {
                     self.channel.close_graceful(reason, deadline);
                 }
 
-                fn closed(&self) -> BoxFuture<'static, Result<(), spark_core::SparkError>> {
+                fn closed(
+                    &self,
+                ) -> BoxFuture<'static, spark_core::Result<(), spark_core::SparkError>>
+                {
                     self.channel.closed()
                 }
             }
@@ -540,16 +552,16 @@ mod tests {
                 fn acquire(
                     &self,
                     _: usize,
-                ) -> Result<Box<dyn spark_core::buffer::WritableBuffer>, CoreError>
+                ) -> spark_core::Result<Box<dyn spark_core::buffer::WritableBuffer>, CoreError>
                 {
                     Err(CoreError::new("buffer.disabled", "buffer pool disabled"))
                 }
 
-                fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+                fn shrink_to_fit(&self) -> spark_core::Result<usize, CoreError> {
                     Ok(0)
                 }
 
-                fn statistics(&self) -> Result<PoolStats, CoreError> {
+                fn statistics(&self) -> spark_core::Result<PoolStats, CoreError> {
                     Ok(PoolStats {
                         allocated_bytes: 0,
                         resident_bytes: 0,

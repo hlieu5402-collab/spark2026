@@ -17,12 +17,15 @@ use syn::{
     parse_macro_input, parse_quote, spanned::Spanned,
 };
 
-/// 将开发者编写的 `async fn(ctx, req) -> Result<_, _>` 转换为完整的 `Service` 实现。
+/// 宏实现内部的统一返回类型，避免循环依赖 `spark-core` 同时保持与 `syn::Error` 的互操作。
+type MacroResult<T> = core::result::Result<T, Error>;
+
+/// 将开发者编写的 `async fn(ctx, req) -> spark_core::Result<_, _>` 转换为完整的 `Service` 实现。
 ///
 /// # 语义说明（What）
 /// - **输入**：仅接受无泛型的 `async fn`，必须有两个参数（执行上下文与请求）。
 /// - **输出**：保留原函数逻辑，并生成同名构造函数返回顺序执行的 `Service` 实例。
-/// - **前置条件**：返回类型需要是 `Result<Response, Error>`，其中 `Error: spark::Error`。
+/// - **前置条件**：返回类型需要是 `spark_core::Result<Response, Error>`，其中 `Error: spark::Error`。
 /// - **后置条件**：生成的 Service 在每次调用后都会唤醒等待的 waker，确保零悬挂。
 ///
 /// # 风险提示（Trade-offs）
@@ -45,7 +48,7 @@ pub fn service(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-fn expand_service(func: ItemFn) -> Result<proc_macro2::TokenStream, Error> {
+fn expand_service(func: ItemFn) -> MacroResult<proc_macro2::TokenStream> {
     if func.sig.asyncness.is_none() {
         return Err(Error::new(
             func.sig.span(),
@@ -158,11 +161,11 @@ fn expand_service(func: ItemFn) -> Result<proc_macro2::TokenStream, Error> {
     Ok(expanded)
 }
 
-fn extract_type(arg: &PatType) -> Result<&Type, Error> {
+fn extract_type(arg: &PatType) -> MacroResult<&Type> {
     Ok(&arg.ty)
 }
 
-fn extract_result_types(sig: &syn::Signature) -> Result<(&Type, &Type), Error> {
+fn extract_result_types(sig: &syn::Signature) -> MacroResult<(&Type, &Type)> {
     match &sig.output {
         ReturnType::Type(_, ty) => match ty.as_ref() {
             Type::Path(type_path) => {
@@ -174,7 +177,7 @@ fn extract_result_types(sig: &syn::Signature) -> Result<(&Type, &Type), Error> {
                 if segment.ident != "Result" {
                     return Err(Error::new(
                         segment.ident.span(),
-                        "#[spark::service] 要求返回 Result<_, _>",
+                        "#[spark::service] 要求返回 spark_core::Result<_, _>",
                     ));
                 }
                 match &segment.arguments {
@@ -200,7 +203,7 @@ fn extract_result_types(sig: &syn::Signature) -> Result<(&Type, &Type), Error> {
         },
         ReturnType::Default => Err(Error::new(
             sig.span(),
-            "#[spark::service] 需要返回 Result<_, _>",
+            "#[spark::service] 需要返回 spark_core::Result<_, _>",
         )),
     }
 }

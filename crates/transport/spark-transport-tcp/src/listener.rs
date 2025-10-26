@@ -46,7 +46,7 @@ pub struct TcpListener {
 
 impl TcpListener {
     /// 绑定到指定地址并返回监听器。
-    pub async fn bind(addr: TransportSocketAddr) -> Result<Self, CoreError> {
+    pub async fn bind(addr: TransportSocketAddr) -> spark_core::Result<Self, CoreError> {
         let socket_addr = to_socket_addr(addr);
         let listener = TokioTcpListener::bind(socket_addr)
             .await
@@ -69,7 +69,7 @@ impl TcpListener {
     pub async fn accept(
         &self,
         ctx: &CallContext,
-    ) -> Result<(TcpChannel, TransportSocketAddr), CoreError> {
+    ) -> spark_core::Result<(TcpChannel, TransportSocketAddr), CoreError> {
         self.accept_with_config(ctx, TcpSocketConfig::default())
             .await
     }
@@ -102,7 +102,7 @@ impl TcpListener {
         &self,
         ctx: &CallContext,
         config: TcpSocketConfig,
-    ) -> Result<(TcpChannel, TransportSocketAddr), CoreError> {
+    ) -> spark_core::Result<(TcpChannel, TransportSocketAddr), CoreError> {
         if deadline_expired(ctx.deadline()) {
             return Err(error::timeout_error(error::ACCEPT));
         }
@@ -135,7 +135,7 @@ impl TransportListenerTrait for TcpListener {
         = Pin<
         Box<
             dyn core::future::Future<
-                    Output = Result<(Self::Connection, TransportSocketAddr), CoreError>,
+                    Output = spark_core::Result<(Self::Connection, TransportSocketAddr), CoreError>,
                 > + Send
                 + 'ctx,
         >,
@@ -145,7 +145,8 @@ impl TransportListenerTrait for TcpListener {
         Self::AcceptCtx<'ctx>: 'ctx;
 
     type ShutdownFuture<'ctx>
-        = Pin<Box<dyn core::future::Future<Output = Result<(), CoreError>> + Send + 'ctx>>
+        =
+        Pin<Box<dyn core::future::Future<Output = spark_core::Result<(), CoreError>> + Send + 'ctx>>
     where
         Self: 'ctx,
         Self::ShutdownCtx<'ctx>: 'ctx;
@@ -154,7 +155,7 @@ impl TransportListenerTrait for TcpListener {
         "tcp"
     }
 
-    fn local_addr(&self) -> Result<TransportSocketAddr, CoreError> {
+    fn local_addr(&self) -> spark_core::Result<TransportSocketAddr, CoreError> {
         Ok(TcpListener::local_addr(self))
     }
 

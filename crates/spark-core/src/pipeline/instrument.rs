@@ -132,7 +132,7 @@ static HANDLER_TRACER: Mutex<Option<Arc<dyn HandlerSpanTracer>>> = Mutex::new(No
 /// - **契约（What）**：只允许安装一次；若需要替换实现，必须先调用 [`uninstall_handler_tracer`]。
 pub fn install_handler_tracer(
     tracer: Arc<dyn HandlerSpanTracer>,
-) -> Result<(), HandlerTracerError> {
+) -> crate::Result<(), HandlerTracerError> {
     let mut guard = HANDLER_TRACER.lock();
     if guard.is_some() {
         return Err(HandlerTracerError::AlreadyInstalled);

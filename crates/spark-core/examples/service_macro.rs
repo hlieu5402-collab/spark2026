@@ -4,7 +4,10 @@ use spark::service::Service;
 use spark_core as spark;
 
 #[spark::service]
-async fn greet(_ctx: spark::CallContext, name: String) -> Result<String, spark::CoreError> {
+async fn greet(
+    _ctx: spark::CallContext,
+    name: String,
+) -> spark_core::Result<String, spark::CoreError> {
     Ok(format!("Hello, {name}!"))
 }
 

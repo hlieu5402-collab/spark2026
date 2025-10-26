@@ -107,7 +107,7 @@ pub enum DriftAggregationError {
 pub fn aggregate_configuration_drift(
     reports: Vec<DriftNodeReport>,
     context: DriftAggregationContext<'_>,
-) -> Result<DriftAggregationOutcome, DriftAggregationError> {
+) -> crate::Result<DriftAggregationOutcome, DriftAggregationError> {
     if reports.is_empty() {
         return Err(DriftAggregationError::EmptyReports);
     }

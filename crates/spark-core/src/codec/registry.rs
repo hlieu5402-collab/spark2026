@@ -67,7 +67,10 @@ pub trait DynCodecFactory: Send + Sync + 'static + Sealed {
     fn descriptor(&self) -> &CodecDescriptor;
 
     /// 基于协商结果创建对象层编解码实例。
-    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, CoreError>;
+    fn instantiate(
+        &self,
+        negotiated: &NegotiatedCodec,
+    ) -> crate::Result<Box<dyn DynCodec>, CoreError>;
 }
 
 /// `TypedCodecFactory` 将返回泛型 [`Codec`] 的构造器包装为 [`DynCodecFactory`]。
@@ -116,7 +119,10 @@ where
         &self.descriptor
     }
 
-    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, CoreError> {
+    fn instantiate(
+        &self,
+        negotiated: &NegotiatedCodec,
+    ) -> crate::Result<Box<dyn DynCodec>, CoreError> {
         let codec = (self.constructor)(negotiated);
         Ok(Box::new(TypedCodecAdapter::new(codec)))
     }
@@ -140,10 +146,13 @@ where
 /// - **错误语义**：若协商失败或缺失实现，必须返回携带标准错误码的 [`CoreError`]。
 pub trait CodecRegistry: Send + Sync + 'static + Sealed {
     /// 注册新的对象层编解码工厂。
-    fn register(&self, factory: Box<dyn DynCodecFactory>) -> Result<(), CoreError>;
+    fn register(&self, factory: Box<dyn DynCodecFactory>) -> crate::Result<(), CoreError>;
 
     /// 注册 `'static` 生命周期的对象层编解码工厂。
-    fn register_static(&self, factory: &'static (dyn DynCodecFactory)) -> Result<(), CoreError> {
+    fn register_static(
+        &self,
+        factory: &'static (dyn DynCodecFactory),
+    ) -> crate::Result<(), CoreError> {
         self.register(box_dyn_codec_factory_from_static(factory))
     }
 
@@ -152,10 +161,13 @@ pub trait CodecRegistry: Send + Sync + 'static + Sealed {
         &self,
         preferred: &[ContentType],
         accepted_encodings: &[ContentEncoding],
-    ) -> Result<NegotiatedCodec, CoreError>;
+    ) -> crate::Result<NegotiatedCodec, CoreError>;
 
     /// 基于协商结果实例化编解码器。
-    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, CoreError>;
+    fn instantiate(
+        &self,
+        negotiated: &NegotiatedCodec,
+    ) -> crate::Result<Box<dyn DynCodec>, CoreError>;
 }
 
 /// 将 `'static` DynCodecFactory 引用适配为拥有型 Box，便于在借用入口与原有 API 之间复用。
@@ -174,7 +186,10 @@ impl DynCodecFactory for BorrowedDynCodecFactory {
         self.inner.descriptor()
     }
 
-    fn instantiate(&self, negotiated: &NegotiatedCodec) -> Result<Box<dyn DynCodec>, CoreError> {
+    fn instantiate(
+        &self,
+        negotiated: &NegotiatedCodec,
+    ) -> crate::Result<Box<dyn DynCodec>, CoreError> {
         self.inner.instantiate(negotiated)
     }
 }

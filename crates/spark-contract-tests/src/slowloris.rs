@@ -173,7 +173,7 @@ impl ReadableBuffer for RateLimitedReadable {
         &self.data[self.cursor..self.visible]
     }
 
-    fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+    fn split_to(&mut self, len: usize) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
         if len > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -186,7 +186,7 @@ impl ReadableBuffer for RateLimitedReadable {
         Ok(Box::new(OwnedReadable::new(slice)))
     }
 
-    fn advance(&mut self, len: usize) -> Result<(), CoreError> {
+    fn advance(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
         if len > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -197,7 +197,7 @@ impl ReadableBuffer for RateLimitedReadable {
         Ok(())
     }
 
-    fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
+    fn copy_into_slice(&mut self, dst: &mut [u8]) -> spark_core::Result<(), CoreError> {
         if dst.len() > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -210,7 +210,7 @@ impl ReadableBuffer for RateLimitedReadable {
         Ok(())
     }
 
-    fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
+    fn try_into_vec(self: Box<Self>) -> spark_core::Result<Vec<u8>, CoreError> {
         Ok(self.data[self.cursor..self.visible].to_vec())
     }
 }
@@ -237,7 +237,7 @@ impl ReadableBuffer for OwnedReadable {
         &self.data[self.cursor..]
     }
 
-    fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+    fn split_to(&mut self, len: usize) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
         if len > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -250,7 +250,7 @@ impl ReadableBuffer for OwnedReadable {
         Ok(Box::new(OwnedReadable::new(slice)))
     }
 
-    fn advance(&mut self, len: usize) -> Result<(), CoreError> {
+    fn advance(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
         if len > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -261,7 +261,7 @@ impl ReadableBuffer for OwnedReadable {
         Ok(())
     }
 
-    fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
+    fn copy_into_slice(&mut self, dst: &mut [u8]) -> spark_core::Result<(), CoreError> {
         if dst.len() > self.remaining() {
             return Err(CoreError::new(
                 codes::PROTOCOL_DECODE,
@@ -274,7 +274,7 @@ impl ReadableBuffer for OwnedReadable {
         Ok(())
     }
 
-    fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
+    fn try_into_vec(self: Box<Self>) -> spark_core::Result<Vec<u8>, CoreError> {
         Ok(self.data)
     }
 }
@@ -283,18 +283,21 @@ impl ReadableBuffer for OwnedReadable {
 struct DummyPool;
 
 impl BufferPool for DummyPool {
-    fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
+    fn acquire(
+        &self,
+        min_capacity: usize,
+    ) -> spark_core::Result<Box<dyn WritableBuffer>, CoreError> {
         Err(CoreError::new(
             "buffer.disabled",
             format!("DummyPool 不支持租借缓冲（请求 {min_capacity} 字节）"),
         ))
     }
 
-    fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+    fn shrink_to_fit(&self) -> spark_core::Result<usize, CoreError> {
         Ok(0)
     }
 
-    fn statistics(&self) -> Result<PoolStats, CoreError> {
+    fn statistics(&self) -> spark_core::Result<PoolStats, CoreError> {
         Ok(PoolStats::default())
     }
 }

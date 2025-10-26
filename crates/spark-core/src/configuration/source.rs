@@ -141,16 +141,22 @@ pub trait ConfigurationSource: Send + Sync + Sealed {
         Self: 'a;
 
     /// 返回指定 Profile 的配置层集合。
-    fn load(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError>;
+    fn load(
+        &self,
+        profile: &ProfileId,
+    ) -> crate::Result<Vec<ConfigurationLayer>, ConfigurationError>;
 
     /// 订阅增量通知。
-    fn watch<'a>(&'a self, profile: &ProfileId) -> Result<Self::Stream<'a>, ConfigurationError>;
+    fn watch<'a>(
+        &'a self,
+        profile: &ProfileId,
+    ) -> crate::Result<Self::Stream<'a>, ConfigurationError>;
 
     /// 将实现者返回的流装箱为统一的 [`BoxStream`]，供多路聚合使用。
     fn watch_boxed<'a>(
         &'a self,
         profile: &ProfileId,
-    ) -> Result<BoxStream<'a, ConfigDelta>, ConfigurationError>
+    ) -> crate::Result<BoxStream<'a, ConfigDelta>, ConfigurationError>
     where
         Self::Stream<'a>: Sized,
     {
@@ -161,13 +167,16 @@ pub trait ConfigurationSource: Send + Sync + Sealed {
 /// 对象安全的配置源包装，供 Builder 储存与调度。
 pub trait DynConfigurationSource: Send + Sync + Sealed {
     /// 对应 [`ConfigurationSource::load`] 的对象安全版本。
-    fn load_dyn(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError>;
+    fn load_dyn(
+        &self,
+        profile: &ProfileId,
+    ) -> crate::Result<Vec<ConfigurationLayer>, ConfigurationError>;
 
     /// 对应 [`ConfigurationSource::watch_boxed`] 的对象安全版本。
     fn watch_dyn<'a>(
         &'a self,
         profile: &ProfileId,
-    ) -> Result<BoxStream<'a, ConfigDelta>, ConfigurationError>;
+    ) -> crate::Result<BoxStream<'a, ConfigDelta>, ConfigurationError>;
 }
 
 impl<T> DynConfigurationSource for T
@@ -175,14 +184,17 @@ where
     T: ConfigurationSource,
     for<'a> T::Stream<'a>: Sized,
 {
-    fn load_dyn(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError> {
+    fn load_dyn(
+        &self,
+        profile: &ProfileId,
+    ) -> crate::Result<Vec<ConfigurationLayer>, ConfigurationError> {
         ConfigurationSource::load(self, profile)
     }
 
     fn watch_dyn<'a>(
         &'a self,
         profile: &ProfileId,
-    ) -> Result<BoxStream<'a, ConfigDelta>, ConfigurationError> {
+    ) -> crate::Result<BoxStream<'a, ConfigDelta>, ConfigurationError> {
         ConfigurationSource::watch_boxed(self, profile)
     }
 }
@@ -199,14 +211,17 @@ struct BorrowedConfigurationSource {
 }
 
 impl DynConfigurationSource for BorrowedConfigurationSource {
-    fn load_dyn(&self, profile: &ProfileId) -> Result<Vec<ConfigurationLayer>, ConfigurationError> {
+    fn load_dyn(
+        &self,
+        profile: &ProfileId,
+    ) -> crate::Result<Vec<ConfigurationLayer>, ConfigurationError> {
         self.inner.load_dyn(profile)
     }
 
     fn watch_dyn<'a>(
         &'a self,
         profile: &ProfileId,
-    ) -> Result<BoxStream<'a, ConfigDelta>, ConfigurationError> {
+    ) -> crate::Result<BoxStream<'a, ConfigDelta>, ConfigurationError> {
         self.inner.watch_dyn(profile)
     }
 }

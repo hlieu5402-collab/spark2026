@@ -46,7 +46,10 @@ use std::mem;
 struct SimpleBufferPool;
 
 impl BufferPool for SimpleBufferPool {
-    fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
+    fn acquire(
+        &self,
+        min_capacity: usize,
+    ) -> spark_core::Result<Box<dyn WritableBuffer>, CoreError> {
         // 教案级注释：
         // Why: `EncodeContext`/`DecodeContext` 需要通过该方法租借缓冲，否则无法写入/读取帧。
         // How: 直接构造 `VecWritableBuffer`，并确保容量至少覆盖调用方要求的最小值。
@@ -55,14 +58,14 @@ impl BufferPool for SimpleBufferPool {
         Ok(Box::new(VecWritableBuffer::with_capacity(min_capacity)))
     }
 
-    fn shrink_to_fit(&self) -> Result<usize, CoreError> {
+    fn shrink_to_fit(&self) -> spark_core::Result<usize, CoreError> {
         // Why: 契约要求提供主动收缩接口；示例中无状态，因此直接返回 0。
         // How: 返回 `Ok(0)` 表示未执行任何回收逻辑。
         // What: 调用方可忽略返回值；在真实实现中应记录回收字节数。
         Ok(0)
     }
 
-    fn statistics(&self) -> Result<PoolStats, CoreError> {
+    fn statistics(&self) -> spark_core::Result<PoolStats, CoreError> {
         // Why: 观测性接口要求返回池快照，示例侧用默认值提供“结构化字段”示例。
         // How: 直接使用 `PoolStats::default()`，其中所有字段为 0。
         // What: 真实实现应填充 `allocated_bytes` 等核心指标。
@@ -112,7 +115,7 @@ impl WritableBuffer for VecWritableBuffer {
         self.buf.len()
     }
 
-    fn reserve(&mut self, additional: usize) -> Result<(), CoreError> {
+    fn reserve(&mut self, additional: usize) -> spark_core::Result<(), CoreError> {
         // Why: 确保后续写入不会因容量不足失败。
         // How: 调用 `Vec::reserve` 扩充容量；`Vec` 会在必要时重新分配并保留已有数据。
         // What: 约定返回 `Ok(())` 代表容量满足需求。
@@ -120,7 +123,7 @@ impl WritableBuffer for VecWritableBuffer {
         Ok(())
     }
 
-    fn put_slice(&mut self, src: &[u8]) -> Result<(), CoreError> {
+    fn put_slice(&mut self, src: &[u8]) -> spark_core::Result<(), CoreError> {
         // Why: 将业务数据写入缓冲末尾，是编码阶段最常见的操作。
         // How: 直接使用 `Vec::extend_from_slice` 追加字节。
         // What: 成功后 `written()` 自增，调用方可继续申请更多空间。
@@ -128,7 +131,11 @@ impl WritableBuffer for VecWritableBuffer {
         Ok(())
     }
 
-    fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> Result<(), CoreError> {
+    fn write_from(
+        &mut self,
+        src: &mut dyn ReadableBuffer,
+        len: usize,
+    ) -> spark_core::Result<(), CoreError> {
         // Why: 支持从已有只读缓冲复制数据，满足零拷贝降级需求。
         // How: 先校验 `len` 是否小于等于剩余字节，再使用临时 `Vec` 中转，最后写入当前缓冲。
         // What: 若 `len` 超出范围或底层复制失败，将返回 `CoreError`。
@@ -154,7 +161,7 @@ impl WritableBuffer for VecWritableBuffer {
         self.buf.clear();
     }
 
-    fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+    fn freeze(self: Box<Self>) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
         // Why: 将可写缓冲转换为只读视图，供传输层或解码阶段消费。
         // How: 通过 `mem::take` 拿到内部 `Vec`，并构造 `VecReadableBuffer`。
         // What: 返回值实现 `ReadableBuffer`，读指针从开头开始。
@@ -200,7 +207,7 @@ impl ReadableBuffer for VecReadableBuffer {
         &self.data[self.cursor..]
     }
 
-    fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
+    fn split_to(&mut self, len: usize) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
         // Why: 支持按帧拆分缓冲（例如协议将前 N 字节视为头部）。
         // How: 校验 `len` 合法后复制对应片段，更新当前游标。
         // What: 返回新的只读缓冲；若长度不足则返回错误。
@@ -220,7 +227,7 @@ impl ReadableBuffer for VecReadableBuffer {
         Ok(Box::new(VecReadableBuffer::from_vec(slice)))
     }
 
-    fn advance(&mut self, len: usize) -> Result<(), CoreError> {
+    fn advance(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
         // Why: 在无需保留拆分结果时前移读指针。
         // How: 与 `split_to` 相同，先校验后更新游标。
         if len > self.remaining() {
@@ -237,7 +244,7 @@ impl ReadableBuffer for VecReadableBuffer {
         Ok(())
     }
 
-    fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
+    fn copy_into_slice(&mut self, dst: &mut [u8]) -> spark_core::Result<(), CoreError> {
         // Why: 兼容需要平坦字节数组的场景（如外部 FFI）。
         // How: 校验长度后复制，并推进读指针。
         if dst.len() > self.remaining() {
@@ -256,7 +263,7 @@ impl ReadableBuffer for VecReadableBuffer {
         Ok(())
     }
 
-    fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
+    fn try_into_vec(self: Box<Self>) -> spark_core::Result<Vec<u8>, CoreError> {
         // Why: 将剩余数据打包为拥有型向量，常用于日志或跨语言传输。
         // How: 取出结构体所有权，并使用 `split_off` 返回剩余字节。
         let mut this = *self;
@@ -290,7 +297,7 @@ fn main() {
 }
 
 /// 核心逻辑封装在独立函数中，方便单元测试或后续扩展。
-fn run() -> Result<(), CoreError> {
+fn run() -> spark_core::Result<(), CoreError> {
     let pool = SimpleBufferPool;
     let codec = LineDelimitedCodec::new();
 

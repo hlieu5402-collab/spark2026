@@ -21,7 +21,7 @@ use crate::{
 pub fn write_headers<W: fmt::Write>(
     writer: &mut W,
     headers: &[Header<'_>],
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     for header in headers {
         write_header(writer, header)?;
         writer.write_str("\r\n")?;
@@ -33,7 +33,7 @@ pub fn write_headers<W: fmt::Write>(
 pub fn write_header<W: fmt::Write>(
     writer: &mut W,
     header: &Header<'_>,
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     match header {
         Header::Via(via) => {
             writer.write_str("Via: ")?;
@@ -95,7 +95,7 @@ fn write_extension<W: fmt::Write>(
     writer: &mut W,
     name: &HeaderName<'_>,
     value: &str,
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     writer.write_str(name.raw)?;
     writer.write_str(":")?;
     if !value.is_empty() {
@@ -108,7 +108,7 @@ fn write_extension<W: fmt::Write>(
 fn write_name_addr<W: fmt::Write>(
     writer: &mut W,
     name: &NameAddr<'_>,
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     if let Some(display) = name.display_name {
         write!(writer, "\"{}\" ", display)?;
     }
@@ -129,7 +129,7 @@ fn write_name_addr<W: fmt::Write>(
 pub(crate) fn write_uri<W: fmt::Write>(
     writer: &mut W,
     uri: &SipUri<'_>,
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     write!(writer, "{}:", uri.scheme)?;
     if let Some(userinfo) = uri.userinfo {
         write!(writer, "{}@", userinfo)?;
@@ -148,7 +148,10 @@ pub(crate) fn write_uri<W: fmt::Write>(
     Ok(())
 }
 
-fn write_via_extras<W: fmt::Write>(writer: &mut W, raw: &str) -> Result<(), SipFormatError> {
+fn write_via_extras<W: fmt::Write>(
+    writer: &mut W,
+    raw: &str,
+) -> spark_core::Result<(), SipFormatError> {
     let mut pos = 0usize;
     while pos < raw.len() {
         if raw.as_bytes()[pos] != b';' {

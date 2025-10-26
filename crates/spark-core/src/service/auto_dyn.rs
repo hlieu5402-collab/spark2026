@@ -49,7 +49,7 @@ use crate::status::PollReady;
 /// - **风险与权衡**：实现需确保错误码稳定且语义准确，避免使用裸 `panic!` 造成调用栈崩溃。
 pub trait Decode: Sized {
     /// 将 [`PipelineMessage`] 转换为业务类型。
-    fn decode(message: PipelineMessage) -> Result<Self, SparkError>;
+    fn decode(message: PipelineMessage) -> crate::Result<Self, SparkError>;
 }
 
 /// 描述“将业务类型编码为 [`PipelineMessage`]”的契约。
@@ -217,7 +217,7 @@ where
 }
 
 impl Decode for PipelineMessage {
-    fn decode(message: PipelineMessage) -> Result<Self, SparkError> {
+    fn decode(message: PipelineMessage) -> crate::Result<Self, SparkError> {
         Ok(message)
     }
 }
@@ -226,7 +226,7 @@ impl<T> Decode for T
 where
     T: TryFrom<PipelineMessage, Error = SparkError>,
 {
-    fn decode(message: PipelineMessage) -> Result<Self, SparkError> {
+    fn decode(message: PipelineMessage) -> crate::Result<Self, SparkError> {
         T::try_from(message)
     }
 }

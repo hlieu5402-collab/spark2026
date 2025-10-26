@@ -112,7 +112,7 @@ impl MatrixReadyService {
 impl Service<PipelineMessage> for MatrixReadyService {
     type Response = PipelineMessage;
     type Error = SparkError;
-    type Future = Ready<Result<Self::Response, Self::Error>>;
+    type Future = Ready<spark_core::Result<Self::Response, Self::Error>>;
 
     fn poll_ready(
         &mut self,

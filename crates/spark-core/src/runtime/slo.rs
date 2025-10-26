@@ -392,7 +392,7 @@ impl SloPolicyManager {
     pub fn apply_config(
         &self,
         value: &ConfigValue,
-    ) -> Result<SloPolicyReloadReport, SloPolicyConfigError> {
+    ) -> crate::Result<SloPolicyReloadReport, SloPolicyConfigError> {
         let rules = parse_policy_table(value)?;
         Ok(self.update_rules(rules))
     }
@@ -481,7 +481,7 @@ fn expect_dictionary<'a>(
     value: &'a ConfigValue,
     path: &str,
     message: &str,
-) -> Result<&'a [(Cow<'static, str>, ConfigValue)], SloPolicyConfigError> {
+) -> crate::Result<&'a [(Cow<'static, str>, ConfigValue)], SloPolicyConfigError> {
     match value {
         ConfigValue::Dictionary(entries, _) => Ok(entries.as_slice()),
         _ => Err(SloPolicyConfigError::new(
@@ -495,7 +495,7 @@ fn expect_list<'a>(
     value: &'a ConfigValue,
     path: &str,
     message: &str,
-) -> Result<&'a [ConfigValue], SloPolicyConfigError> {
+) -> crate::Result<&'a [ConfigValue], SloPolicyConfigError> {
     match value {
         ConfigValue::List(entries, _) => Ok(entries.as_slice()),
         _ => Err(SloPolicyConfigError::new(
@@ -509,14 +509,16 @@ fn dict_get<'a>(
     dict: &'a [(Cow<'static, str>, ConfigValue)],
     prefix: &str,
     field: &str,
-) -> Result<&'a ConfigValue, SloPolicyConfigError> {
+) -> crate::Result<&'a ConfigValue, SloPolicyConfigError> {
     dict.iter()
         .find(|(k, _)| k.as_ref() == field)
         .map(|(_, value)| value)
         .ok_or_else(|| SloPolicyConfigError::new(format!("{}.{}", prefix, field), "字段缺失"))
 }
 
-fn parse_policy_table(value: &ConfigValue) -> Result<Vec<SloPolicyRule>, SloPolicyConfigError> {
+fn parse_policy_table(
+    value: &ConfigValue,
+) -> crate::Result<Vec<SloPolicyRule>, SloPolicyConfigError> {
     ensure_hot_reloadable("slo.policy_table", value)?;
     let entries = expect_dictionary(value, "slo.policy_table", "期望字典结构 (dictionary)")?;
     let rules_value = dict_get(entries, "slo.policy_table", "rules")?;
@@ -535,7 +537,10 @@ fn parse_policy_table(value: &ConfigValue) -> Result<Vec<SloPolicyRule>, SloPoli
     Ok(rules)
 }
 
-fn parse_rule(value: &ConfigValue, index: usize) -> Result<SloPolicyRule, SloPolicyConfigError> {
+fn parse_rule(
+    value: &ConfigValue,
+    index: usize,
+) -> crate::Result<SloPolicyRule, SloPolicyConfigError> {
     let path_prefix = format!("slo.policy_table.rules[{}]", index);
     let dict = expect_dictionary(value, &path_prefix, "规则需为字典 (dictionary)")?;
 
@@ -558,7 +563,7 @@ fn parse_budget_kind(
     dict: &[(Cow<'static, str>, ConfigValue)],
     prefix: &str,
     field: &str,
-) -> Result<BudgetKind, SloPolicyConfigError> {
+) -> crate::Result<BudgetKind, SloPolicyConfigError> {
     let raw = parse_text_field(dict, prefix, field)?;
     match raw {
         value if value.eq_ignore_ascii_case("decode") => Ok(BudgetKind::Decode),
@@ -570,7 +575,7 @@ fn parse_budget_kind(
 fn parse_trigger(
     dict: &[(Cow<'static, str>, ConfigValue)],
     prefix: &str,
-) -> Result<SloPolicyTrigger, SloPolicyConfigError> {
+) -> crate::Result<SloPolicyTrigger, SloPolicyConfigError> {
     let trigger_value = dict_get(dict, prefix, "trigger")?;
     let trigger_dict = expect_dictionary(
         trigger_value,
@@ -598,7 +603,7 @@ fn parse_trigger(
 fn parse_action(
     dict: &[(Cow<'static, str>, ConfigValue)],
     prefix: &str,
-) -> Result<SloPolicyAction, SloPolicyConfigError> {
+) -> crate::Result<SloPolicyAction, SloPolicyConfigError> {
     let action_value = dict_get(dict, prefix, "action")?;
     let action_dict = expect_dictionary(
         action_value,
@@ -643,7 +648,7 @@ fn parse_text_field(
     dict: &[(Cow<'static, str>, ConfigValue)],
     prefix: &str,
     field: &str,
-) -> Result<String, SloPolicyConfigError> {
+) -> crate::Result<String, SloPolicyConfigError> {
     let value = dict_get(dict, prefix, field)?;
     match value {
         ConfigValue::Text(text, _) => Ok(text.to_string()),
@@ -658,7 +663,7 @@ fn parse_optional_text(
     dict: &[(Cow<'static, str>, ConfigValue)],
     prefix: &str,
     field: &str,
-) -> Result<Option<String>, SloPolicyConfigError> {
+) -> crate::Result<Option<String>, SloPolicyConfigError> {
     match dict.iter().find(|(k, _)| k.as_ref() == field) {
         Some((_, ConfigValue::Text(text, _))) => Ok(Some(text.to_string())),
         Some((_, _)) => Err(SloPolicyConfigError::new(
@@ -673,7 +678,7 @@ fn parse_percent(
     dict: &[(Cow<'static, str>, ConfigValue)],
     prefix: &str,
     field: &str,
-) -> Result<u16, SloPolicyConfigError> {
+) -> crate::Result<u16, SloPolicyConfigError> {
     parse_u16(dict, prefix, field, 0, 100)
 }
 
@@ -681,7 +686,7 @@ fn parse_optional_percent(
     dict: &[(Cow<'static, str>, ConfigValue)],
     prefix: &str,
     field: &str,
-) -> Result<Option<u16>, SloPolicyConfigError> {
+) -> crate::Result<Option<u16>, SloPolicyConfigError> {
     match dict.iter().find(|(k, _)| k.as_ref() == field) {
         Some((_, ConfigValue::Integer(raw, _))) => {
             let value = *raw;
@@ -708,7 +713,7 @@ fn parse_u16(
     field: &str,
     min: u16,
     max: u16,
-) -> Result<u16, SloPolicyConfigError> {
+) -> crate::Result<u16, SloPolicyConfigError> {
     let value = dict_get(dict, prefix, field)?;
     let min_i64 = i64::from(min);
     let max_i64 = i64::from(max);
@@ -737,7 +742,7 @@ fn parse_u8(
     field: &str,
     min: u8,
     max: u8,
-) -> Result<u8, SloPolicyConfigError> {
+) -> crate::Result<u8, SloPolicyConfigError> {
     let value = dict_get(dict, prefix, field)?;
     let min_i64 = i64::from(min);
     let max_i64 = i64::from(max);
@@ -764,7 +769,7 @@ fn parse_duration(
     dict: &[(Cow<'static, str>, ConfigValue)],
     prefix: &str,
     field: &str,
-) -> Result<Duration, SloPolicyConfigError> {
+) -> crate::Result<Duration, SloPolicyConfigError> {
     let value = dict_get(dict, prefix, field)?;
     match value {
         ConfigValue::Duration(duration, _) => Ok(*duration),
@@ -776,7 +781,10 @@ fn parse_duration(
     }
 }
 
-fn ensure_hot_reloadable(path: &str, value: &ConfigValue) -> Result<(), SloPolicyConfigError> {
+fn ensure_hot_reloadable(
+    path: &str,
+    value: &ConfigValue,
+) -> crate::Result<(), SloPolicyConfigError> {
     if !value.metadata().hot_reloadable {
         return Err(SloPolicyConfigError::new(
             path,

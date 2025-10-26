@@ -22,7 +22,7 @@ use crate::{Error, context::ExecutionContext, contract::CallContext, sealed::Sea
 ///   关联的 `Error` 实现 [`crate::Error`] 以融入统一错误链；
 /// - **前置条件**：调用方必须在 `call` 前反复驱动 `poll_ready` 直至 `ReadyState::Ready`；
 /// - **后置条件**：成功处理后保证在相同上下文下可继续进行下一次 `poll_ready`/`call` 循环；
-/// - **返回**：`Future` 输出 `Result<Response, Error>`，用于承载异步业务结果。
+/// - **返回**：`Future` 输出 `crate::Result<Response, Error>`，用于承载异步业务结果。
 ///
 /// # 风险与取舍（Trade-offs）
 /// - 若实现依赖 `async fn`，需额外包装为 `Pin<Box<...>>` 或结合 GAT 特性；
@@ -33,7 +33,7 @@ pub trait Service<Request>: Send + Sync + 'static + Sealed {
     /// 业务错误类型。
     type Error: Error;
     /// 代表一次调用的异步返回值。
-    type Future: Future<Output = Result<Self::Response, Self::Error>> + Send + 'static;
+    type Future: Future<Output = crate::Result<Self::Response, Self::Error>> + Send + 'static;
 
     /// 检查服务是否准备好接收下一次调用。
     ///

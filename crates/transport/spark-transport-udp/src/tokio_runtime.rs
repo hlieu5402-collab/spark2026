@@ -1,3 +1,13 @@
+//! Tokio 运行时后端实现。
+//!
+//! # 设计说明（Why）
+//! - 该模块提供 Tokio 平台上的 UDP 传输实现细节；由于主库目前以内联实现为准，模块暂保留以支撑未来的拆分计划。
+//! - 在默认构建中尚未启用此后端，因此大量符号未被引用，需显式放宽 `dead_code` 检查。
+//!
+//! # 使用策略（How）
+//! - 当未来启用分离运行时时，可通过 `pub use tokio_runtime::*` 替换内联实现；当前仅作为设计占位。
+#![allow(dead_code)]
+
 use std::{
     borrow::Cow,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -26,7 +36,7 @@ pub enum SipViaRportDisposition {
 
 impl SipViaRportDisposition {
     /// 判断该 `rport` 状态是否要求服务端在响应中主动改写端口。
-    fn requires_rewrite(self) -> bool {
+    pub(crate) fn requires_rewrite(self) -> bool {
         matches!(self, SipViaRportDisposition::Requested)
     }
 }
@@ -101,7 +111,7 @@ impl UdpEndpoint {
     ///
     /// # 错误处理
     /// - 将底层 `std::io::Error` 封装为 [`UdpError::Bind`]，并包含原始地址字符串，便于排障。
-    pub async fn bind(addr: TransportSocketAddr) -> Result<Self, UdpError> {
+    pub async fn bind(addr: TransportSocketAddr) -> spark_core::Result<Self, UdpError> {
         let display = addr.to_string();
         let std_addr = transport_to_std(addr);
         let sock = UdpSocket::bind(std_addr)
@@ -121,7 +131,7 @@ impl UdpEndpoint {
     /// # 返回
     /// - 成功时返回当前套接字绑定地址。
     /// - 失败时将底层错误包装为 [`UdpError::LocalAddr`]。
-    pub fn local_addr(&self) -> Result<TransportSocketAddr, UdpError> {
+    pub fn local_addr(&self) -> spark_core::Result<TransportSocketAddr, UdpError> {
         let addr = self.sock.local_addr().map_err(UdpError::LocalAddr)?;
         Ok(addr.into())
     }
@@ -142,7 +152,7 @@ impl UdpEndpoint {
     /// 2. 调用 `parse_sip_rport` 解析 `Via` 头的 `rport` 状态。
     /// 3. 根据解析结果决定回源端口（若未提供则使用源端口）。
     /// 4. 返回封装后的 [`UdpIncoming`]。
-    pub async fn recv_from(&self, buffer: &mut [u8]) -> Result<UdpIncoming, UdpError> {
+    pub async fn recv_from(&self, buffer: &mut [u8]) -> spark_core::Result<UdpIncoming, UdpError> {
         let (len, peer) = self
             .sock
             .recv_from(buffer)
@@ -173,7 +183,11 @@ impl UdpEndpoint {
     ///
     /// # 返回值
     /// - 成功返回写入字节数；失败则封装为 [`UdpError::Send`]。
-    pub async fn send_to(&self, payload: &[u8], route: &UdpReturnRoute) -> Result<usize, UdpError> {
+    pub async fn send_to(
+        &self,
+        payload: &[u8],
+        route: &UdpReturnRoute,
+    ) -> spark_core::Result<usize, UdpError> {
         let to_send: Cow<'_, [u8]> = if route.requires_rewrite() {
             match rewrite_sip_rport(payload, route.target().port()) {
                 Some(updated) => Cow::Owned(updated),

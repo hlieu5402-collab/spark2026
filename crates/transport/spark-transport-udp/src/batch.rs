@@ -210,7 +210,7 @@ impl<'a> SendBatchSlot<'a> {
 pub async fn recv_from(
     socket: &UdpSocket,
     slots: &mut [RecvBatchSlot<'_>],
-) -> Result<usize, BatchIoError> {
+) -> spark_core::Result<usize, BatchIoError> {
     for slot in slots.iter_mut() {
         slot.reset();
     }
@@ -234,7 +234,7 @@ pub async fn recv_from(
 pub async fn send_to(
     socket: &UdpSocket,
     slots: &mut [SendBatchSlot<'_>],
-) -> Result<usize, BatchIoError> {
+) -> spark_core::Result<usize, BatchIoError> {
     for slot in slots.iter_mut() {
         slot.mark_unsent();
     }

@@ -266,7 +266,7 @@ impl std::error::Error for WsSipError {
 }
 
 /// 提取帧中唯一的分片切片，若出现多分片则返回错误。
-fn borrow_single_chunk<F>(frame: &F, index: usize) -> Result<&[u8], WsSipError>
+fn borrow_single_chunk<F>(frame: &F, index: usize) -> spark_core::Result<&[u8], WsSipError>
 where
     F: SipWebSocketFrame,
 {
@@ -295,7 +295,7 @@ where
 /// - **契约（What）**：
 ///   - **前置条件**：输入帧的 payload 必须为完整的 SIP 文本；
 ///   - **后置条件**：返回的 `SipMessage` 生命周期与输入帧相同，调用方需保证帧在消息使用期间保持有效。
-pub fn ws_to_sip<'a, F>(frames: &'a [F]) -> Result<Vec<SipMessage<'a>>, WsSipError>
+pub fn ws_to_sip<'a, F>(frames: &'a [F]) -> spark_core::Result<Vec<SipMessage<'a>>, WsSipError>
 where
     F: SipWebSocketFrame,
 {
@@ -345,7 +345,7 @@ where
 pub fn sip_to_ws(
     message: &SipMessage<'_>,
     out_frames: &mut Vec<WsFrameOwned>,
-) -> Result<(), WsSipError> {
+) -> spark_core::Result<(), WsSipError> {
     let mut buffer = String::new();
     write_message(&mut buffer, message).map_err(|err| WsSipError::Format { source: err })?;
     let bytes = buffer.into_bytes();

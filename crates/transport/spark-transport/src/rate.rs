@@ -20,7 +20,7 @@ use core::time::Duration;
 /// - `recommended_retry_after` 仅为建议，调用方可结合自身策略做二次决策。
 pub trait RateLimiter: Send + Sync {
     /// 申请速率许可。
-    fn try_acquire<'a>(&'a self, demand: u32) -> Result<RatePermit<'a>, &'static str>;
+    fn try_acquire<'a>(&'a self, demand: u32) -> crate::Result<RatePermit<'a>, &'static str>;
 }
 
 /// 速率许可的生命周期守卫。

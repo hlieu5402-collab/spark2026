@@ -270,7 +270,7 @@ pub enum NegotiationError {
 }
 
 /// 协商结果类型别名。
-pub type NegotiationResult = Result<NegotiationOutcome, NegotiationError>;
+pub type NegotiationResult = crate::Result<NegotiationOutcome, NegotiationError>;
 
 /// 安全协商器契约。
 pub trait SecurityNegotiator: Sealed {

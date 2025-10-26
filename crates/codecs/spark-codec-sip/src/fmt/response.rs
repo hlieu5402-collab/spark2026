@@ -21,7 +21,7 @@ pub fn write_response<W: fmt::Write>(
     line: &StatusLine<'_>,
     headers: &[Header<'_>],
     body: &[u8],
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     write_status_line(writer, line)?;
     writer.write_str("\r\n")?;
     write_headers(writer, headers)?;
@@ -34,7 +34,7 @@ pub fn write_response<W: fmt::Write>(
 pub fn write_status_line<W: fmt::Write>(
     writer: &mut W,
     line: &StatusLine<'_>,
-) -> Result<(), SipFormatError> {
+) -> spark_core::Result<(), SipFormatError> {
     if line.reason.is_empty() {
         write!(writer, "{} {}", line.version, line.status_code)?;
     } else {
@@ -47,7 +47,10 @@ pub fn write_status_line<W: fmt::Write>(
     Ok(())
 }
 
-fn write_body<W: fmt::Write>(writer: &mut W, body: &[u8]) -> Result<(), SipFormatError> {
+fn write_body<W: fmt::Write>(
+    writer: &mut W,
+    body: &[u8],
+) -> spark_core::Result<(), SipFormatError> {
     if body.is_empty() {
         return Ok(());
     }

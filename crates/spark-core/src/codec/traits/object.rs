@@ -34,14 +34,14 @@ pub trait DynCodec: Send + Sync + 'static + Sealed {
         &self,
         item: &(dyn Any + Send + Sync),
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, CoreError>;
+    ) -> crate::Result<EncodedPayload, CoreError>;
 
     /// 对象安全的解码入口。
     fn decode_dyn(
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, CoreError>;
+    ) -> crate::Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, CoreError>;
 }
 
 /// `TypedCodecAdapter` 将泛型 [`Codec`] 装箱为对象安全的 [`DynCodec`]。
@@ -96,7 +96,7 @@ where
         &self,
         item: &(dyn Any + Send + Sync),
         ctx: &mut EncodeContext<'_>,
-    ) -> Result<EncodedPayload, CoreError> {
+    ) -> crate::Result<EncodedPayload, CoreError> {
         match item.downcast_ref::<C::Outgoing>() {
             Some(typed) => self.inner.encode(typed, ctx),
             None => Err(CoreError::new(
@@ -113,7 +113,7 @@ where
         &self,
         src: &mut ErasedSparkBuf,
         ctx: &mut DecodeContext<'_>,
-    ) -> Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, CoreError> {
+    ) -> crate::Result<DecodeOutcome<Box<dyn Any + Send + Sync>>, CoreError> {
         match self.inner.decode(src, ctx)? {
             DecodeOutcome::Complete(item) => Ok(DecodeOutcome::Complete(Box::new(item))),
             DecodeOutcome::Incomplete => Ok(DecodeOutcome::Incomplete),
