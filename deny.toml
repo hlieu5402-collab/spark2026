@@ -6,7 +6,16 @@ yanked = "warn"
 ignore = []
 
 [bans]
-multiple-versions = "warn"
+# 教案级注释：
+# 目标（Why & Architecture）：CI 中 `cargo deny check bans` 负责阻断重复依赖带来的安全与维护隐患，
+# 因此我们在此处将 `multiple-versions` 设为 `deny`，让 cargo-deny 成为供应链治理门禁的一环。
+# 实现方式（How）：该选项会在检测到同一 crate 的多版本共存时立即返回非零状态，
+# 使 GitHub Actions 的「License & advisory audit」任务失败，从而阻止合并。
+# 契约（What & Preconditions）：此配置要求工作空间中的依赖图在执行守门前已被 cargo 完整解析，
+# 并保证若出现多版本依赖，流水线会终止；成功路径下维持单版本依赖或显式豁免。
+# 风险（Trade-offs）：在极少数情况下我们可能需要多版本共存，此时必须通过 deny.toml 的 `skip`/`allow` 做显式登记，
+# 以避免开发者在 CI 中遇到难以解释的失败，同时保持治理透明。
+multiple-versions = "deny"
 wildcards = "allow"
 
 [licenses]
