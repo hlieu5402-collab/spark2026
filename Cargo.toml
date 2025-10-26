@@ -5,6 +5,7 @@ members = [
     "crates/codecs/spark-codec-rtp",
     "crates/codecs/spark-codec-sdp",
     "crates/codecs/spark-codec-sip",
+    "crates/codecs/spark-codecs",
     "crates/spark-contract-tests",
     "crates/spark-contract-tests-macros",
     "crates/spark-core",

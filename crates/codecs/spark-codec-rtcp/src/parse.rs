@@ -17,7 +17,7 @@
 use alloc::{string::String, vec::Vec};
 use core::{convert::TryInto, str};
 
-use spark_core::buffer::BufView;
+use spark_codecs::buffer::BufView;
 
 use crate::{
     RtcpPacketVec,
