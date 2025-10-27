@@ -80,7 +80,7 @@ class SymbolMatch:
         - 后置条件：数据对象仅作为只读信息传递给诊断逻辑。
     Considerations:
         - 若未来需要携带列号，可扩展字段并在 `parse_rg_output` 中补充解析。
-        - `item_kind` 帮助我们忽略“同名不同形态”的合法类型。
+        - `item_kind` 帮助我们忽略“同名不同形态”的合法类型，例如宏生成的 `type` 别名。
     """
 
     symbol: str
