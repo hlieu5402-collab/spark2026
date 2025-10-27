@@ -5,16 +5,16 @@ use crate::{
     security::{IdentityDescriptor, SecurityPolicy},
 };
 use alloc::sync::Arc;
-use alloc::{borrow::Cow, format, string::ToString, vec, vec::Vec};
+use alloc::{format, string::ToString, vec, vec::Vec};
 //
 // 教案级说明：为了让 Loom 在模型检查阶段能够捕获原子操作的所有调度交错，
 // 当启用 `--cfg loom` 时切换到它提供的原子类型；`Arc` 保持标准实现以维持
 // `Eq`/`Hash` 推导能力，避免破坏 API 契约。
 #[cfg(not(any(loom, spark_loom)))]
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::{fmt, time::Duration};
 #[cfg(any(loom, spark_loom))]
-use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use loom::sync::atomic::{AtomicBool, Ordering};
 
 use crate::runtime::MonotonicTimePoint;
 
@@ -139,199 +139,7 @@ impl Default for Deadline {
     }
 }
 
-/// 预算种类，覆盖协议解码、数据流量以及自定义资源限额。
-///
-/// # 设计背景（Why）
-/// - 统一的预算标识便于在服务、编解码、传输层之间共享资源限额，例如统一的“解码字节数”或“并发请求”预算。
-///
-/// # 契约说明（What）
-/// - 框架预置 `Decode` 与 `Flow` 两种常见预算；`Custom` 可用于扩展其他资源类型（例如 CPU、数据库连接数）。
-/// - 自定义标识建议使用 `namespace.key` 形式，便于在日志与指标中区分来源。
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum BudgetKind {
-    /// 协议解码预算（单位自定义，如字节、消息数）。
-    Decode,
-    /// 数据流量预算（单位自定义，如包数、窗口大小）。
-    Flow,
-    /// 自定义预算，通过稳定命名区分。
-    Custom(Arc<str>),
-}
-
-impl BudgetKind {
-    /// 构造自定义预算标识。
-    pub fn custom(name: impl Into<Arc<str>>) -> Self {
-        BudgetKind::Custom(name.into())
-    }
-}
-
-/// 预算快照，用于在日志与可观测性中输出剩余额度。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BudgetSnapshot {
-    kind: BudgetKind,
-    remaining: u64,
-    limit: u64,
-}
-
-impl BudgetSnapshot {
-    /// 创建快照。
-    pub fn new(kind: BudgetKind, remaining: u64, limit: u64) -> Self {
-        Self {
-            kind,
-            remaining,
-            limit,
-        }
-    }
-
-    /// 获取预算类型。
-    pub fn kind(&self) -> &BudgetKind {
-        &self.kind
-    }
-
-    /// 查询剩余额度。
-    pub fn remaining(&self) -> u64 {
-        self.remaining
-    }
-
-    /// 查询预算上限。
-    pub fn limit(&self) -> u64 {
-        self.limit
-    }
-}
-
-/// 预算消费决策，用于背压枚举与 Service::poll_ready 返回值。
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum BudgetDecision {
-    /// 预算充足，允许继续执行。
-    Granted { snapshot: BudgetSnapshot },
-    /// 预算已耗尽，需要上层施加背压或降级。
-    Exhausted { snapshot: BudgetSnapshot },
-}
-
-impl BudgetDecision {
-    /// 是否代表预算仍可用。
-    pub fn is_granted(&self) -> bool {
-        matches!(self, BudgetDecision::Granted { .. })
-    }
-
-    /// 快速获取预算快照。
-    pub fn snapshot(&self) -> &BudgetSnapshot {
-        match self {
-            BudgetDecision::Granted { snapshot } | BudgetDecision::Exhausted { snapshot } => {
-                snapshot
-            }
-        }
-    }
-}
-
-/// 预算控制器，负责跨线程共享剩余额度。
-///
-/// # 设计背景（Why）
-/// - 预算控制需要在 Service、编解码、传输等不同层级共享，因此使用 [`Arc`] + [`AtomicU64`] 保证多线程安全。
-/// - 通过 `try_consume` 与 `refund` 实现幂等的租借/归还语义，便于在出错时回滚。
-///
-/// # 契约说明（What）
-/// - `limit` 表达预算上限，`remaining` 初始等于上限。
-/// - `try_consume` 会在不足时返回 `BudgetDecision::Exhausted`，并保持剩余额度不变。
-/// - `refund` 在安全回滚时归还额度，结果向上取整至上限范围内。
-///
-/// # 风险提示（Trade-offs）
-/// - 当前实现采用乐观自旋更新，适合中等竞争场景；若需严格公平或分布式预算，可在实现层封装更复杂的协调算法。
-#[derive(Clone, Debug)]
-pub struct Budget {
-    kind: BudgetKind,
-    remaining: Arc<AtomicU64>,
-    limit: u64,
-}
-
-impl Budget {
-    /// 使用给定上限创建预算。
-    pub fn new(kind: BudgetKind, limit: u64) -> Self {
-        Self {
-            kind,
-            remaining: Arc::new(AtomicU64::new(limit)),
-            limit,
-        }
-    }
-
-    /// 创建无限预算，表示不受限的资源池。
-    pub fn unbounded(kind: BudgetKind) -> Self {
-        Self {
-            kind,
-            remaining: Arc::new(AtomicU64::new(u64::MAX)),
-            limit: u64::MAX,
-        }
-    }
-
-    /// 返回预算类型。
-    pub fn kind(&self) -> &BudgetKind {
-        &self.kind
-    }
-
-    /// 查询剩余额度。
-    pub fn remaining(&self) -> u64 {
-        self.remaining.load(Ordering::Acquire)
-    }
-
-    /// 获取预算上限。
-    pub fn limit(&self) -> u64 {
-        self.limit
-    }
-
-    /// 尝试消费指定额度。
-    pub fn try_consume(&self, amount: u64) -> BudgetDecision {
-        let mut current = self.remaining.load(Ordering::Acquire);
-        loop {
-            if current < amount {
-                return BudgetDecision::Exhausted {
-                    snapshot: BudgetSnapshot::new(self.kind.clone(), current, self.limit),
-                };
-            }
-            match self.remaining.compare_exchange(
-                current,
-                current - amount,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => {
-                    return BudgetDecision::Granted {
-                        snapshot: BudgetSnapshot::new(
-                            self.kind.clone(),
-                            current - amount,
-                            self.limit,
-                        ),
-                    };
-                }
-                Err(actual) => {
-                    current = actual;
-                }
-            }
-        }
-    }
-
-    /// 归还额度，常用于异常回滚。
-    pub fn refund(&self, amount: u64) {
-        let mut current = self.remaining.load(Ordering::Acquire);
-        loop {
-            let new_value = current.saturating_add(amount).min(self.limit);
-            match self.remaining.compare_exchange(
-                current,
-                new_value,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => return,
-                Err(actual) => current = actual,
-            }
-        }
-    }
-
-    /// 生成只读快照，用于日志或指标。
-    pub fn snapshot(&self) -> BudgetSnapshot {
-        BudgetSnapshot::new(self.kind.clone(), self.remaining(), self.limit)
-    }
-}
+pub use crate::types::{Budget, BudgetDecision, BudgetKind, BudgetSnapshot, CloseReason};
 
 /// 安全上下文快照，承载调用者与对端的身份/策略元数据。
 ///
@@ -713,36 +521,5 @@ impl CallContextBuilder {
                 trace_context: self.trace_context,
             }),
         }
-    }
-}
-
-/// 优雅关闭理由，统一供长寿命对象（如 Channel、Transport）携带关闭原因。
-///
-/// # 契约说明（What）
-/// - `code`：稳定的关闭码，遵循 `namespace.reason` 形式。
-/// - `message`：人类可读描述，建议避免携带敏感信息。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CloseReason {
-    code: Cow<'static, str>,
-    message: Cow<'static, str>,
-}
-
-impl CloseReason {
-    /// 构造关闭原因。
-    pub fn new(code: impl Into<Cow<'static, str>>, message: impl Into<Cow<'static, str>>) -> Self {
-        Self {
-            code: code.into(),
-            message: message.into(),
-        }
-    }
-
-    /// 获取关闭码。
-    pub fn code(&self) -> &str {
-        &self.code
-    }
-
-    /// 获取描述。
-    pub fn message(&self) -> &str {
-        &self.message
     }
 }
