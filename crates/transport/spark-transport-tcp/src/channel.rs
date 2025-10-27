@@ -4,12 +4,9 @@ use crate::{
     util::{deadline_expired, deadline_remaining, run_with_context, to_socket_addr},
 };
 use socket2::SockRef;
-use spark_core::{
-    context::ExecutionContext,
-    contract::CallContext,
-    error::CoreError,
-    status::ready::{PollReady, ReadyCheck, ReadyState},
-    transport::{ShutdownDirection, TransportSocketAddr},
+use spark_core::prelude::{
+    CallContext, CoreError, ExecutionContext, PollReady, ReadyCheck, ReadyState, ShutdownDirection,
+    TransportSocketAddr,
 };
 use spark_transport::{
     BackpressureDecision, BackpressureMetrics, TransportConnection as TransportConnectionTrait,

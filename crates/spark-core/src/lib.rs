@@ -60,6 +60,7 @@ pub mod host;
 pub mod limits;
 pub mod observability;
 pub mod pipeline;
+pub mod prelude;
 pub mod retry;
 pub mod router;
 pub mod rt;

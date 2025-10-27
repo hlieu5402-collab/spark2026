@@ -1,7 +1,4 @@
-use spark_core::{
-    context::ExecutionContext, contract::CallContext, error::CoreError,
-    transport::TransportSocketAddr,
-};
+use spark_core::prelude::{CallContext, CoreError, ExecutionContext, TransportSocketAddr};
 use std::{borrow::Cow, pin::Pin, sync::Arc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
