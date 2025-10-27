@@ -17,7 +17,7 @@ std = ["alloc", "spark-core/std"]
 compat_v0 = ["spark-core/compat_v0"]
 
 [dependencies]
-spark-core = { path = "../../spark-core", default-features = false }
+spark-core = { workspace = true, default-features = false }
 
 [package.metadata.docs.rs]
 all-features = true

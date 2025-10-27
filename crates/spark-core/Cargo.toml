@@ -29,7 +29,7 @@ configuration_event_doc = ["std", "dep:toml"]
 [dependencies]
 async-trait = { workspace = true, default-features = false }
 spark-macros = { workspace = true }
-spark-transport = { path = "../transport/spark-transport" }
+spark-transport = { workspace = true }
 serde = { workspace = true, features = ["derive", "alloc"] }
 sha2 = { workspace = true, default-features = false }
 loom = { workspace = true, default-features = false, optional = true }

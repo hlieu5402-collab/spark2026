@@ -32,6 +32,7 @@ authors = ["Gemini 架构组 <architecture@gemini.example>"]
 anyhow = "1.0"
 arc-swap = "1.7"
 async-trait = { version = "0.1", default-features = false }
+bytes = { version = "1.10", default-features = false, features = ["std"] }
 criterion = "0.5"
 futures = "0.3"
 futures-util = { version = "0.3", default-features = false }
@@ -60,12 +61,14 @@ spark-contract-tests-macros = { path = "crates/spark-contract-tests-macros" }
 spark-core = { path = "crates/spark-core", default-features = false }
 spark-macros = { path = "crates/spark-macros" }
 spark-otel = { path = "crates/spark-otel" }
+spark-codecs = { path = "crates/codecs/spark-codecs", default-features = false }
 spark-codec-line = { path = "crates/codecs/spark-codec-line" }
 spark-codec-rtcp = { path = "crates/codecs/spark-codec-rtcp" }
 spark-codec-rtp = { path = "crates/codecs/spark-codec-rtp" }
 spark-codec-sdp = { path = "crates/codecs/spark-codec-sdp" }
 spark-codec-sip = { path = "crates/codecs/spark-codec-sip" }
 spark-impl-tck = { path = "crates/spark-impl-tck" }
+spark-transport = { path = "crates/transport/spark-transport" }
 spark-transport-quic = { path = "crates/transport/spark-transport-quic" }
 spark-transport-tcp = { path = "crates/transport/spark-transport-tcp" }
 spark-transport-tls = { path = "crates/transport/spark-transport-tls" }

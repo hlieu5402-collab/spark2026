@@ -11,8 +11,8 @@ license = "Apache-2.0"
 bench = false
 
 [dependencies]
-spark-core = { path = "../../spark-core" }
-spark-transport = { path = "../spark-transport" }
+spark-core = { workspace = true, features = ["std"] }
+spark-transport = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"], optional = true }
 quinn = { workspace = true, optional = true }

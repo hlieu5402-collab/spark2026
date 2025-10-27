@@ -18,7 +18,7 @@ std = ["alloc", "spark-codecs/std"]
 compat_v0 = ["spark-codecs/compat_v0"]
 
 [dependencies]
-spark-codecs = { path = "../spark-codecs", default-features = false }
+spark-codecs = { workspace = true, default-features = false }
 spark-core = { workspace = true, default-features = false }
 smallvec = { version = "1.13", default-features = false, features = ["const_generics", "union"] }
 
