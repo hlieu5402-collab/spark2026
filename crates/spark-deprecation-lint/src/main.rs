@@ -87,11 +87,11 @@ fn run() -> Result<(), ToolError> {
 /// - 相对路径输出有助于阅读 CI 日志并定位文件。
 ///
 /// # 逻辑解析（How）
-/// - `CARGO_MANIFEST_DIR` 指向 `tools/spark-deprecation-lint`，向上两级即可抵达仓库根。
+/// - `CARGO_MANIFEST_DIR` 指向 `crates/spark-deprecation-lint`，向上两级即可抵达仓库根。
 /// - 使用 `PathBuf` 确保跨平台兼容性（Windows/Unix）。
 ///
 /// # 契约说明（What）
-/// - **前置条件**：目录深度固定为 `workspace/tools/spark-deprecation-lint`，若后续调整需同步更新此处逻辑。
+/// - **前置条件**：目录深度固定为 `workspace/crates/spark-deprecation-lint`，若后续调整需同步更新此处逻辑。
 /// - **后置条件**：返回的路径总是以绝对形式呈现。
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
