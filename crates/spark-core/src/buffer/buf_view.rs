@@ -48,6 +48,10 @@ pub trait BufView: Send + Sync {
     }
 
     /// 返回分片数量，主要用于测试或调试观察。
+    ///
+    /// - **Why**：许多契约测试需要断言实现是否保持原始分片数量，以监测是否发生了隐式复制或折叠。
+    /// - **How**：通过完整迭代 [`Chunks`] 统计实际产生的分片数量，同时比对 `size_hint` 作为防御式检查。
+    /// - **Contract**：返回值等于真实的分片个数；若实现的 `size_hint` 与实际不符，会在调试构建中触发断言提醒开发者修复。
     fn chunk_count(&self) -> usize {
         let mut chunks = self.as_chunks();
         let (count, _) = chunks.size_hint();
@@ -57,7 +61,7 @@ pub trait BufView: Send + Sync {
             consumed += 1;
         }
         debug_assert_eq!(count, consumed, "Chunks::size_hint 不应与实际分片数不一致");
-        count
+        consumed
     }
 }
 
@@ -257,5 +261,66 @@ where
 
     fn len(&self) -> usize {
         (**self).len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate alloc;
+
+    use super::*;
+    use alloc::vec;
+
+    struct MultiSliceView<'a> {
+        segments: &'a [&'a [u8]],
+    }
+
+    impl<'a> BufView for MultiSliceView<'a> {
+        fn as_chunks(&self) -> Chunks<'_> {
+            Chunks::from_vec(self.segments.to_vec())
+        }
+
+        fn len(&self) -> usize {
+            self.segments.iter().map(|chunk| chunk.len()).sum()
+        }
+    }
+
+    /// - **意图 (Why)**：验证 `Chunks::from_vec` 会丢弃空分片，并且在消费过程中保持长度与剩余字节数的正确性。
+    /// - **实现说明 (How)**：构造包含空切片的输入向量，逐步调用 `next` 并对 `len`/`total_len` 断言，确保边界条件处理得当。
+    /// - **契约 (What)**：测试的成功意味着 `Chunks` 在面对空切片时返回的迭代器满足“零拷贝 + 正确统计”的基础契约。
+    #[test]
+    fn chunks_from_vec_filters_empty_segments() {
+        let mut iter = Chunks::from_vec(vec![b"ab".as_slice(), &[], b"cdef".as_slice()]);
+
+        assert_eq!(iter.len(), 2);
+        assert_eq!(iter.total_len(), 6);
+        assert_eq!(iter.next(), Some(b"ab".as_slice()));
+
+        assert_eq!(iter.len(), 1);
+        assert_eq!(iter.total_len(), 4);
+        assert_eq!(iter.next(), Some(b"cdef".as_slice()));
+
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.total_len(), 0);
+        assert_eq!(iter.next(), None);
+    }
+
+    /// - **意图 (Why)**：确保默认实现的 `chunk_count` 会返回真实分片数量，从而帮助上层测试捕获潜在的分片折叠或复制。
+    /// - **实现说明 (How)**：使用测试视图 `MultiSliceView` 暴露两段静态切片，分别检查 `len`、`chunk_count` 与 `as_chunks` 的产出顺序。
+    /// - **契约 (What)**：一旦测试通过，意味着 `BufView::chunk_count` 能在对象安全上下文中正确统计多分片视图的数量。
+    #[test]
+    fn buf_view_chunk_count_matches_actual_segments() {
+        static SEGMENTS: [&[u8]; 2] = [b"hello", b"world"];
+        let view = MultiSliceView {
+            segments: &SEGMENTS,
+        };
+
+        assert_eq!(view.len(), 10);
+        assert_eq!(view.chunk_count(), 2);
+
+        let mut iter = view.as_chunks();
+        assert_eq!(iter.next(), Some(SEGMENTS[0]));
+        assert_eq!(iter.next(), Some(SEGMENTS[1]));
+        assert_eq!(iter.next(), None);
     }
 }
