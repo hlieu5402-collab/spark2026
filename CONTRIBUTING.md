@@ -25,6 +25,16 @@
 - 引入或调整依赖前必须检查现有实现，避免重复引入第三方库。
 - Feature 必须提供文档并默认保持最小特性集。
 
+## 契约引入矩阵与黑名单
+
+- 任何调整契约的变更都必须对照 [`docs/ARCH-LAYERS.md`](docs/ARCH-LAYERS.md) 的分层矩阵执行自检。
+- **黑名单速记**：
+  - F-01：除 `spark-core` 外禁止声明 `CoreError`、`RequestId`、`Budget` 等契约类型；
+  - F-02：业务代码不得 `pub use spark_core::contract::*`，需改用 `spark_core::prelude` 或显式列出导出符号；
+  - F-03：传输实现必须复用 `spark_core::protocol::{Message, Frame, Event}`；
+  - F-04：配置解析必须通过 `spark_core::config` 构造 `Timeout` 与 `TimeoutProfile`；
+- CI 会通过 `rg` 和契约测试验证以上规则，请在提交前自行确认。
+
 ## 开发流程
 
 1. Fork 仓库并创建主题分支。
