@@ -5,12 +5,9 @@ use crate::{
 };
 use futures::task::noop_waker_ref;
 use quinn::{Connection, RecvStream, SendStream, VarInt};
-use spark_core::{
-    context::ExecutionContext,
-    contract::CallContext,
-    error::CoreError,
-    status::ready::{PollReady, ReadyCheck, ReadyState},
-    transport::{ShutdownDirection, TransportSocketAddr},
+use spark_core::prelude::{
+    CallContext, CoreError, ExecutionContext, PollReady, ReadyCheck, ReadyState, ShutdownDirection,
+    TransportSocketAddr,
 };
 use spark_transport::{
     BackpressureDecision, BackpressureMetrics, TransportConnection as TransportConnectionTrait,

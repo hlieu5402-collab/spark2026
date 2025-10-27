@@ -1,5 +1,5 @@
 use quinn::ConnectionStats;
-use spark_core::status::ready::{BusyReason, ReadyState, RetryAdvice};
+use spark_core::prelude::{BusyReason, ReadyState, RetryAdvice};
 use std::time::{Duration, Instant};
 
 /// QUIC 写路径背压探测器。
