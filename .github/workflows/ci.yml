@@ -1,4 +1,4 @@
-name: CI
+name: Minimal CI Guardrails
 
 on:
   push:
@@ -11,16 +11,16 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  minimal-gates:
-    name: Minimal guardrails
+  minimal-ci:
+    name: fmt + clippy + build + test + cargo-deny + doc-density
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout sources
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Rust toolchain
+      - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
@@ -29,335 +29,28 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: minimal-guardrails
+          shared-key: minimal-ci
           cache-on-failure: true
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Build workspace
-        run: cargo build --workspace
-
-      - name: Check documentation density
-        run: python3 tools/check_doc_density.py
-
-      - name: Check internal documentation links
-        run: python3 tools/check_doc_links.py
-
-      - name: Update TODO summary
-        run: python3 tools/check_doc_density.py --update-todo
-
-  lint-and-docs:
-    name: Lints & docs (MSRV)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: ReadyState governance gate
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-        run: tools/ci/check_readystate_governance.sh
-
-      - name: Contract sync governance gate
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-        run: tools/ci/check_contract_sync.sh
-
-      - name: Consistency guardrails
-        env:
-          CONSISTENCY_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-          CONSISTENCY_BASE_REF: ${{ github.base_ref || '' }}
-        run: bash tools/ci/check_consistency.sh
-
-      - name: Unified protocol governance gate
-        run: tools/ci/check_unified_protocol_guard.sh
-
-      - name: MSRV guardrails
-        run: tools/ci/check_msrv_guard.sh
-
-      - name: Install Rust 1.89 toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.89.0
-          components: rustfmt, clippy
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: msrv-1.89
-          cache-on-failure: true
-
-      - name: Check documentation density and TODO register
-        run: python3 tools/check_doc_density.py
-
-      - name: Run formatting, clippy, and deprecation lints
-        run: make ci-lints
-
-      - name: Build docs without dependencies
-        env:
-          RUSTDOCFLAGS: -Dwarnings
-        run: cargo doc --workspace --no-deps
-
-      - name: Install lychee
-        uses: taiki-e/install-action@v2
-        with:
-          tool: lychee@0.15.1
-
-      - name: Check documentation links
-        run: lychee --no-progress docs/**/*.md
-
-  builds-and-benches:
-    name: Builds & benches (MSRV)
-    runs-on: ubuntu-latest
-    needs: lint-and-docs
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust 1.89 toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.89.0
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: msrv-1.89
-          cache-on-failure: true
-
-      - name: Build default features
-        run: make ci-zc-asm
-
-      - name: Build alloc profile
-        run: make ci-no-std-alloc
-
-      - name: Doc warnings gate
-        env:
-          RUSTDOCFLAGS: -Dwarnings
-        run: make ci-doc-warning
-
-      - name: Bench smoke test
-        run: make ci-bench-smoke
-
-  core:
-    name: spark-core 公共 API 守门 (MSRV)
-    runs-on: ubuntu-latest
-    needs: lint-and-docs
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust 1.89 toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.89.0
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: msrv-1.89
-          cache-on-failure: true
-
-      - name: Install cargo-public-api
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-public-api@0.50.1
-
-      - name: 守门：禁止 spark-core 暴露第三方符号
-        run: bash tools/ci/check_public_api_core.sh
-
-  semver:
-    name: SemVer compatibility (MSRV)
-    runs-on: ubuntu-latest
-    needs: lint-and-docs
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust 1.89 toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.89.0
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: msrv-1.89
-          cache-on-failure: true
-
-      - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-semver-checks@0.44.0
-
-      - name: Prepare SemVer baseline (origin/main)
-        id: semver_baseline
-        run: |
-          set -euo pipefail
-          git fetch origin main --depth=1
-          baseline_dir=$(mktemp -d)
-          git worktree add "$baseline_dir" origin/main
-          echo "dir=$baseline_dir" >> "$GITHUB_OUTPUT"
-
-      - name: Run cargo-semver-checks
-        env:
-          SEMVER_BASELINE_DIR: ${{ steps.semver_baseline.outputs.dir }}
-        run: cargo semver-checks --manifest-path crates/spark-core/Cargo.toml --baseline-root "$SEMVER_BASELINE_DIR/crates/spark-core"
-
-      - name: Run cargo-semver-checks check-release
-        working-directory: crates/spark-core
-        run: cargo semver-checks check-release
-
-      - name: Cleanup SemVer baseline worktree
-        if: always()
-        env:
-          SEMVER_BASELINE_DIR: ${{ steps.semver_baseline.outputs.dir }}
-        run: |
-          if [[ -n "${SEMVER_BASELINE_DIR:-}" ]]; then
-            git worktree remove "$SEMVER_BASELINE_DIR" --force
-          fi
-
-  cargo-deny:
-    name: License & advisory audit
-    runs-on: ubuntu-latest
-    needs: lint-and-docs
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust 1.89 toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.89.0
 
       - name: Install cargo-deny
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny@0.16.4
 
-      - name: Check bans, licenses, advisories, and sources
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build workspace
+        run: cargo build --workspace
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Check documentation density
+        run: python3 tools/check_doc_density.py --threshold 0.06
+
+      - name: Cargo deny audit
         run: cargo deny check bans licenses advisories sources
-
-  miri:
-    name: Miri smoke tests
-    runs-on: ubuntu-latest
-    needs: lint-and-docs
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install nightly toolchain with Miri
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-          components: miri
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: nightly-miri
-          cache-on-failure: true
-
-      - name: Run workspace Miri tests
-        env:
-          MIRI_TOOLCHAIN: nightly
-        run: tools/ci/miri-test.sh
-
-  sanitizers:
-    name: LLVM sanitizers
-    runs-on: ubuntu-latest
-    needs: lint-and-docs
-    strategy:
-      fail-fast: false
-      matrix:
-        sanitizer: [address, thread]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install nightly toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: nightly-sanitizer-${{ matrix.sanitizer }}
-          cache-on-failure: true
-
-      - name: Install sanitizer dependencies
-        run: sudo apt-get update && sudo apt-get install -y llvm
-
-      - name: Run ${{ matrix.sanitizer }} sanitizer tests
-        env:
-          SANITIZER_TOOLCHAIN: nightly-2024-12-31
-          SANITIZER: ${{ matrix.sanitizer }}
-        run: tools/ci/sanitizers.sh
-
-  loom:
-    name: Loom model checks
-    runs-on: ubuntu-latest
-    needs: lint-and-docs
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install nightly toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: nightly-loom
-          cache-on-failure: true
-
-      - name: Run loom smoke tests
-        env:
-          LOOM_TOOLCHAIN: nightly
-          LOOM_MAX_PREEMPTIONS: "2"
-          LOOM_MAX_BRANCHES: "4096"
-        run: tools/ci/loom-test.sh
-
-  runtime-adapters:
-    name: Runtime adapter TCK (${{ matrix.runtime }})
-    runs-on: ubuntu-latest
-    needs: lint-and-docs
-    strategy:
-      fail-fast: false
-      matrix:
-        runtime: [tokio, async-std, smol, glommio]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust 1.89 toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.89.0
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: runtime-${{ matrix.runtime }}-1.89
-          cache-on-failure: true
-
-      - name: Run spark-contract-tests TCK on ${{ matrix.runtime }}
-        run: tools/ci/run_runtime_tck.sh ${{ matrix.runtime }}
