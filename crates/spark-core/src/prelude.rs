@@ -47,7 +47,8 @@
 /// # 收录内容（What）
 /// - 调用三元组：[`CallContext`]、[`Cancellation`]、[`Deadline`];
 /// - 错误体系：[`CoreError`]、[`Result`];
-/// - 预算与协议：[`Budget`]、[`BudgetDecision`]、[`Event`]、[`Frame`]、[`Message`];
+/// - 预算与协议：[`crate::contract::Budget`]、[`crate::contract::BudgetDecision`]、
+///   [`crate::protocol::Event`]、[`crate::protocol::Frame`]、[`crate::protocol::Message`];
 /// - 标识与配置：[`RequestId`]、[`CorrelationId`]、[`IdempotencyKey`]、[`Timeout`];
 /// - 状态语义：[`State`]、[`Status`];
 /// - 辅助类型：[`NonEmptyStr`]、[`CloseReason`]、[`BudgetSet`]、[`TimeoutProfile`].

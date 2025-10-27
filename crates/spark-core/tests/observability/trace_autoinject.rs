@@ -12,8 +12,8 @@ use spark_core::{
     contract::{CallContext, CloseReason, Deadline},
     future::BoxFuture,
     observability::{
-        AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram,
-        LogRecord, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, TraceContext,
+        DefaultObservabilityFacade, EventPolicy, LogRecord, Logger, MetricsProvider, OpsEvent,
+        OpsEventBus, OpsEventKind, TraceContext,
     },
     pipeline::{
         Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
@@ -24,6 +24,7 @@ use spark_core::{
         AsyncRuntime, CoreServices, JoinHandle, TaskCancellationStrategy, TaskError, TaskExecutor,
         TaskHandle, TaskResult, TimeDriver,
     },
+    test_stubs::observability::NoopMetricsProvider,
 };
 
 use spark_otel::{self, Error as OtelError};
@@ -46,7 +47,7 @@ fn trace_context_auto_injected_and_spans_form_parent_child_tree() {
     let runtime = Arc::new(NoopRuntime::new());
     let logger = Arc::new(RecordingLogger::default());
     let ops = Arc::new(NoopOpsBus::default());
-    let metrics = Arc::new(NoopMetrics);
+    let metrics = Arc::new(NoopMetricsProvider);
 
     let services = CoreServices::with_observability_facade(
         runtime as Arc<dyn AsyncRuntime>,
@@ -523,53 +524,4 @@ impl TaskHandle for NoopHandle {
     async fn join(self: Box<Self>) -> TaskResult<Self::Output> {
         Err(TaskError::ExecutorTerminated)
     }
-}
-
-/// 不执行任何记录动作的 MetricsProvider 桩。
-struct NoopMetrics;
-
-impl MetricsProvider for NoopMetrics {
-    fn counter(
-        &self,
-        _descriptor: &spark_core::observability::InstrumentDescriptor<'_>,
-    ) -> Arc<dyn Counter> {
-        Arc::new(NoopCounter)
-    }
-
-    fn gauge(
-        &self,
-        _descriptor: &spark_core::observability::InstrumentDescriptor<'_>,
-    ) -> Arc<dyn Gauge> {
-        Arc::new(NoopGauge)
-    }
-
-    fn histogram(
-        &self,
-        _descriptor: &spark_core::observability::InstrumentDescriptor<'_>,
-    ) -> Arc<dyn Histogram> {
-        Arc::new(NoopHistogram)
-    }
-}
-
-/// 忽略所有累加请求的空计数器。
-struct NoopCounter;
-
-impl Counter for NoopCounter {
-    fn add(&self, _value: u64, _attributes: AttributeSet<'_>) {}
-}
-
-/// 忽略所有写入的空 Gauge。
-struct NoopGauge;
-
-impl Gauge for NoopGauge {
-    fn set(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-    fn increment(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-    fn decrement(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-}
-
-/// 不持久化记录的空直方图。
-struct NoopHistogram;
-
-impl Histogram for NoopHistogram {
-    fn record(&self, _value: f64, _attributes: AttributeSet<'_>) {}
 }

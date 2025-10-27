@@ -14,12 +14,8 @@ mod tests {
                 Budget, CallContext, CallContextBuilder, Cancellation, CloseReason,
             };
             use spark_core::error::{CoreError, category_matrix};
-            use spark_core::observability::metrics::{
-                Counter, Gauge, Histogram, InstrumentDescriptor, MetricsProvider,
-            };
-            use spark_core::observability::{
-                AttributeSet, CoreUserEvent, Logger, TraceContext, TraceFlags,
-            };
+            use spark_core::observability::metrics::MetricsProvider;
+            use spark_core::observability::{CoreUserEvent, Logger, TraceContext, TraceFlags};
             use spark_core::pipeline::controller::{ControllerHandleId, Handler};
             use spark_core::pipeline::handler::InboundHandler;
             use spark_core::pipeline::{
@@ -36,6 +32,7 @@ mod tests {
                     JoinHandle, MonotonicTimePoint, TaskCancellationStrategy, TaskError,
                     TaskExecutor, TaskHandle, TaskResult, TimeDriver,
                 },
+                test_stubs::observability::{NoopLogger, NoopMetricsProvider},
             };
 
             #[derive(Deserialize)]
@@ -572,51 +569,6 @@ mod tests {
                         custom_dimensions: Vec::new(),
                     })
                 }
-            }
-
-            struct NoopLogger;
-
-            impl Logger for NoopLogger {
-                fn log(&self, _record: &spark_core::observability::LogRecord<'_>) {}
-            }
-
-            #[derive(Default)]
-            struct NoopMetricsProvider;
-
-            impl MetricsProvider for NoopMetricsProvider {
-                fn counter(&self, _: &InstrumentDescriptor<'_>) -> Arc<dyn Counter> {
-                    Arc::new(NoopCounter)
-                }
-
-                fn gauge(&self, _: &InstrumentDescriptor<'_>) -> Arc<dyn Gauge> {
-                    Arc::new(NoopGauge)
-                }
-
-                fn histogram(&self, _: &InstrumentDescriptor<'_>) -> Arc<dyn Histogram> {
-                    Arc::new(NoopHistogram)
-                }
-            }
-
-            struct NoopCounter;
-
-            impl Counter for NoopCounter {
-                fn add(&self, _: u64, _: AttributeSet<'_>) {}
-            }
-
-            struct NoopGauge;
-
-            impl Gauge for NoopGauge {
-                fn set(&self, _: f64, _: AttributeSet<'_>) {}
-
-                fn increment(&self, _: f64, _: AttributeSet<'_>) {}
-
-                fn decrement(&self, _: f64, _: AttributeSet<'_>) {}
-            }
-
-            struct NoopHistogram;
-
-            impl Histogram for NoopHistogram {
-                fn record(&self, _: f64, _: AttributeSet<'_>) {}
             }
 
             /// `NoopTaskExecutor` 作为占位执行器，为契约测试提供最小依赖。

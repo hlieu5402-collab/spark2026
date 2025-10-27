@@ -12,9 +12,8 @@ use spark_core::{
     contract::{CallContext, CloseReason, Deadline},
     future::BoxFuture,
     observability::{
-        AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram,
-        LogRecord, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, TraceContext,
-        TraceFlags,
+        DefaultObservabilityFacade, EventPolicy, Logger, MetricsProvider, OpsEvent, OpsEventBus,
+        OpsEventKind, TraceContext, TraceFlags,
     },
     pipeline::{
         Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
@@ -25,6 +24,7 @@ use spark_core::{
         AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
         TaskError, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
     },
+    test_stubs::observability::{NoopLogger, NoopMetricsProvider},
 };
 
 /// 验证热插拔在运行期不会丢包或打乱顺序。
@@ -33,7 +33,7 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
     let runtime = Arc::new(NoopRuntime::new());
     let logger = Arc::new(NoopLogger);
     let ops = Arc::new(NoopOpsBus::default());
-    let metrics = Arc::new(NoopMetrics);
+    let metrics = Arc::new(NoopMetricsProvider);
 
     let services = CoreServices::with_observability_facade(
         runtime as Arc<dyn AsyncRuntime>,
@@ -121,7 +121,7 @@ mod loom_tests {
             let runtime = Arc::new(NoopRuntime::new());
             let logger = Arc::new(NoopLogger);
             let ops = Arc::new(NoopOpsBus::default());
-            let metrics = Arc::new(NoopMetrics);
+            let metrics = Arc::new(NoopMetricsProvider);
 
             let services = CoreServices::with_observability_facade(
                 runtime as Arc<dyn AsyncRuntime>,
@@ -370,58 +370,6 @@ impl spark_core::Stream for EmptyStream {
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Poll::Ready(None)
     }
-}
-
-#[derive(Default)]
-struct NoopMetrics;
-
-impl MetricsProvider for NoopMetrics {
-    fn counter(
-        &self,
-        _descriptor: &spark_core::observability::InstrumentDescriptor<'_>,
-    ) -> Arc<dyn Counter> {
-        Arc::new(NoopCounter)
-    }
-
-    fn gauge(
-        &self,
-        _descriptor: &spark_core::observability::InstrumentDescriptor<'_>,
-    ) -> Arc<dyn Gauge> {
-        Arc::new(NoopGauge)
-    }
-
-    fn histogram(
-        &self,
-        _descriptor: &spark_core::observability::InstrumentDescriptor<'_>,
-    ) -> Arc<dyn Histogram> {
-        Arc::new(NoopHistogram)
-    }
-}
-
-struct NoopCounter;
-
-impl Counter for NoopCounter {
-    fn add(&self, _value: u64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopGauge;
-
-impl Gauge for NoopGauge {
-    fn set(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-    fn increment(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-    fn decrement(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopHistogram;
-
-impl Histogram for NoopHistogram {
-    fn record(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-}
-
-pub(crate) struct NoopLogger;
-
-impl Logger for NoopLogger {
-    fn log(&self, _record: &LogRecord<'_>) {}
 }
 
 pub(crate) struct NoopBufferPool;

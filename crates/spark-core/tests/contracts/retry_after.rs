@@ -7,6 +7,7 @@ use spark_core::observability::{
     keys::metrics::service as service_keys, AttributeSet, Counter, Gauge, Histogram, KeyValue,
     MetricAttributeValue, MetricsProvider,
 };
+use spark_core::test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogram};
 use spark_core::service::metrics::ServiceMetricsHook;
 use spark_core::status::{ReadyState, RetryAdvice, RetryRhythm, SubscriptionBudget};
 
@@ -341,24 +342,3 @@ fn snapshot_attributes(attributes: AttributeSet<'_>) -> Vec<(String, String)> {
         .collect()
 }
 
-struct NoopCounter;
-
-impl Counter for NoopCounter {
-    fn add(&self, _value: u64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopGauge;
-
-impl Gauge for NoopGauge {
-    fn set(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-
-    fn increment(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-
-    fn decrement(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopHistogram;
-
-impl Histogram for NoopHistogram {
-    fn record(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-}

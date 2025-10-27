@@ -25,6 +25,7 @@ use spark_core::runtime::{
     TaskError, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
 };
 use spark_core::{BoxStream, SparkError};
+use spark_core::test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogram};
 
 use super::support::{block_on, monotonic};
 
@@ -236,28 +237,6 @@ impl MetricsProvider for TestMetrics {
     fn histogram(&self, _descriptor: &spark_core::observability::InstrumentDescriptor<'_>) -> Arc<dyn Histogram> {
         Arc::new(NoopHistogram)
     }
-}
-
-struct NoopCounter;
-
-impl Counter for NoopCounter {
-    fn add(&self, _value: u64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopGauge;
-
-impl Gauge for NoopGauge {
-    fn set(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-
-    fn increment(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-
-    fn decrement(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopHistogram;
-
-impl Histogram for NoopHistogram {
-    fn record(&self, _value: f64, _attributes: AttributeSet<'_>) {}
 }
 
 /// 构造用于测试的运行时服务集合。
