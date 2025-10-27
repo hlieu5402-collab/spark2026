@@ -74,6 +74,9 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: tools/ci/check_contract_sync.sh
 
+      - name: Core contract redefinition guard
+        run: python3 tools/check_contracts.py
+
       - name: Consistency guardrails
         env:
           CONSISTENCY_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}

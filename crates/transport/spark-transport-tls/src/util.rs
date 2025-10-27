@@ -4,11 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use spark_core::{
-    contract::{CallContext, Cancellation, Deadline},
-    error::CoreError,
-    runtime::MonotonicTimePoint,
-};
+use spark_core::prelude::{CallContext, Cancellation, CoreError, Deadline, MonotonicTimePoint};
 use tokio::time::Instant as TokioInstant;
 
 use crate::error::{self, OperationKind};

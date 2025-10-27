@@ -13,7 +13,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
-use spark_core::transport::TransportSocketAddr;
+use spark_core::prelude::TransportSocketAddr;
 use thiserror::Error;
 use tokio::net::UdpSocket;
 

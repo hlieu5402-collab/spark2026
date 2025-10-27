@@ -50,6 +50,7 @@ pub mod codec;
 pub mod common;
 #[cfg(feature = "compat_v0")]
 pub mod compat;
+pub mod config;
 pub mod configuration;
 pub mod context;
 pub mod contract;
@@ -57,9 +58,13 @@ pub mod deprecation;
 pub mod error;
 pub mod future;
 pub mod host;
+pub mod ids;
 pub mod limits;
+pub mod model;
 pub mod observability;
 pub mod pipeline;
+pub mod prelude;
+pub mod protocol;
 pub mod retry;
 pub mod router;
 pub mod rt;
@@ -70,6 +75,7 @@ pub mod status;
 #[cfg(feature = "std")]
 pub mod time;
 pub mod transport;
+pub mod types;
 
 pub use audit::{
     AuditActor, AuditChangeEntry, AuditChangeSet, AuditContext, AuditDeletedEntry, AuditEntityRef,
@@ -97,6 +103,7 @@ pub use codec::{
 ///   因此使用 `#[allow(deprecated)]` 抑制内部警告，保留对外提示能力。
 #[allow(deprecated)]
 pub use common::{Empty, IntoEmpty, Loopback, legacy_loopback_outbound};
+pub use config::{Timeout, TimeoutProfile};
 pub use configuration::{
     BuildError, BuildErrorKind, BuildErrorStage, BuildOutcome, BuildReport, ChangeEvent,
     ChangeNotification, ChangeSet, ConfigDelta, ConfigKey, ConfigMetadata, ConfigScope,
@@ -109,9 +116,8 @@ pub use configuration::{
 };
 pub use context::ExecutionContext;
 pub use contract::{
-    Budget, BudgetDecision, BudgetKind, BudgetSnapshot, CallContext, CallContextBuilder,
-    Cancellation, CloseReason, DEFAULT_OBSERVABILITY_CONTRACT, Deadline, ObservabilityContract,
-    SecurityContextSnapshot,
+    CallContext, CallContextBuilder, Cancellation, DEFAULT_OBSERVABILITY_CONTRACT, Deadline,
+    ObservabilityContract, SecurityContextSnapshot,
 };
 pub use error::{
     CoreError, DomainError, DomainErrorKind, ErrorCategory, ErrorCause, ImplError, ImplErrorKind,
@@ -125,10 +131,12 @@ pub use host::{
     NetworkProtocol, ProvisioningOutcome, SecurityFeature, ShutdownReason, StartupPhase,
     ThroughputClass,
 };
+pub use ids::{CorrelationId, IdempotencyKey, RequestId};
 pub use limits::{
     LimitAction, LimitConfigError, LimitDecision, LimitMetricsHook, LimitPlan, LimitSettings,
     ResourceKind, config_error_to_spark, decision_queue_snapshot,
 };
+pub use model::{State, Status};
 #[allow(deprecated)]
 pub use observability::LegacyObservabilityHandles;
 pub use observability::{
@@ -145,6 +153,7 @@ pub use pipeline::{
     InboundHandler, Middleware, MiddlewareDescriptor, OutboundHandler, Pipeline, PipelineFactory,
     WriteSignal,
 };
+pub use protocol::{Event, Frame, Message};
 pub use router::{
     DynRouter, RouteBinding, RouteBindingObject, RouteCatalog, RouteDecision, RouteDecisionObject,
     RouteDescriptor, RouteError, RouteId, RouteKind, RouteMetadata, RoutePattern, RouteSegment,
@@ -169,6 +178,9 @@ pub use security::{
 pub use service::{
     AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,
     type_mismatch_error,
+};
+pub use types::{
+    Budget, BudgetDecision, BudgetKind, BudgetSet, BudgetSnapshot, CloseReason, NonEmptyStr,
 };
 #[rustfmt::skip]
 pub use status::{

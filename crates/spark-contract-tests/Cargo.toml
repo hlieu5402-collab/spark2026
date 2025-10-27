@@ -1,7 +1,7 @@
 [package]
 name = "spark-contract-tests"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 license = "Apache-2.0"
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
 description = "Spark 契约测试套件（TCK），为第三方实现提供一键回归能力"

@@ -11,15 +11,15 @@ members = [
     "crates/spark-core",
     "crates/spark-impl-tck",
     "crates/spark-macros",
-    "crates/spark-otel", "crates/transport/spark-transport",
+    "crates/spark-otel", "crates/spark-transport",
     "crates/transport/spark-transport-quic",
     "crates/transport/spark-transport-tcp",
     "crates/transport/spark-transport-tls",
     "crates/transport/spark-transport-udp",
-    "examples/tck-mock-transport",
-    "tools/spark-deprecation-lint",
+    "crates/3p/tck-mock-transport",
+    "crates/spark-deprecation-lint",
 ]
-exclude = ["spark2026-fuzz"]
+exclude = ["crates/3p/spark2026-fuzz"]
 resolver = "2"
 
 [workspace.package]
