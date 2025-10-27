@@ -1,6 +1,6 @@
 use crate::{channel::QuicChannel, error, util::to_socket_addr};
 use quinn::{ClientConfig, Connection, Endpoint, ServerConfig};
-use spark_core::{error::CoreError, transport::TransportSocketAddr};
+use spark_core::prelude::{CoreError, TransportSocketAddr};
 
 /// QUIC Endpoint 封装：统一监听与建连入口。
 ///

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use rustls::ServerConfig;
-use spark_core::{contract::CallContext, error::CoreError};
+use spark_core::prelude::{CallContext, CoreError};
 use spark_transport_tcp::TcpChannel;
 use tokio_rustls::TlsAcceptor as TokioTlsAcceptor;
 

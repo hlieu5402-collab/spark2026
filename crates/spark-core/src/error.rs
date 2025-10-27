@@ -575,6 +575,11 @@ pub mod codes {
     pub const ROUTER_VERSION_CONFLICT: &str = "router.version_conflict";
     /// 应用路由失败。
     pub const APP_ROUTING_FAILED: &str = "app.routing_failed";
+    /// 应用参数校验失败。
+    ///
+    /// - **使用场景**：配置解析、公共契约构造（如 [`crate::types::NonEmptyStr`]）发现输入为空或格式不符合约定。
+    /// - **调用约定**：实现者在捕获到终端用户可修复的输入错误时，应返回该错误码，便于调用方提示或拒绝请求。
+    pub const APP_INVALID_ARGUMENT: &str = "app.invalid_argument";
     /// 应用鉴权失败。
     pub const APP_UNAUTHORIZED: &str = "app.unauthorized";
     /// 应用背压施加。

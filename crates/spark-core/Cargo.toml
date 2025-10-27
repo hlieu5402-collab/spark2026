@@ -1,7 +1,7 @@
 [package]
 name = "spark-core"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 rust-version = "1.89"
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
 license = "Apache-2.0"
@@ -29,7 +29,7 @@ configuration_event_doc = ["std", "dep:toml"]
 [dependencies]
 async-trait = { workspace = true, default-features = false }
 spark-macros = { workspace = true }
-spark-transport = { path = "../transport/spark-transport" }
+spark-transport = { workspace = true }
 serde = { workspace = true, features = ["derive", "alloc"] }
 sha2 = { workspace = true, default-features = false }
 loom = { workspace = true, default-features = false, optional = true }

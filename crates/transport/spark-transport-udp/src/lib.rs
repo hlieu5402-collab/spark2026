@@ -510,7 +510,7 @@ mod runtime_stub {
     use core::future::Future;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-    use spark_core::Result;
+    use spark_core::prelude::Result;
     use spark_transport::{DatagramEndpoint, TransportSocketAddr};
     use thiserror::Error;
 

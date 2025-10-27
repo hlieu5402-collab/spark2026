@@ -3,10 +3,7 @@ use crate::{
     error::{self, map_io_error},
     util::{deadline_expired, run_with_context, to_socket_addr},
 };
-use spark_core::{
-    context::ExecutionContext, contract::CallContext, error::CoreError,
-    transport::TransportSocketAddr,
-};
+use spark_core::prelude::{CallContext, CoreError, ExecutionContext, TransportSocketAddr};
 use spark_transport::{ShutdownDirection, TransportListener as TransportListenerTrait};
 use std::pin::Pin;
 use tokio::net::TcpListener as TokioTcpListener;

@@ -1,12 +1,8 @@
 use std::{borrow::Cow, io, time::Duration};
 
 use rustls::{AlertDescription, Error as RustlsError};
-use spark_core::{
-    contract::BudgetKind,
-    error::{CoreError, ErrorCategory},
-    security::class::SecurityClass,
-    status::ready::RetryAdvice,
-};
+use spark_core::prelude::{BudgetKind, CoreError, ErrorCategory, RetryAdvice};
+use spark_core::security::class::SecurityClass;
 
 /// TLS 传输错误映射模块。
 ///

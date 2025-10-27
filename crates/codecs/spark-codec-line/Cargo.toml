@@ -2,7 +2,7 @@
 name = "spark-codec-line"
 version = "0.1.0"
 rust-version = "1.89"
-edition = "2024"
+edition.workspace = true
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
 license = "Apache-2.0"
 description = "Line-delimited text codec extension for spark-core"
@@ -17,7 +17,7 @@ std = ["alloc", "spark-codecs/std"]
 compat_v0 = ["spark-codecs/compat_v0"]
 
 [dependencies]
-spark-codecs = { path = "../spark-codecs", default-features = false }
+spark-codecs = { workspace = true, default-features = false }
 spark-core = { workspace = true, default-features = false }
 
 [dev-dependencies]

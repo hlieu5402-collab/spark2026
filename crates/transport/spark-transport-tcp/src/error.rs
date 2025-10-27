@@ -1,5 +1,4 @@
-use spark_core::error::{CoreError, ErrorCategory};
-use spark_core::status::ready::RetryAdvice;
+use spark_core::prelude::{CoreError, ErrorCategory, RetryAdvice};
 use std::borrow::Cow;
 use std::io;
 use std::time::Duration;

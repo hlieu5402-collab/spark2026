@@ -1,4 +1,4 @@
-use spark_core::status::ready::{BusyReason, ReadyState, RetryAdvice};
+use spark_core::prelude::{BusyReason, ReadyState, RetryAdvice};
 use std::time::{Duration, Instant};
 
 /// 管理 TCP 写路径的背压统计。

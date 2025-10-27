@@ -1,8 +1,7 @@
 use crate::error::{self, OperationKind};
-use spark_core::contract::{CallContext, Cancellation, Deadline};
-use spark_core::error::CoreError;
-use spark_core::runtime::MonotonicTimePoint;
-use spark_core::transport::TransportSocketAddr;
+use spark_core::prelude::{
+    CallContext, Cancellation, CoreError, Deadline, MonotonicTimePoint, TransportSocketAddr,
+};
 use std::future::Future;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::sync::OnceLock;
