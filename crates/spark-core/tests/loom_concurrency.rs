@@ -8,7 +8,10 @@ use loom::{
     },
     thread,
 };
-use spark_core::contract::{Budget, BudgetKind, Cancellation};
+use spark_core::{
+    contract::Cancellation,
+    types::{Budget, BudgetKind},
+};
 
 #[test]
 fn cancellation_visibility_is_sequentially_consistent() {

@@ -18,7 +18,6 @@ use std::thread;
 
 use futures::executor::block_on;
 use spark_core::buffer::PipelineMessage;
-use spark_core::contract::{Budget, BudgetKind, Cancellation, CloseReason, Deadline};
 use spark_core::error::{CoreError, SparkError};
 use spark_core::future::BoxFuture;
 use spark_core::observability::CoreUserEvent;
@@ -29,6 +28,10 @@ use spark_core::pipeline::controller::{
 };
 use spark_core::pipeline::extensions::ExtensionsMap;
 use spark_core::runtime::CoreServices;
+use spark_core::{
+    contract::{Cancellation, CloseReason, Deadline},
+    types::{Budget, BudgetKind},
+};
 
 /// ## 测试一：取消原语跨线程可见性
 ///

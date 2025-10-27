@@ -1052,10 +1052,10 @@ fn render_category_matrix(entries: &[ExpandedEntry]) -> String {
     buffer.push_str("// @generated 自动生成文件，请勿手工修改。\n");
     buffer.push_str("// 由 crates/spark-core/build.rs 根据 contracts/error_matrix.toml 生成。\n\n");
     buffer.push_str("use crate::{\n");
-    buffer.push_str("    contract::BudgetKind,\n");
     buffer.push_str("    error::ErrorCategory,\n");
     buffer.push_str("    security::SecurityClass,\n");
     buffer.push_str("    status::{BusyReason, RetryAdvice},\n");
+    buffer.push_str("    types::BudgetKind,\n");
     buffer.push_str("};\n");
     buffer.push_str("use core::time::Duration;\n\n");
     buffer.push_str(r#"/// 默认错误分类矩阵的只读数据源，集中声明“错误码 → ErrorCategory → 自动响应动作”的三段映射。

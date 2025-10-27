@@ -2,10 +2,10 @@
 // 由 crates/spark-core/build.rs 根据 contracts/error_matrix.toml 生成。
 
 use crate::{
-    contract::BudgetKind,
     error::ErrorCategory,
     security::SecurityClass,
     status::{BusyReason, RetryAdvice},
+    types::BudgetKind,
 };
 use core::time::Duration;
 
