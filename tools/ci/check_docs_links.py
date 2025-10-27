@@ -37,7 +37,7 @@ from typing import Iterable, List, Sequence
 # --------------------------- 常量与配置（Contract 定义） ---------------------------
 IGNORED_PREFIXES: Sequence[str] = ("http://", "https://", "mailto:", "tel:")
 ANCHOR_PREFIX = "#"
-IGNORED_DIRS: Sequence[str] = (".git", "target", "spark2026-fuzz/target")
+IGNORED_DIRS: Sequence[str] = (".git", "target", "crates/3p/spark2026-fuzz/target")
 MARKDOWN_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 
