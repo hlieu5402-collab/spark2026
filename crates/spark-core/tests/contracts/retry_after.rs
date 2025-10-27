@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use spark_core::contract::{Budget, BudgetDecision, BudgetKind};
+use spark_core::types::{Budget, BudgetDecision, BudgetKind};
 use spark_core::observability::{
     keys::metrics::service as service_keys, AttributeSet, Counter, Gauge, Histogram, KeyValue,
     MetricAttributeValue, MetricsProvider,

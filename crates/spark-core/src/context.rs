@@ -1,4 +1,7 @@
-use crate::contract::{Budget, BudgetKind, CallContext, Cancellation, Deadline};
+use crate::{
+    contract::{CallContext, Cancellation, Deadline},
+    types::{Budget, BudgetKind},
+};
 use core::slice;
 
 /// `ExecutionContext` 聚合一次执行路径上最关键的调用元数据：取消标记、截止时间与预算切片。

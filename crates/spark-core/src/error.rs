@@ -1,6 +1,6 @@
 use crate::{
-    Error, TraceContext, cluster::NodeId, contract::BudgetKind, sealed::Sealed,
-    security::SecurityClass, status::RetryAdvice, transport::TransportSocketAddr,
+    Error, TraceContext, cluster::NodeId, sealed::Sealed, security::SecurityClass,
+    status::RetryAdvice, transport::TransportSocketAddr, types::BudgetKind,
 };
 use alloc::borrow::Cow;
 

@@ -1,9 +1,11 @@
 use crate::case::{TckCase, TckSuite};
 use crate::support::{build_allow_all_policy, build_identity, monotonic};
 use spark_core::context::ExecutionContext;
-use spark_core::contract::{
-    Budget, BudgetKind, CallContext, Cancellation, Deadline, ObservabilityContract,
-    SecurityContextSnapshot,
+use spark_core::{
+    contract::{
+        CallContext, Cancellation, Deadline, ObservabilityContract, SecurityContextSnapshot,
+    },
+    types::{Budget, BudgetKind},
 };
 use std::time::Duration;
 

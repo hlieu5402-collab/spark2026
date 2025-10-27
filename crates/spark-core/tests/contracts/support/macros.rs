@@ -54,7 +54,7 @@ pub(crate) use assert_idempotent_effect;
 ///
 /// # 使用方式（How）
 /// ```rust
-/// use spark_core::contract::{Budget, BudgetDecision, BudgetKind};
+/// use spark_core::types::{Budget, BudgetDecision, BudgetKind};
 ///
 /// let budget = Budget::new(BudgetKind::Flow, 10);
 /// let decision = budget.try_consume(4);
@@ -88,7 +88,7 @@ macro_rules! assert_budget_decision {
         limit: $limit:expr $(,)?
     ) => {{
         match $decision {
-            spark_core::contract::BudgetDecision::$variant { snapshot } => {
+            spark_core::types::BudgetDecision::$variant { snapshot } => {
                 let expected_kind = $kind;
                 assert_eq!(snapshot.kind(), &expected_kind, "预算种类不符合契约");
                 assert_eq!(snapshot.remaining(), $remaining, "预算剩余量不符合契约");

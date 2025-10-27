@@ -37,12 +37,12 @@ pub use spark_core::codec;
 /// 重新导出 `spark-core` 的兼容层接口（受 `compat_v0` 控制）。
 #[cfg(feature = "compat_v0")]
 pub use spark_core::compat;
-/// 暴露预算相关类型，支撑帧大小与资源限额控制。
-pub use spark_core::contract::{Budget, BudgetDecision, BudgetKind, BudgetSnapshot};
 /// 暴露完整的错误模块，便于协议实现引用分类枚举等类型。
 pub use spark_core::error;
 /// 暴露错误码常量命名空间。
 pub use spark_core::error::codes;
+/// 暴露预算相关类型，支撑帧大小与资源限额控制。
+pub use spark_core::types::{Budget, BudgetDecision, BudgetKind, BudgetSnapshot};
 
 /// 指标相关类型与 RAII 守卫通过 `codec` 命名空间导出，保持与核心 crate 的一致性。
 pub use spark_core::codec::{

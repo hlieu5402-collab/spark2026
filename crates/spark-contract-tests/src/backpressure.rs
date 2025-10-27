@@ -1,6 +1,6 @@
 use crate::case::{TckCase, TckSuite};
 use crate::support::{assert_budget_decision, build_custom_budget_kind};
-use spark_core::contract::{Budget, BudgetDecision, BudgetKind};
+use spark_core::types::{Budget, BudgetDecision, BudgetKind};
 use spark_core::{BusyReason, ReadyState, SubscriptionBudget};
 use std::sync::Arc;
 
