@@ -2,7 +2,7 @@
 name = "spark-codec-sip"
 version = "0.1.0"
 rust-version = "1.89"
-edition = "2024"
+edition.workspace = true
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
 license = "Apache-2.0"
 description = "Session Initiation Protocol codec scaffolding for spark-core"
