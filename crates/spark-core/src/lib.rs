@@ -72,6 +72,16 @@ pub mod runtime;
 pub mod security;
 pub mod service;
 pub mod status;
+/// 测试桩命名空间，集中暴露框架官方维护的 `Noop`/`Mock` 实现，供集成测试与示例复用。
+///
+/// # 设计背景（Why）
+/// - 统一维护常见桩对象，避免在各处重复定义零尺寸结构体；
+/// - 当核心契约演进时，通过单点更新保证所有测试同步适配。
+///
+/// # 使用方式（How）
+/// - 通过 `use spark_core::test_stubs::observability::*;` 等语句引入需要的桩类型；
+/// - 所有桩对象在 `no_std + alloc` 环境同样可用，便于运行最小化集成测试。
+pub mod test_stubs;
 #[cfg(feature = "std")]
 pub mod time;
 pub mod transport;

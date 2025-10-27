@@ -24,6 +24,7 @@ use spark_core::{
         metrics::contract::hot_reload as contract,
     },
     runtime::{HotReloadApplyTimer, HotReloadFence, TimeoutRuntimeConfig, TimeoutSettings},
+    test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogram},
 };
 
 /// 自定义测试数据源：同 `limits_timeout` 用例，但复用在一致性验证中。
@@ -167,26 +168,6 @@ impl MetricsProvider for TestMetricsProvider {
         let record = MetricRecord::new(descriptor, value, attributes);
         self.histograms.lock().unwrap().push(record);
     }
-}
-
-struct NoopCounter;
-
-impl spark_core::observability::metrics::Counter for NoopCounter {
-    fn add(&self, _value: u64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopGauge;
-
-impl spark_core::observability::metrics::Gauge for NoopGauge {
-    fn set(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-    fn increment(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-    fn decrement(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopHistogram;
-
-impl spark_core::observability::metrics::Histogram for NoopHistogram {
-    fn record(&self, _value: f64, _attributes: AttributeSet<'_>) {}
 }
 
 fn format_metric_value(

@@ -36,6 +36,9 @@ use spark_core::runtime::{
 use spark_core::security::SecurityClass;
 use spark_core::status::ReadyState;
 use spark_core::{SparkError, async_trait};
+use spark_core::test_stubs::observability::{
+    NoopCounter, NoopGauge, NoopHistogram, NoopLogger, NoopMetricsProvider,
+};
 
 /// 复合测试夹具，负责提供通用的 Controller / Channel / Context 实现。
 ///
@@ -392,51 +395,6 @@ impl spark_core::buffer::BufferPool for NoopBufferPool {
     }
 }
 
-/// 无副作用日志器。
-struct NoopLogger;
-
-impl Logger for NoopLogger {
-    fn log(&self, _: &LogRecord<'_>) {}
-}
-
-/// 空指标提供者。
-struct NoopMetricsProvider;
-
-impl MetricsProvider for NoopMetricsProvider {
-    fn counter(&self, _: &InstrumentDescriptor<'_>) -> Arc<dyn Counter> {
-        Arc::new(NoopCounter)
-    }
-
-    fn gauge(&self, _: &InstrumentDescriptor<'_>) -> Arc<dyn Gauge> {
-        Arc::new(NoopGauge)
-    }
-
-    fn histogram(&self, _: &InstrumentDescriptor<'_>) -> Arc<dyn Histogram> {
-        Arc::new(NoopHistogram)
-    }
-}
-
-struct NoopCounter;
-
-impl Counter for NoopCounter {
-    fn add(&self, _: u64, _: AttributeSet<'_>) {}
-}
-
-struct NoopGauge;
-
-impl Gauge for NoopGauge {
-    fn set(&self, _: f64, _: AttributeSet<'_>) {}
-
-    fn increment(&self, _: f64, _: AttributeSet<'_>) {}
-
-    fn decrement(&self, _: f64, _: AttributeSet<'_>) {}
-}
-
-struct NoopHistogram;
-
-impl Histogram for NoopHistogram {
-    fn record(&self, _: f64, _: AttributeSet<'_>) {}
-}
 
 /// 不执行实际调度的占位执行器。
 struct NoopExecutor;

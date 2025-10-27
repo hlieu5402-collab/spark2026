@@ -16,6 +16,7 @@ use spark_core::{
         handler::InboundHandler,
     },
     runtime::{AsyncRuntime, CoreServices},
+    test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogram},
 };
 
 use super::hot_swap::{NoopBufferPool, NoopOpsBus, NoopRuntime, TestChannel};
@@ -355,28 +356,6 @@ fn metric_value_to_string(value: &MetricAttributeValue<'_>) -> String {
         MetricAttributeValue::I64(v) => v.to_string(),
         _ => "_unsupported_".to_string(),
     }
-}
-
-struct NoopCounter;
-
-impl Counter for NoopCounter {
-    fn add(&self, _value: u64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopGauge;
-
-impl Gauge for NoopGauge {
-    fn set(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-
-    fn increment(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-
-    fn decrement(&self, _delta: f64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopHistogram;
-
-impl Histogram for NoopHistogram {
-    fn record(&self, _value: f64, _attributes: AttributeSet<'_>) {}
 }
 
 #[derive(Default, Clone)]

@@ -2,12 +2,8 @@ use crate::case::{TckCase, TckSuite};
 use parking_lot::Mutex;
 use spark_core::contract::{CallContext, CallContextBuilder, Cancellation, CloseReason};
 use spark_core::error::{CoreError, ErrorCategory};
-use spark_core::observability::metrics::{
-    Counter, Gauge, Histogram, InstrumentDescriptor, MetricsProvider,
-};
-use spark_core::observability::{
-    AttributeSet, CoreUserEvent, LogRecord, Logger, TraceContext, TraceFlags,
-};
+use spark_core::observability::metrics::MetricsProvider;
+use spark_core::observability::{CoreUserEvent, Logger, TraceContext, TraceFlags};
 use spark_core::pipeline::channel::ChannelState;
 use spark_core::pipeline::controller::ControllerHandleId;
 use spark_core::pipeline::default_handlers::{ExceptionAutoResponder, ReadyStateEvent};
@@ -20,6 +16,7 @@ use spark_core::runtime::{
     TimeDriver,
 };
 use spark_core::status::{ReadyState, RetryAdvice};
+use spark_core::test_stubs::observability::{NoopLogger, NoopMetricsProvider};
 use spark_core::{PipelineMessage, SparkError, future::BoxFuture};
 use std::any::TypeId;
 use std::sync::Arc;
@@ -537,50 +534,6 @@ impl spark_core::buffer::BufferPool for NoopBufferPool {
             custom_dimensions: Vec::new(),
         })
     }
-}
-
-struct NoopLogger;
-
-impl Logger for NoopLogger {
-    fn log(&self, _record: &LogRecord<'_>) {}
-}
-
-struct NoopMetricsProvider;
-
-impl MetricsProvider for NoopMetricsProvider {
-    fn counter(&self, _: &InstrumentDescriptor<'_>) -> Arc<dyn Counter> {
-        Arc::new(NoopCounter)
-    }
-
-    fn gauge(&self, _: &InstrumentDescriptor<'_>) -> Arc<dyn Gauge> {
-        Arc::new(NoopGauge)
-    }
-
-    fn histogram(&self, _: &InstrumentDescriptor<'_>) -> Arc<dyn Histogram> {
-        Arc::new(NoopHistogram)
-    }
-}
-
-struct NoopCounter;
-
-impl Counter for NoopCounter {
-    fn add(&self, _: u64, _: AttributeSet<'_>) {}
-}
-
-struct NoopGauge;
-
-impl Gauge for NoopGauge {
-    fn set(&self, _: f64, _: AttributeSet<'_>) {}
-
-    fn increment(&self, _: f64, _: AttributeSet<'_>) {}
-
-    fn decrement(&self, _: f64, _: AttributeSet<'_>) {}
-}
-
-struct NoopHistogram;
-
-impl Histogram for NoopHistogram {
-    fn record(&self, _: f64, _: AttributeSet<'_>) {}
 }
 
 struct NoopExecutor;

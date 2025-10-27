@@ -5,8 +5,8 @@ use spark_core::contract::{CloseReason, Deadline};
 use spark_core::future::Stream;
 use spark_core::host::{GracefulShutdownCoordinator, GracefulShutdownStatus};
 use spark_core::observability::{
-    AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram, LogRecord,
-    LogSeverity, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
+    Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram, LogRecord, LogSeverity,
+    Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
 };
 use spark_core::pipeline::channel::ChannelState;
 use spark_core::pipeline::controller::{
@@ -17,6 +17,7 @@ use spark_core::runtime::{
     AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
     TaskError, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
 };
+use spark_core::test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogram};
 use spark_core::{BoxStream, SparkError};
 use std::any::Any;
 use std::collections::VecDeque;
@@ -1066,25 +1067,6 @@ impl MetricsProvider for TestMetrics {
     ) -> Arc<dyn Histogram> {
         Arc::new(NoopHistogram)
     }
-}
-
-struct NoopCounter;
-impl Counter for NoopCounter {
-    fn add(&self, _value: u64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopGauge;
-impl Gauge for NoopGauge {
-    fn set(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-
-    fn increment(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-
-    fn decrement(&self, _value: f64, _attributes: AttributeSet<'_>) {}
-}
-
-struct NoopHistogram;
-impl Histogram for NoopHistogram {
-    fn record(&self, _value: f64, _attributes: AttributeSet<'_>) {}
 }
 
 /// 通道操作记录器，统计 FIN/强制调用与 `closed()` 状态。
