@@ -15,11 +15,12 @@
 //! - 默认策略仅依据错误分类，不会解析错误码或消息，分类必须在构造错误时准确设置。
 
 use crate::{
-    contract::{BudgetKind, CloseReason},
+    contract::CloseReason,
     error::{CoreError, ErrorCategory},
     observability::CoreUserEvent,
     pipeline::{context::Context, handler::InboundHandler},
     status::{BusyReason, ReadyState, SubscriptionBudget},
+    types::{BudgetKind, BudgetSnapshot},
 };
 
 /// 将 `ErrorCategory` 映射为自动化响应的默认入站 Handler。
@@ -108,8 +109,8 @@ fn emit_ready_state(ctx: &dyn Context, state: ReadyState) {
         .emit_user_event(CoreUserEvent::from_application_event(event));
 }
 
-fn fallback_snapshot(kind: BudgetKind) -> crate::contract::BudgetSnapshot {
-    crate::contract::BudgetSnapshot::new(kind, 0, 0)
+fn fallback_snapshot(kind: BudgetKind) -> BudgetSnapshot {
+    BudgetSnapshot::new(kind, 0, 0)
 }
 
 /// 根据错误码推导默认的繁忙原因，帮助调度器生成可观测信号。

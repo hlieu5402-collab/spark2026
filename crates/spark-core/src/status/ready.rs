@@ -20,10 +20,10 @@
 //! ## 风险与注意事项（Trade-offs）
 //! - 在 `no_std` 环境下依赖 `alloc`，需要调用方在启用 `alloc` 特性时同步链接；
 //! - 扩展状态时须评估对序列化、兼容层的影响，避免新分支破坏旧版本调用方的匹配逻辑。
-use crate::contract::{BudgetDecision, BudgetSnapshot};
 use crate::runtime::MonotonicTimePoint;
 #[cfg(feature = "std")]
 use crate::time::clock::{Clock, Sleep};
+use crate::types::{BudgetDecision, BudgetSnapshot};
 #[cfg(feature = "std")]
 use alloc::sync::Arc;
 use alloc::{borrow::Cow, fmt};
@@ -517,7 +517,7 @@ impl ReadyState {
     /// - 与 [`SubscriptionBudget`] 等工具函数配合，构成“契约判定 → 就绪信号”的标准路径。
     ///
     /// ## 契约定义（What）
-    /// - **输入**：`decision` 必须来源于 [`Budget::try_consume`](crate::contract::Budget::try_consume)
+    /// - **输入**：`decision` 必须来源于 [`Budget::try_consume`](crate::types::Budget::try_consume)
     ///   或等价逻辑，保证快照与调用上下文一致；
     /// - **输出**：当预算剩余为 0 时返回 `ReadyState::BudgetExhausted`，否则返回 `Ready`；
     /// - **前置条件**：调用方需确保决策对应当前请求，避免不同预算之间的交叉污染；
@@ -572,7 +572,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contract::{BudgetDecision, BudgetKind, BudgetSnapshot};
+    use crate::types::{BudgetDecision, BudgetKind, BudgetSnapshot};
 
     /// 验证：当预算剩余为 0 时，返回 `BudgetExhausted`。
     #[test]

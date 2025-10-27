@@ -1,10 +1,10 @@
 use parking_lot::Mutex;
-use spark_core::contract::{BudgetKind, BudgetSnapshot};
 use spark_core::runtime::MonotonicTimePoint;
 use spark_core::security::{
     IdentityDescriptor, IdentityKind, PolicyEffect, PolicyRule, ResourcePattern, SecurityPolicy,
     SubjectMatcher,
 };
+use spark_core::types::{BudgetKind, BudgetSnapshot};
 use std::fmt::Write;
 use std::panic;
 use std::sync::Arc;

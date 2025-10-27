@@ -2,8 +2,8 @@ use core::num::NonZeroU16;
 
 use spark_core::buffer::{PoolStats, ReadableBuffer, WritableBuffer};
 use spark_core::codec::{DecodeContext, EncodeContext};
-use spark_core::contract::{Budget, BudgetKind};
 use spark_core::error::codes;
+use spark_core::types::{Budget, BudgetKind};
 use spark_core::{BufferPool, CoreError};
 
 /// `NoopBuffer` 是测试使用的最小可写缓冲实现，仅满足接口契约。

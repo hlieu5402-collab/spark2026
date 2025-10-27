@@ -1,10 +1,10 @@
 #![cfg(feature = "std_json")]
 
 use spark_core::configuration::{ConfigMetadata, ConfigValue};
-use spark_core::contract::{BudgetKind, BudgetSnapshot};
 use spark_core::runtime::{
     SloPolicyAction, SloPolicyDirective, SloPolicyManager, SloPolicyReloadReport,
 };
+use spark_core::types::{BudgetKind, BudgetSnapshot};
 use std::path::PathBuf;
 
 fn hot_meta() -> ConfigMetadata {

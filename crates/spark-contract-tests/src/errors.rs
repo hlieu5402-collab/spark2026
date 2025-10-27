@@ -78,12 +78,12 @@ pub const fn suite() -> &'static TckSuite {
 /// - **逻辑 (How)**：构造仅剩额度为零的预算，触发 `ErrorCategory::ResourceExhausted` 并检查 controller 记录的 ReadyState。
 /// - **契约 (What)**：ReadyState 列表仅包含一条 `BudgetExhausted`，且快照字段正确。
 fn resource_exhausted_produces_budget_ready_state() {
-    let budget = spark_core::contract::Budget::new(spark_core::contract::BudgetKind::Flow, 1);
+    let budget = spark_core::types::Budget::new(spark_core::types::BudgetKind::Flow, 1);
     let _ = budget.try_consume(1);
     let ctx = CallContext::builder().add_budget(budget).build();
     let harness = ErrorHarness::new(ctx);
     let error = CoreError::new("test.resource", "budget exhausted").with_category(
-        ErrorCategory::ResourceExhausted(spark_core::contract::BudgetKind::Flow),
+        ErrorCategory::ResourceExhausted(spark_core::types::BudgetKind::Flow),
     );
 
     ExceptionAutoResponder::new().on_exception_caught(&harness.ctx, error);

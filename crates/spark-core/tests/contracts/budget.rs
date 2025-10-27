@@ -1,4 +1,4 @@
-use spark_core::contract::{Budget, BudgetDecision, BudgetKind, BudgetSnapshot};
+use spark_core::types::{Budget, BudgetDecision, BudgetKind, BudgetSnapshot};
 use std::sync::Arc;
 
 /// 验证预算消费与归还的核心契约：首次消耗成功、超额请求返回耗尽、归还后额度恢复。
