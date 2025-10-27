@@ -35,14 +35,20 @@
 //!   因此在代码评审中需重点关注 Prelude 的变更是否与稳定性策略一致。
 
 /// ## 导出明细（How）
-/// - **异步与工具**：`async_trait`、`BoxFuture`、`BoxStream` 支撑多态异步实现；
-/// - **上下文契约**：`ExecutionContext`、`CallContext`、`Cancellation`、`Deadline` 等
-///   描述一次调用的生命周期与预算约束；
-/// - **管道缓冲**：`PipelineMessage`、`ReadableBuffer`、`WritableBuffer` 等保证消息在各阶段流转；
-/// - **错误语义**：统一暴露 `CoreError`、`SparkError`、`Result` 以及错误分类枚举；
-/// - **状态与背压**：`ReadyState`、`RetryAdvice` 等用于实现传输与管道的背压策略；
-/// - **运行时契约**：`CoreServices`、`MonotonicTimePoint` 帮助在无 `std` 环境下调度任务；
-/// - **传输抽象**：`TransportSocketAddr`、`ShutdownDirection` 让传输实现保持一致行为。
+/// - **入口综述（Why）**：`spark_core::prelude` 面向业务侧提供“调用三元组 + 错误语义 + 预算”一站式导入，
+///   上层仅需 `use spark_core::prelude::*;` 便可获得常见契约与辅助工具；
+/// - **调用上下文（What）**：[`crate::CallContext`]、[`crate::CallContextBuilder`]、[`crate::Cancellation`],
+///   [`crate::Deadline`] 用于描述一次 RPC 生命周期与取消/截止语义；
+/// - **预算协同**：[`crate::contract::Budget`]、[`crate::contract::BudgetDecision`],
+///   [`crate::contract::BudgetKind`]、[`crate::contract::BudgetSnapshot`] 抽象跨层背压资源；
+/// - **错误体系**：[`crate::CoreError`]、[`crate::SparkError`]、[`crate::Result`] 及错误枚举确保统一的诊断与恢复策略；
+/// - **状态/标识**：[`crate::State`]、[`crate::Status`]、[`crate::RequestId`]、[`crate::ids::CorrelationId`],
+///   [`crate::IdempotencyKey`]、[`crate::Timeout`] 维护状态机与请求追踪；
+/// - **观测与运行时**：[`crate::runtime::CoreServices`]、[`crate::runtime::MonotonicTimePoint`],
+///   [`crate::observability::Logger`]、[`crate::observability::TraceContext`] 提供运行期调度与观测能力；
+/// - **传输抽象**：[`spark_transport::TransportSocketAddr`]、[`spark_transport::ShutdownDirection`] 让传输实现保持一致行为；
+/// - **缓冲与服务装配**：[`crate::buffer::PipelineMessage`]、[`crate::buffer::ReadableBuffer`],
+///   [`crate::buffer::WritableBuffer`]、[`crate::service::BoxService`]、[`crate::service::Layer`] 等支撑流水线与服务组合。
 pub use crate::{
     async_trait,
     buffer::{
@@ -67,27 +73,7 @@ pub use crate::{
     },
     status::ready::{BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice},
     transport::{ShutdownDirection, TransportSocketAddr},
-};
-//! `spark_core::prelude`：契约级常用类型一站式导入。
-//!
-//! # 设计意图（Why）
-//! - 降低新接入方的学习门槛，仅需 `use spark_core::prelude::*;` 即可获取三元组、错误、ID 等核心概念；
-//! - 避免业务侧错误导出内部模块（例如 `configuration`），确保依赖面受控；
-//! - 支持 `no_std + alloc` 环境，全部类型均来源于本 crate。
-//!
-//! # 收录内容（What）
-//! - 调用三元组：[`CallContext`]、[`Cancellation`]、[`Deadline`];
-//! - 错误体系：[`CoreError`]、[`Result`];
-//! - 预算与协议：[`Budget`]、[`BudgetDecision`]、[`Event`]、[`Frame`]、[`Message`];
-//! - 标识与配置：[`RequestId`]、[`CorrelationId`]、[`IdempotencyKey`]、[`Timeout`];
-//! - 状态语义：[`State`]、[`Status`];
-//! - 辅助类型：[`NonEmptyStr`]、[`CloseReason`], [`BudgetSet`], [`TimeoutProfile`].
-
-pub use crate::{
-    CallContext, CallContextBuilder, Cancellation, CloseReason, CoreError, Deadline, Event, Frame,
-    IdempotencyKey, Message, NonEmptyStr, RequestId, Result, State, Status, Timeout,
-    TimeoutProfile,
+    types::BudgetSet,
 };
 
 pub use crate::ids::CorrelationId;
-pub use crate::types::{Budget, BudgetDecision, BudgetKind, BudgetSet, BudgetSnapshot};

@@ -23,7 +23,6 @@ pub type Result<T, E> = core::result::Result<T, E>;
 
 pub mod addr;
 pub mod backpressure;
-pub mod budget;
 pub mod connection;
 pub mod listener;
 pub mod rate;
@@ -31,7 +30,6 @@ pub mod shutdown;
 
 pub use addr::TransportSocketAddr;
 pub use backpressure::{BackpressureClassifier, BackpressureDecision, BackpressureMetrics};
-pub use budget::{Budget, BudgetGuard};
 pub use connection::{DatagramEndpoint, TransportConnection};
 pub use listener::TransportListener;
 pub use rate::{RateLimiter, RatePermit};
