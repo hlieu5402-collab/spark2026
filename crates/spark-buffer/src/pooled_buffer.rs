@@ -1,5 +1,8 @@
 use alloc::{boxed::Box, format, sync::Arc, vec, vec::Vec};
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+    mem,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use spark_core::{
@@ -7,6 +10,7 @@ use spark_core::{
     buffer::{ReadableBuffer, WritableBuffer},
     error::codes,
 };
+use spin::Mutex;
 
 /// `BufferRecycler` 描述缓冲池在租借结束时的回收入口。
 ///
@@ -30,7 +34,50 @@ use spark_core::{
 ///   实现者需自行决定是否重试或将统计信息标记为不一致。
 pub trait BufferRecycler: Send + Sync + 'static {
     /// 通知池释放指定容量。
-    fn reclaim(&self, capacity: usize);
+    fn reclaim(&self, reclaimed: ReclaimedBuffer);
+}
+
+/// 表示一次回收动作所携带的上下文。
+///
+/// # 设计动机（Why）
+/// - 在零拷贝流水线中，我们不仅需要统计回收容量，还希望尽可能回收原始 `BytesMut`，
+///   以避免再次向系统申请内存导致的抖动。
+/// - 传统回收接口仅返回 `usize` 容量，难以区分“实际回收到的内存块”与“统计信息更新”，
+///   无法支撑复用自由链表（Free List）的需求。
+///
+/// # 数据结构解析（How）
+/// - `capacity`：本次租约的最终容量，保证池侧统计的一致性；
+/// - `buffer`：若成功夺回底层 `BytesMut` 所有权，则携带 `Some(BytesMut)`；
+///   若因冻结后仍有别名或引用计数未归零，则只能返回 `None`，由池端自行决定是否重新分配。
+///
+/// # 契约说明（What）
+/// - **前置条件**：调用者必须确保 `buffer` 与 `capacity` 对应同一块内存；
+/// - **后置条件**：池实现可以据此选择复用内存块或仅更新统计值。
+///
+/// # 风险提示（Trade-offs）
+/// - 若实现始终收到 `None`，说明上层存在持久化 `Bytes` 切片的场景，此时应结合监控
+///   调整内存策略或通过压测验证是否需要更激进的回收机制。
+#[derive(Debug)]
+pub struct ReclaimedBuffer {
+    capacity: usize,
+    buffer: Option<BytesMut>,
+}
+
+impl ReclaimedBuffer {
+    /// 创建携带完整上下文的回收结果。
+    pub fn new(capacity: usize, buffer: Option<BytesMut>) -> Self {
+        Self { capacity, buffer }
+    }
+
+    /// 返回本次回收的容量，用于更新统计或回收失败时的降级决策。
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    /// 消耗结构并返回可复用的 `BytesMut`，若不存在则为 `None`。
+    pub fn into_buffer(self) -> Option<BytesMut> {
+        self.buffer
+    }
 }
 
 /// `Lease` 追踪缓冲租借的元数据，并在生命周期结束时触发回收。
@@ -48,6 +95,7 @@ pub trait BufferRecycler: Send + Sync + 'static {
 struct Lease {
     recycler: Arc<dyn BufferRecycler>,
     capacity: AtomicUsize,
+    buffer: Mutex<Option<BytesMut>>,
 }
 
 impl Lease {
@@ -56,6 +104,7 @@ impl Lease {
         Self {
             recycler,
             capacity: AtomicUsize::new(initial_capacity),
+            buffer: Mutex::new(None),
         }
     }
 
@@ -63,12 +112,24 @@ impl Lease {
     fn update_capacity(&self, new_capacity: usize) {
         self.capacity.store(new_capacity, Ordering::Relaxed);
     }
+
+    /// 存储尚未释放的 `BytesMut`，供最终的 `Drop` 钩子回收。
+    fn store_buffer(&self, buffer: Option<BytesMut>) {
+        if let Some(buf) = buffer {
+            let mut slot = self.buffer.lock();
+            if slot.is_none() {
+                *slot = Some(buf);
+            }
+        }
+    }
 }
 
 impl Drop for Lease {
     fn drop(&mut self) {
         let capacity = self.capacity.load(Ordering::Relaxed);
-        self.recycler.reclaim(capacity);
+        let buffer = self.buffer.lock().take();
+        self.recycler
+            .reclaim(ReclaimedBuffer::new(capacity, buffer));
     }
 }
 
@@ -220,6 +281,43 @@ impl PooledBuffer {
     /// 在容量发生变化时刷新租约统计。
     fn refresh_capacity(&self, capacity: usize) {
         self.lease.update_capacity(capacity);
+    }
+}
+
+impl Drop for PooledBuffer {
+    fn drop(&mut self) {
+        //=== 教案式说明 ===//
+        // 1. **目标 (Why)**：在缓冲被释放时，尽量归还底层 `BytesMut`，确保池能够复用内存；
+        //    若无法获取所有权，仍需通过 `Lease` 报告最终容量，保持统计准确。
+        // 2. **策略 (How)**：
+        //    - 将当前状态替换为一个空壳，取得原有的 `BufferState` 所有权；
+        //    - 针对写态与只读态分别尝试提取 `BytesMut`：
+        //      - 写态直接取得内部 `BytesMut`；
+        //      - 只读态调用 `Bytes::try_mut`，在引用计数归一的情况下夺回可写视图；
+        //    - 将成功回收的缓冲交由 `Lease` 存储，等待最后一次 `Arc` 释放时统一归还池；
+        //      若仍存在其它别名则返回 `None`，表示本次仅能回收容量统计。
+        // 3. **契约 (What)**：
+        //    - 前置条件：`self.state` 与 `self.lease` 均有效；
+        //    - 后置条件：`Lease::store_buffer` 至多存储一次非空缓冲；
+        //      之后 `Lease::drop` 会以 `ReclaimedBuffer` 形式通知池。
+        // 4. **风险 (Trade-offs)**：
+        //    - 当上层长期持有 `Bytes` 切片时，`try_mut` 将失败，导致我们无法复用原内存；
+        //      池会自动感知到 `None` 并选择重新分配，保持语义正确性。
+        let state = mem::replace(&mut self.state, BufferState::ReadOnly(Bytes::new()));
+        let reclaimed = match state {
+            BufferState::Writable(mut buf) => {
+                buf.clear();
+                Some(buf)
+            }
+            BufferState::ReadOnly(bytes) => match bytes.try_into_mut() {
+                Ok(mut writable) => {
+                    writable.clear();
+                    Some(writable)
+                }
+                Err(_) => None,
+            },
+        };
+        self.lease.store_buffer(reclaimed);
     }
 }
 

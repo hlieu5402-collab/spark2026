@@ -18,6 +18,7 @@ alloc = ["spark-core/alloc", "std"]
 [dependencies]
 bytes = { workspace = true }
 spark-core = { workspace = true, default-features = false }
+spin = { workspace = true, default-features = false, features = ["mutex"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(spark_loom)'] }
