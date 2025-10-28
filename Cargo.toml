@@ -9,6 +9,7 @@ members = [
     "crates/spark-contract-tests",
     "crates/spark-contract-tests-macros",
     "crates/spark-core",
+    "crates/spark-hosting",
     "crates/spark-impl-tck",
     "crates/spark-macros",
     "crates/spark-otel", "crates/spark-transport",
