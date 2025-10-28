@@ -79,7 +79,6 @@ spark-transport = { path = "crates/spark-transport" }
 spark-transport-quic = { path = "crates/transport/spark-transport-quic" }
 spark-transport-tcp = { path = "crates/transport/spark-transport-tcp" }
 spark-transport-tls = { path = "crates/transport/spark-transport-tls" }
-spark-router = { path = "crates/spark-router", default-features = false }
 spark-transport-udp = { path = "crates/transport/spark-transport-udp" }
 syn = { version = "2.0", features = ["full"] }
 thiserror = "2.0"
