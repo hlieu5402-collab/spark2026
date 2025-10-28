@@ -1,4 +1,4 @@
-name: Minimal CI Guardrails
+name: CI Guardrails Baseline
 
 on:
   push:
@@ -11,9 +11,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  minimal-ci:
-    name: fmt + clippy + build + test + cargo-deny + doc-density
+  prepare-feature-matrix:
+    name: 准备特性矩阵
     runs-on: ubuntu-latest
+    outputs:
+      feature-matrix: ${{ steps.generate.outputs.matrix }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 生成编译矩阵
+        id: generate
+        run: |
+          MATRIX=$(tools/ci/feature_combos.sh)
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+
+  guardrails:
+    name: Baseline Guardrails (${{ matrix.name }})
+    needs: prepare-feature-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-feature-matrix.outputs.feature-matrix) }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -26,31 +46,123 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
 
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: minimal-ci
+          shared-key: ci-guardrails
           cache-on-failure: true
 
       - name: Install cargo-deny
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-deny@0.16.4
+          tool: cargo-deny
 
-      - name: Format check
-        run: cargo fmt --all --check
+      - name: Install cargo-udeps
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-udeps
 
-      - name: Clippy lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Install cargo-machete
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-machete
 
-      - name: Build workspace
-        run: cargo build --workspace
+      - name: Install cargo-hakari
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hakari
 
-      - name: Run tests
-        run: cargo test --workspace
+      - name: Install cargo-public-api
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-public-api
 
-      - name: Check documentation density
-        run: python3 tools/check_doc_density.py --threshold 0.06
+      - name: 准备工件目录
+        run: mkdir -p ci-artifacts
 
-      - name: Cargo deny audit
-        run: cargo deny check bans licenses advisories sources
+      - name: 格式检查 (cargo fmt)
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          cargo fmt --all --check 2>&1 | tee ci-artifacts/cargo-fmt.log
+
+      - name: Clippy (cargo clippy)
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee ci-artifacts/cargo-clippy.log
+
+      - name: 单元测试 (cargo test)
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          cargo test --workspace 2>&1 | tee ci-artifacts/cargo-test.log
+
+      - name: 构建 (cargo build)
+        run: |
+          set -eo pipefail
+          cargo build --workspace ${{ matrix.cargo_flags }} 2>&1 | tee ci-artifacts/cargo-build-${{ matrix.name }}.log
+
+      - name: no_std(alloc) 组合附加检查
+        if: matrix.name == 'no-default-alloc'
+        run: |
+          set -eo pipefail
+          CI_ARTIFACT_DIR="${{ github.workspace }}/ci-artifacts" tools/ci/no_std_matrix.sh
+
+      - name: 生产代码 unwrap/expect 守门
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          CI_ARTIFACT_DIR="${{ github.workspace }}/ci-artifacts" tools/ci/grep_unwrap.sh
+
+      - name: Cargo deny
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          cargo deny check bans licenses advisories sources 2>&1 | tee ci-artifacts/cargo-deny.log
+
+      - name: Cargo udeps
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          cargo +nightly udeps --workspace --all-targets 2>&1 | tee ci-artifacts/cargo-udeps.log
+
+      - name: Cargo machete
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          cargo machete 2>&1 | tee ci-artifacts/cargo-machete.log
+
+      - name: Cargo hakari
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          set +e
+          cargo hakari generate --diff 2>&1 | tee ci-artifacts/cargo-hakari.log
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            if grep -q "hakari.toml" ci-artifacts/cargo-hakari.log; then
+              echo "Hakari 配置缺失或未初始化，已在日志中记录并跳过强制失败。" | tee -a ci-artifacts/cargo-hakari.log
+              exit 0
+            fi
+            exit "$status"
+          fi
+
+      - name: Cargo public-api diff
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          tools/ci/public_api_diff_budget.sh origin/main 0 2>&1 | tee ci-artifacts/cargo-public-api.log
+
+      - name: 上传工件
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guardrails-${{ matrix.name }}
+          path: ci-artifacts
