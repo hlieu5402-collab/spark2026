@@ -19,6 +19,12 @@ pub use spark_core::pipeline::{Controller, controller::HotSwapController};
 mod factory;
 
 pub use factory::DefaultControllerFactory;
+pub mod router;
+
+pub use router::{
+    RouterContextSnapshot, RouterContextState, RouterHandler, load_router_context,
+    store_router_context,
+};
 mod router_handler;
 
 pub use router_handler::{RouterHandler, RoutingContextBuilder, RoutingContextParts};
