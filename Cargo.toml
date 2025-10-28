@@ -74,6 +74,7 @@ spark-codec-rtp = { path = "crates/codecs/spark-codec-rtp" }
 spark-codec-sdp = { path = "crates/codecs/spark-codec-sdp" }
 spark-codec-sip = { path = "crates/codecs/spark-codec-sip" }
 spark-impl-tck = { path = "crates/spark-impl-tck" }
+spark-router = { path = "crates/spark-router", default-features = false }
 spark-transport = { path = "crates/spark-transport" }
 spark-transport-quic = { path = "crates/transport/spark-transport-quic" }
 spark-transport-tcp = { path = "crates/transport/spark-transport-tcp" }

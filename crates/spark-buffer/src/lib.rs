@@ -20,6 +20,8 @@
 
 extern crate alloc;
 
+mod pool;
 mod pooled_buffer;
 
-pub use pooled_buffer::{BufferRecycler, PooledBuffer};
+pub use pool::SlabBufferPool;
+pub use pooled_buffer::{BufferRecycler, PooledBuffer, ReclaimedBuffer};
