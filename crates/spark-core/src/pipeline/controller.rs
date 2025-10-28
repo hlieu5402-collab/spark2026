@@ -823,13 +823,30 @@ impl Controller for HotSwapController {
 
     fn install_middleware(
         &self,
-        _middleware: &dyn Middleware,
-        _services: &CoreServices,
+        middleware: &dyn Middleware,
+        services: &CoreServices,
     ) -> crate::Result<(), CoreError> {
-        Err(CoreError::new(
-            "spark.pipeline.install_middleware",
-            "HotSwapController::install_middleware 尚未实现：请通过 add_handler_after 装配",
-        ))
+        // 教案级说明（Why）
+        // - Middleware 约定通过 `ChainBuilder` 接口向控制器批量注册 Handler，
+        //   这里需要提供一个与 `HotSwapController` 状态一致的 Builder，以保持运行时的热插拔能力。
+        // - 直接复用 `HotSwapController` 自身可避免额外的链路副本，确保装配阶段不会引入额外锁或分配。
+        //
+        // 教案级说明（How）
+        // - 构造轻量级的 [`HotSwapMiddlewareBuilder`]，其内部仅持有对控制器的共享引用；
+        // - 将该 Builder 以可变借用形式传递给 `middleware.configure`，满足 `ChainBuilder` 契约；
+        // - `configure` 完成后直接返回结果，错误由 Middleware 自行定义。
+        //
+        // 教案级说明（What）
+        // - `middleware`：调用方提供的链路装配器，要求实现 `configure` 幂等；
+        // - `services`：框架运行时服务集合，将在 Handler 注册时用于访问执行器、追踪等资源；
+        // - 返回值：若 Middleware 正常装配，返回 `Ok(())`，否则透传其定义的 [`CoreError`]。
+        //
+        // 教案级说明（Trade-offs）
+        // - Builder 内部不持有锁，仅在注册时调用控制器已有的同步逻辑，既保证串行化，又避免重复实现热插拔细节；
+        // - 若未来需要支持“Builder 先缓存、最后批量提交”的策略，可在 `HotSwapMiddlewareBuilder`
+        //   中拓展缓冲结构，本实现保持最简路径。
+        let mut builder = HotSwapMiddlewareBuilder::new(self);
+        middleware.configure(&mut builder, services)
     }
 
     fn emit_channel_activated(&self) {
@@ -906,6 +923,70 @@ impl Controller for HotSwapController {
 
     fn epoch(&self) -> u64 {
         self.handlers.epoch()
+    }
+}
+
+/// 针对 Middleware 场景的链路装配适配器。
+///
+/// # 教案式说明
+/// - **意图（Why）**：`Middleware::configure` 通过 [`ChainBuilder`] 追加 Handler，本结构体将该契约映射
+///   到 `HotSwapController` 的热插拔接口，使中间件无需了解内部锁策略即可完成注册。
+/// - **逻辑（How）**：
+///   1. 在构造时捕获控制器的共享引用；
+///   2. `register_inbound`/`register_outbound` 直接转发到 `HotSwapController` 的注册方法，由其负责方向推断
+///      与链路重建；
+///   3. Builder 本身不持有额外状态，满足 `configure` 幂等调用时的零残留要求。
+/// - **契约（What）**：
+///   - 输入 `label`：标识 Handler 的逻辑名称，传递给控制器用于注册表与观测；
+///   - 输入 `handler`：中间件构造的 Handler 实例，必须满足 `Send + Sync`；
+///   - 返回值：无返回，仅依赖控制器内部的错误处理与断言。
+/// - **风险与权衡（Trade-offs）**：
+///   - Builder 内部不做入队缓存，因此每次调用都会即时触发链路复制与提交；
+///   - 若中间件在 `configure` 中批量注册大量 Handler，控制器内部的锁会串行化这些操作，
+///     这是在“保持链路一致性”与“装配性能”之间的权衡。
+struct HotSwapMiddlewareBuilder<'a> {
+    controller: &'a HotSwapController,
+}
+
+impl<'a> HotSwapMiddlewareBuilder<'a> {
+    /// 创建绑定到指定控制器的 Builder 视图。
+    ///
+    /// # 契约（What）
+    /// - `controller`：当前正在装配的 `HotSwapController`，生命周期需覆盖整个 `configure` 调用过程；
+    /// - 返回值：新的 Builder 仅持有引用，不会触发任何链路修改。
+    ///
+    /// # 前置条件（Preconditions）
+    /// - 调用方必须确保控制器在 `configure` 调用期间保持活跃且未被并发释放。
+    ///
+    /// # 后置条件（Postconditions）
+    /// - Builder 可安全地在同一线程内多次调用注册方法；完成装配后可直接丢弃。
+    fn new(controller: &'a HotSwapController) -> Self {
+        Self { controller }
+    }
+}
+
+impl ChainBuilder for HotSwapMiddlewareBuilder<'_> {
+    fn register_inbound(&mut self, label: &str, handler: Box<dyn InboundHandler>) {
+        // 教案级说明：
+        // - 通过控制器提供的注册方法立即追加入站 Handler，沿用其内部的顺序与观测逻辑。
+        // - 该调用持有控制器的互斥锁，确保链路快照在追加时保持一致。
+        self.controller.register_inbound_handler(label, handler);
+    }
+
+    fn register_inbound_static(&mut self, label: &str, handler: &'static (dyn InboundHandler)) {
+        // 教案级说明：复用控制器的静态注册逻辑，避免在 Builder 内部重复封装。
+        self.controller
+            .register_inbound_handler_static(label, handler);
+    }
+
+    fn register_outbound(&mut self, label: &str, handler: Box<dyn OutboundHandler>) {
+        // 教案级说明：出站链路的注册同样依赖控制器内部的方向推断与链表复制策略。
+        self.controller.register_outbound_handler(label, handler);
+    }
+
+    fn register_outbound_static(&mut self, label: &str, handler: &'static (dyn OutboundHandler)) {
+        self.controller
+            .register_outbound_handler_static(label, handler);
     }
 }
 
