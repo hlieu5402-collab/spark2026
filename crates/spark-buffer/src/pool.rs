@@ -94,6 +94,29 @@ impl SlabBufferPool {
         let recycler: Arc<dyn BufferRecycler> = self.inner.clone();
         Ok(PooledBuffer::new(raw, recycler))
     }
+
+    /// 返回池化缓冲的实时统计快照。
+    ///
+    /// # 教案式解读
+    /// - **目标 (Why)**：调用方在运行时需要低成本地观测缓冲池的健康状况，例如活跃租借数、
+    ///   缓冲回收次数以及池命中率，本方法提供统一的查询入口。
+    /// - **实现策略 (How)**：
+    ///   1. 直接复用 `PoolInner::snapshot` 的原子读操作，避免额外锁与拷贝；
+    ///   2. 快照中同时包含核心字段与 `custom_dimensions`，保证与 `BufferPool::statistics`
+    ///      的约定一致；
+    ///   3. 由于内部依赖 `Ordering::Relaxed` 读取，整段逻辑仅产生单次 `Arc` 克隆和若干原子读，
+    ///      满足低开销要求。
+    /// - **契约 (What)**：
+    ///   - **输入**：无额外参数，调用前无需持锁。
+    ///   - **返回值**：[`PoolStats`]——代表调用瞬间的统计快照。
+    ///   - **前置条件**：`SlabBufferPool` 已初始化；
+    ///   - **后置条件**：返回的结构体不持有内部可变引用，可安全在调用方线程使用或克隆。
+    /// - **设计权衡 (Trade-offs)**：
+    ///   - 使用惰性统计（即刻读原子计数）而非累积快照缓存，牺牲部分跨调用一致性换取极低延迟；
+    ///   - 若未来需要更精细的统计（如直方图），可以在 `custom_dimensions` 中扩展而无需修改接口。
+    pub fn stats(&self) -> PoolStats {
+        self.inner.snapshot()
+    }
 }
 
 impl BufferPool for SlabBufferPool {
@@ -107,7 +130,7 @@ impl BufferPool for SlabBufferPool {
     }
 
     fn statistics(&self) -> Result<PoolStats, CoreError> {
-        Ok(self.inner.snapshot())
+        Ok(self.stats())
     }
 }
 
@@ -126,6 +149,7 @@ impl PoolInner {
 
     /// 从自由链表或堆上获取一个满足容量的 `BytesMut`。
     fn acquire_buffer(&self, min_capacity: usize) -> BytesMut {
+        self.metrics.record_allocation();
         let reused = {
             let mut list = self.free_list.lock();
             if let Some(index) = list.iter().position(|buf| buf.capacity() >= min_capacity) {
@@ -142,6 +166,7 @@ impl PoolInner {
         let mut buffer = match reused {
             Some(buf) => buf,
             None => {
+                self.metrics.record_pool_miss();
                 let buf = BytesMut::with_capacity(min_capacity);
                 let capacity = buf.capacity();
                 self.metrics.increase_on_new_allocation(capacity);
@@ -149,7 +174,7 @@ impl PoolInner {
             }
         };
         buffer.clear();
-        self.metrics.increase_active_leases();
+        self.metrics.increase_active_buffers();
         buffer
     }
 
@@ -163,24 +188,54 @@ impl PoolInner {
 
     fn snapshot(&self) -> PoolStats {
         let free_slots = self.free_list.lock().len();
+        let active_buffers = self.metrics.active_buffers.load(Ordering::Relaxed);
+        let total_allocated = self.metrics.total_allocated.load(Ordering::Relaxed);
+        let total_recycled = self.metrics.total_recycled.load(Ordering::Relaxed);
+        let pool_misses = self.metrics.pool_misses.load(Ordering::Relaxed);
+        let total_bytes = self.metrics.total_bytes.load(Ordering::Relaxed);
+
+        let mut custom_dimensions = Vec::with_capacity(6);
+        custom_dimensions.push(PoolStatDimension {
+            key: Cow::Borrowed("slab_free_slots"),
+            value: free_slots,
+        });
+        custom_dimensions.push(PoolStatDimension {
+            key: Cow::Borrowed("active_buffers"),
+            value: active_buffers,
+        });
+        custom_dimensions.push(PoolStatDimension {
+            key: Cow::Borrowed("total_allocated"),
+            value: total_allocated,
+        });
+        custom_dimensions.push(PoolStatDimension {
+            key: Cow::Borrowed("total_recycled"),
+            value: total_recycled,
+        });
+        custom_dimensions.push(PoolStatDimension {
+            key: Cow::Borrowed("pool_misses"),
+            value: pool_misses,
+        });
+        custom_dimensions.push(PoolStatDimension {
+            key: Cow::Borrowed("total_bytes"),
+            value: total_bytes,
+        });
+
         PoolStats {
             allocated_bytes: self.metrics.allocated_bytes.load(Ordering::Relaxed),
             resident_bytes: self.metrics.resident_bytes.load(Ordering::Relaxed),
-            active_leases: self.metrics.active_leases.load(Ordering::Relaxed),
+            active_leases: active_buffers,
             available_bytes: self.metrics.available_bytes.load(Ordering::Relaxed),
             pending_lease_requests: 0,
             failed_acquisitions: self.metrics.failed_acquisitions.load(Ordering::Relaxed),
-            custom_dimensions: vec![PoolStatDimension {
-                key: Cow::Borrowed("slab_free_slots"),
-                value: free_slots,
-            }],
+            custom_dimensions,
         }
     }
 }
 
 impl BufferRecycler for PoolInner {
     fn reclaim(&self, reclaimed: ReclaimedBuffer) {
-        self.metrics.decrease_active_leases();
+        self.metrics.record_recycle();
+        self.metrics.decrease_active_buffers();
         let capacity = reclaimed.capacity();
         match reclaimed.into_buffer() {
             Some(mut buf) => {
@@ -200,14 +255,19 @@ struct PoolMetrics {
     allocated_bytes: AtomicUsize,
     resident_bytes: AtomicUsize,
     available_bytes: AtomicUsize,
-    active_leases: AtomicUsize,
+    active_buffers: AtomicUsize,
     failed_acquisitions: AtomicU64,
+    total_allocated: AtomicUsize,
+    total_recycled: AtomicUsize,
+    pool_misses: AtomicUsize,
+    total_bytes: AtomicUsize,
 }
 
 impl PoolMetrics {
     fn increase_on_new_allocation(&self, capacity: usize) {
         self.allocated_bytes.fetch_add(capacity, Ordering::Relaxed);
         self.resident_bytes.fetch_add(capacity, Ordering::Relaxed);
+        self.total_bytes.fetch_add(capacity, Ordering::Relaxed);
     }
 
     fn increase_available(&self, capacity: usize) {
@@ -221,6 +281,7 @@ impl PoolMetrics {
     fn decrease_on_loss(&self, capacity: usize) {
         saturating_sub(&self.allocated_bytes, capacity);
         saturating_sub(&self.resident_bytes, capacity);
+        saturating_sub(&self.total_bytes, capacity);
     }
 
     fn decrease_on_shrink(&self, capacity: usize) {
@@ -228,22 +289,40 @@ impl PoolMetrics {
         self.decrease_on_loss(capacity);
     }
 
-    fn increase_active_leases(&self) {
-        self.active_leases.fetch_add(1, Ordering::Relaxed);
+    fn increase_active_buffers(&self) {
+        self.active_buffers.fetch_add(1, Ordering::Relaxed);
     }
 
-    fn decrease_active_leases(&self) {
+    fn decrease_active_buffers(&self) {
         let _ = self
-            .active_leases
+            .active_buffers
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |prev| {
                 Some(prev.saturating_sub(1))
             });
+    }
+
+    fn record_allocation(&self) {
+        saturating_inc(&self.total_allocated);
+    }
+
+    fn record_pool_miss(&self) {
+        saturating_inc(&self.pool_misses);
+    }
+
+    fn record_recycle(&self) {
+        saturating_inc(&self.total_recycled);
     }
 }
 
 fn saturating_sub(target: &AtomicUsize, value: usize) {
     let _ = target.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
         Some(current.saturating_sub(value))
+    });
+}
+
+fn saturating_inc(target: &AtomicUsize) {
+    let _ = target.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+        Some(current.saturating_add(1))
     });
 }
 
@@ -276,5 +355,50 @@ mod tests {
         let mut out = [0u8; 4];
         readable.copy_into_slice(&mut out).expect("读取数据失败");
         assert_eq!(out, payload);
+    }
+
+    #[test]
+    fn stats_track_allocation_lifecycle() {
+        fn dimension(stats: &PoolStats, key: &str) -> usize {
+            stats
+                .custom_dimensions
+                .iter()
+                .find(|dim| dim.key == key)
+                .map(|dim| dim.value)
+                .unwrap_or_default()
+        }
+
+        let pool = SlabBufferPool::new();
+        let initial = pool.stats();
+        assert_eq!(dimension(&initial, "total_allocated"), 0);
+        assert_eq!(dimension(&initial, "total_recycled"), 0);
+        assert_eq!(dimension(&initial, "pool_misses"), 0);
+
+        {
+            let _first = pool.alloc_writable(32).expect("首次租借失败");
+            let during_first = pool.stats();
+            assert_eq!(dimension(&during_first, "active_buffers"), 1);
+            assert_eq!(dimension(&during_first, "total_allocated"), 1);
+            assert_eq!(dimension(&during_first, "pool_misses"), 1);
+            assert!(dimension(&during_first, "total_bytes") >= 32);
+        }
+
+        let after_first = pool.stats();
+        assert_eq!(dimension(&after_first, "active_buffers"), 0);
+        assert_eq!(dimension(&after_first, "total_allocated"), 1);
+        assert_eq!(dimension(&after_first, "total_recycled"), 1);
+
+        {
+            let _second = pool.alloc_writable(8).expect("第二次租借失败");
+            let during_second = pool.stats();
+            assert_eq!(dimension(&during_second, "active_buffers"), 1);
+            assert_eq!(dimension(&during_second, "total_allocated"), 2);
+            assert_eq!(dimension(&during_second, "pool_misses"), 1);
+        }
+
+        let after_second = pool.stats();
+        assert_eq!(dimension(&after_second, "active_buffers"), 0);
+        assert_eq!(dimension(&after_second, "total_allocated"), 2);
+        assert_eq!(dimension(&after_second, "total_recycled"), 2);
     }
 }
