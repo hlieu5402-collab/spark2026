@@ -161,6 +161,112 @@ impl DefaultRouter {
         self.table.store(Arc::new(table));
         self.catalog.store(Arc::clone(&catalog_arc));
     }
+
+    /// 向运行时追加一条路由，并通过 `ArcSwap` 立即对外可见。
+    ///
+    /// # 教案级注释
+    /// - **意图 (Why)**
+    ///   - 为 `spark-hosting` 等宿主提供“契约外”通道，可在不重建整张配置表的情况下按需注册数据平面路由。
+    ///   - 允许动态部署单条服务（例如用户自定义 Handler 或临时调试入口），降低热更新延迟。
+    /// - **体系位置 (Where)**
+    ///   - 位于 `DefaultRouter` 控制面 API 分支，调用者通常是具备完全信任的宿主进程。
+    /// - **执行逻辑 (How)**
+    ///   1. 基于模式生成稳定的 `RouteId`（参数段会被转写为可读占位符）。
+    ///   2. 复制现有 `RouteTable`，剔除同模式旧条目后插入新项。
+    ///   3. 同步构造新的 `RouteCatalog`，保证 `snapshot()` 可见同样的变化。
+    ///   4. 通过 `ArcSwap::store` 原子替换表与目录，并自增 `revision`。
+    /// - **输入契约 (What)**
+    ///   - `pattern`：声明式匹配模式，目前仅建议使用字面量段，若包含参数/通配符会转换为占位符 ID；
+    ///   - `factory`：[`ServiceFactory`] 实例，用于命中后惰性生成 [`BoxService`]。
+    /// - **前置条件**
+    ///   - 调用者需确保该模式尚未被其他动态路由使用，或接受后写入覆盖旧值；
+    ///   - 工厂内部必须线程安全，可被多个读线程并发调用。
+    /// - **后置条件**
+    ///   - 新路由立即对后续 `route_dyn` 调用可见；
+    ///   - `snapshot()` 返回的目录与修订号同步更新；
+    ///   - 旧的表对象在无读者后自动释放，无需显式回收。
+    /// - **风险提示 (Trade-offs)**
+    ///   - 该 API 不做幂等/冲突校验，如需更强一致性请改用批量 `update`；
+    ///   - 频繁调用将触发整表复制，适合低频控制面操作，不宜用于高频动态路由。
+    pub fn add_route(&self, pattern: RoutePattern, factory: Arc<dyn ServiceFactory>) {
+        let route_id = canonical_route_id(&pattern);
+        let metadata = RouteMetadata::new();
+
+        let table_arc = self.table.load();
+        let mut new_entries = Vec::with_capacity(table_arc.entries.len() + 1);
+        let pattern_ref = &pattern;
+        for entry in table_arc.entries.iter() {
+            if &entry.pattern != pattern_ref {
+                new_entries.push(entry.clone());
+            }
+        }
+        new_entries.push(RouteEntry {
+            id: route_id.clone(),
+            pattern: pattern.clone(),
+            metadata: metadata.clone(),
+            factory,
+        });
+
+        let catalog_arc = self.catalog.load();
+        let mut new_catalog = RouteCatalog::new();
+        for descriptor in catalog_arc.iter() {
+            if descriptor.pattern() != pattern_ref {
+                new_catalog.push(descriptor.clone());
+            }
+        }
+        new_catalog.push(
+            RouteDescriptor::new(pattern)
+                .with_id(route_id)
+                .with_metadata(metadata),
+        );
+
+        self.table.store(Arc::new(RouteTable {
+            entries: new_entries,
+        }));
+        self.catalog.store(Arc::new(new_catalog));
+        self.revision.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// 从运行时移除指定模式的动态路由。
+    ///
+    /// # 教案级注释
+    /// - **意图 (Why)**：释放已不再使用的动态入口，避免旧 Handler 持续接收流量；
+    /// - **逻辑 (How)**：复制 `RouteTable`/`RouteCatalog` 并过滤目标模式，若未命中则保持现状；
+    /// - **契约 (What)**：返回布尔值表示是否实际删除，可据此决定是否触发补偿逻辑；
+    /// - **注意事项**：
+    ///   - 与 [`Self::add_route`] 相同，此 API 未进行同步阻塞或幂等校验；
+    ///   - 若模式匹配存在多条重复记录，将全部清除。
+    pub fn remove_route(&self, pattern: &RoutePattern) -> bool {
+        let table_arc = self.table.load();
+        let mut new_entries = Vec::with_capacity(table_arc.entries.len());
+        let mut removed = false;
+        for entry in table_arc.entries.iter() {
+            if &entry.pattern == pattern {
+                removed = true;
+                continue;
+            }
+            new_entries.push(entry.clone());
+        }
+
+        if !removed {
+            return false;
+        }
+
+        let catalog_arc = self.catalog.load();
+        let mut new_catalog = RouteCatalog::new();
+        for descriptor in catalog_arc.iter() {
+            if descriptor.pattern() != pattern {
+                new_catalog.push(descriptor.clone());
+            }
+        }
+
+        self.table.store(Arc::new(RouteTable {
+            entries: new_entries,
+        }));
+        self.catalog.store(Arc::new(new_catalog));
+        self.revision.fetch_add(1, Ordering::AcqRel);
+        true
+    }
 }
 
 impl Default for DefaultRouter {
@@ -240,7 +346,7 @@ impl DynRouter for DefaultRouter {
 /// - **结构角色 (Why)**：作为 `ArcSwap` 的载荷，仅承载匹配所需的最小数据集；
 /// - **字段说明 (What)**：`entries` 为按优先级排列的路由记录集合；
 /// - **生命周期**：表结构由 `ArcSwap` 管理，热更新时整体替换，避免与快照互相干扰。
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct RouteTable {
     entries: Vec<RouteEntry>,
 }
@@ -249,11 +355,40 @@ struct RouteTable {
 ///
 /// - **存在意义 (Why)**：在 `RouteRegistration` 基础上移除调试所需的克隆，避免重复分配；
 /// - **字段语义 (What)**：携带静态元数据与工厂，供匹配命中后直接构造绑定。
+#[derive(Clone)]
 struct RouteEntry {
     id: RouteId,
     pattern: RoutePattern,
     metadata: RouteMetadata,
     factory: Arc<dyn ServiceFactory>,
+}
+
+/// 基于路由模式生成稳定 ID，供动态注册流程复用。
+///
+/// # 教案级注释
+/// - **目的 (Why)**：`add_route` 在缺乏显式 `RouteId` 的情况下，需要构造一个可观测的标识用于目录与度量；
+/// - **策略 (How)**：
+///   - 字面量段保持原值；
+///   - 参数段转换为 `:{name}` 占位符，以提示运维人员该位置为变量；
+///   - 通配符段统一转写为 `*`，保留模式含义；
+///   - 其他扩展段若出现，将以 `::<kind>` 形式标记，便于后续排查。
+/// - **契约 (What)**：
+///   - 输入：[`RoutePattern`]；
+///   - 输出：[`RouteId`]，其中 `segments` 均为字面量字符串，满足 `RouteId` 的后置条件；
+///   - 调用方需确保 `pattern.kind()` 已经是目标范式。
+/// - **风险与说明**：
+///   - 该转换并不代表实际请求路径，仅用于目录与监控标识，必要时可在控制面结合额外上下文还原真实路由。
+fn canonical_route_id(pattern: &RoutePattern) -> RouteId {
+    let segments = pattern
+        .segments()
+        .map(|segment| match segment {
+            RouteSegment::Literal(value) => value.clone(),
+            RouteSegment::Parameter(name) => Cow::Owned(format!(":{}", name.as_ref())),
+            RouteSegment::Wildcard => Cow::Borrowed("*"),
+            other => Cow::Owned(format!("::<{:?}>", other)),
+        })
+        .collect();
+    RouteId::new(pattern.kind().clone(), segments)
 }
 
 /// 基于匹配结果生成用于 `RouteId` 的字面量段集合。
@@ -474,5 +609,70 @@ mod tests {
 
         let result = router.route_dyn(context);
         assert!(matches!(result, Err(RouteError::NotFound { .. })));
+    }
+
+    #[test]
+    fn add_route_allows_runtime_registration() {
+        let router = DefaultRouter::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        let pattern = RoutePattern::new(
+            RouteKind::Rpc,
+            vec![
+                RouteSegment::Literal(Cow::Borrowed("runtime")),
+                RouteSegment::Literal(Cow::Borrowed("echo")),
+            ],
+        );
+
+        router.add_route(
+            pattern.clone(),
+            Arc::new(CountingFactory {
+                counter: Arc::clone(&counter),
+            }),
+        );
+
+        let snapshot = router.snapshot();
+        let intent = spark_core::router::context::RoutingIntent::new(pattern.clone());
+        let request = PipelineMessage::from_user(String::from("payload"));
+        let empty_metadata = RouteMetadata::new();
+        let context = RoutingContext::new(&request, &intent, None, None, &empty_metadata, snapshot);
+
+        let decision = router.route_dyn(context).expect("动态注册的路由应立即可用");
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+        assert_eq!(decision.binding().id().kind(), &RouteKind::Rpc);
+    }
+
+    #[test]
+    fn remove_route_cleans_up_runtime_entry() {
+        let router = DefaultRouter::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        let pattern = RoutePattern::new(
+            RouteKind::Rpc,
+            vec![
+                RouteSegment::Literal(Cow::Borrowed("runtime")),
+                RouteSegment::Literal(Cow::Borrowed("remove")),
+            ],
+        );
+
+        router.add_route(
+            pattern.clone(),
+            Arc::new(CountingFactory {
+                counter: Arc::clone(&counter),
+            }),
+        );
+
+        assert!(router.remove_route(&pattern));
+        assert!(!router.remove_route(&pattern));
+
+        let snapshot = router.snapshot();
+        let intent = spark_core::router::context::RoutingIntent::new(pattern);
+        let request = PipelineMessage::from_user(String::from("payload"));
+        let empty_metadata = RouteMetadata::new();
+        let context = RoutingContext::new(&request, &intent, None, None, &empty_metadata, snapshot);
+
+        let result = router.route_dyn(context);
+        assert!(matches!(result, Err(RouteError::NotFound { .. })));
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
     }
 }
