@@ -17,3 +17,4 @@ bench = false
 
 [dependencies]
 spark-core = { workspace = true, default-features = false }
+spark-router = { workspace = true, default-features = false }
