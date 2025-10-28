@@ -16,6 +16,9 @@ extern crate alloc;
 
 pub use spark_core::pipeline::{Controller, controller::HotSwapController};
 
+mod factory;
+
+pub use factory::DefaultControllerFactory;
 pub mod router;
 
 pub use router::{
