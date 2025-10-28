@@ -16,6 +16,13 @@ extern crate alloc;
 
 pub use spark_core::pipeline::{Controller, controller::HotSwapController};
 
+pub mod router;
+
+pub use router::{
+    RouterContextSnapshot, RouterContextState, RouterHandler, load_router_context,
+    store_router_context,
+};
+
 /// `PipelineController` 是 `spark-pipeline` 对外推荐的默认控制器实现。
 ///
 /// # 教案式说明
