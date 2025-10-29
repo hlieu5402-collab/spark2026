@@ -3,10 +3,7 @@ use crate::{
     error::{self, map_io_error},
     util::{deadline_expired, run_with_context, to_socket_addr},
 };
-use spark_core::{
-    CoreError, context::ExecutionContext, prelude::CallContext, transport::TransportBuilder,
-    transport::TransportSocketAddr,
-};
+use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use spark_transport::{ShutdownDirection, TransportListener as TransportListenerTrait};
 use std::boxed::Box;
 use std::{future::Future, pin::Pin, time::Duration};
@@ -243,7 +240,7 @@ impl TransportBuilder for TcpListenerBuilder {
 impl TransportListenerTrait for TcpListener {
     type Error = CoreError;
     type AcceptCtx<'ctx> = CallContext;
-    type ShutdownCtx<'ctx> = ExecutionContext<'ctx>;
+    type ShutdownCtx<'ctx> = Context<'ctx>;
     type Connection = TcpChannel;
 
     type AcceptFuture<'ctx>

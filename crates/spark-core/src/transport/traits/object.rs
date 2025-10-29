@@ -1,8 +1,8 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use crate::{
-    CoreError, async_trait, cluster::ServiceDiscovery, context::ExecutionContext,
-    pipeline::Channel, sealed::Sealed,
+    CoreError, async_trait, cluster::ServiceDiscovery, context::Context, pipeline::Channel,
+    sealed::Sealed,
 };
 
 use crate::pipeline::traits::object::{DynControllerFactory, DynControllerFactoryAdapter};
@@ -40,18 +40,18 @@ pub trait DynServerTransport: Send + Sync + Sealed {
     /// # 教案级注释
     ///
     /// ## 意图（Why）
-    /// - 维持与泛型层一致的上下文签名，使对象层桥接器可无差异透传 [`ExecutionContext`]。
+    /// - 维持与泛型层一致的上下文签名，使对象层桥接器可无差异透传 [`Context`]。
     ///
     /// ## 逻辑（How）
     /// - 调用内部泛型实现的 `local_addr`，并将 `ctx` 原样传递。
     ///
     /// ## 契约（What）
-    /// - `ctx`: [`ExecutionContext`]，当前仅用于接口统一；不会被消费。
+    /// - `ctx`: [`Context`]，当前仅用于接口统一；不会被消费。
     /// - 返回：监听器绑定的 [`TransportSocketAddr`]。
     ///
     /// ## 考量（Trade-offs）
     /// - 统一签名可在动态派发中避免特判，后续若需根据 `ctx` 记录审计信息亦可拓展。
-    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
+    fn local_addr_dyn(&self, ctx: &Context<'_>) -> TransportSocketAddr;
 
     /// 根据计划执行优雅关闭。
     ///
@@ -72,7 +72,7 @@ pub trait DynServerTransport: Send + Sync + Sealed {
     /// - 对象层无需重复解析上下文，减少重复逻辑。
     async fn shutdown_dyn(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         plan: ListenerShutdown,
     ) -> crate::Result<(), CoreError>;
 }
@@ -107,13 +107,13 @@ impl<T> DynServerTransport for ServerTransportObject<T>
 where
     T: GenericServerTransport,
 {
-    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
+    fn local_addr_dyn(&self, ctx: &Context<'_>) -> TransportSocketAddr {
         self.inner.local_addr(ctx)
     }
 
     async fn shutdown_dyn(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         plan: ListenerShutdown,
     ) -> crate::Result<(), CoreError> {
         GenericServerTransport::shutdown(&*self.inner, ctx, plan).await
@@ -146,7 +146,7 @@ pub trait DynTransportFactory: Send + Sync + Sealed {
     /// # 教案级注释
     ///
     /// ## 意图（Why）
-    /// - 与泛型层保持一致，允许上层在对象层同样传递 [`ExecutionContext`] 以备将来扩展。
+    /// - 与泛型层保持一致，允许上层在对象层同样传递 [`Context`] 以备将来扩展。
     ///
     /// ## 逻辑（How）
     /// - 直接透传给泛型实现。
@@ -157,7 +157,7 @@ pub trait DynTransportFactory: Send + Sync + Sealed {
     ///
     /// ## 考量（Trade-offs）
     /// - 统一接口形式，避免桥接器需要区分对象/泛型两套签名。
-    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str;
+    fn scheme_dyn(&self, ctx: &Context<'_>) -> &'static str;
 
     /// 绑定监听器。
     ///
@@ -179,7 +179,7 @@ pub trait DynTransportFactory: Send + Sync + Sealed {
     /// - 通过 `ctx` 提供的取消信号可以避免插件长时间阻塞在构建流程。
     async fn bind_dyn(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynControllerFactory>,
     ) -> crate::Result<Box<dyn DynServerTransport>, CoreError>;
@@ -204,7 +204,7 @@ pub trait DynTransportFactory: Send + Sync + Sealed {
     /// - 确保对象层不会悄然忽略调用方设置的截止时间。
     async fn connect_dyn(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         intent: ConnectionIntent,
         discovery: Option<Arc<dyn ServiceDiscovery>>,
     ) -> crate::Result<Box<dyn Channel>, CoreError>;
@@ -240,13 +240,13 @@ impl<F> DynTransportFactory for TransportFactoryObject<F>
 where
     F: GenericTransportFactory,
 {
-    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str {
+    fn scheme_dyn(&self, ctx: &Context<'_>) -> &'static str {
         self.inner.scheme(ctx)
     }
 
     async fn bind_dyn(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynControllerFactory>,
     ) -> crate::Result<Box<dyn DynServerTransport>, CoreError> {
@@ -258,7 +258,7 @@ where
 
     async fn connect_dyn(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         intent: ConnectionIntent,
         discovery: Option<Arc<dyn ServiceDiscovery>>,
     ) -> crate::Result<Box<dyn Channel>, CoreError> {

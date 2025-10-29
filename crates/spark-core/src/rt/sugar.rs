@@ -49,13 +49,13 @@ where
     }
 }
 
-/// `ContextCaps` 将 Pipeline [`Context`](pipeline::Context) 适配为 [`RuntimeCaps`]。
+/// `PipelineContextCaps` 将 Pipeline [`Context`](pipeline::Context) 适配为 [`RuntimeCaps`]。
 #[derive(Clone, Copy)]
-pub struct ContextCaps<'a, C: pipeline::Context + ?Sized> {
+pub struct PipelineContextCaps<'a, C: pipeline::Context + ?Sized> {
     context: &'a C,
 }
 
-impl<'a, C: pipeline::Context + ?Sized> ContextCaps<'a, C> {
+impl<'a, C: pipeline::Context + ?Sized> PipelineContextCaps<'a, C> {
     /// 构造基于 Pipeline `Context` 的运行时能力视图。
     pub fn new(context: &'a C) -> Self {
         Self { context }
@@ -67,7 +67,7 @@ impl<'a, C: pipeline::Context + ?Sized> ContextCaps<'a, C> {
     }
 }
 
-impl<'a, C> RuntimeCaps for ContextCaps<'a, C>
+impl<'a, C> RuntimeCaps for PipelineContextCaps<'a, C>
 where
     C: pipeline::Context + ?Sized,
 {
@@ -86,6 +86,12 @@ where
         map_join(handle)
     }
 }
+
+#[deprecated(
+    since = "0.1.0",
+    note = "removal: planned for 0.3.0; migration: 将 `ContextCaps` 替换为 `PipelineContextCaps` 或直接借用 Pipeline Context。"
+)]
+pub type ContextCaps<'a, C> = PipelineContextCaps<'a, C>;
 
 /// `BorrowedRuntimeCaps` 兼容层：保留旧版 API，帮助现有代码在迁移到“直接使用引用”模式前保持可编译。
 ///

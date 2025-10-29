@@ -13,7 +13,7 @@
 ///
 /// # 展开逻辑（How）
 /// - 保存对原始 `Context` 的引用，避免移动所有权；
-/// - 使用 [`crate::rt::ContextCaps`] 适配执行器能力；
+/// - 使用 [`crate::rt::PipelineContextCaps`]（兼容别名 [`crate::rt::ContextCaps`]）适配执行器能力；
 /// - 构造语法糖上下文并以同名变量绑定，再返回调用方提供的表达式。
 ///
 /// # 契约说明（What）
@@ -29,7 +29,7 @@
 macro_rules! with_ctx {
     ($ctx:ident, $body:expr) => {{
         let __spark_ctx_ref = &$ctx;
-        let __spark_caps = $crate::rt::ContextCaps::new(__spark_ctx_ref);
+        let __spark_caps = $crate::rt::PipelineContextCaps::new(__spark_ctx_ref);
         let $ctx = $crate::rt::CallContext::new(__spark_ctx_ref.call_context(), __spark_caps);
         $body
     }};

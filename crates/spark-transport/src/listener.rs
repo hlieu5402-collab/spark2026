@@ -16,7 +16,7 @@ use crate::{ShutdownDirection, TransportConnection, TransportSocketAddr};
 ///
 /// ## 契约说明（What）
 /// - `AcceptCtx<'ctx>`：接受连接时使用的上下文（如 `CallContext`）；
-/// - `ShutdownCtx<'ctx>`：关闭监听器时使用的上下文（如 `ExecutionContext<'ctx>`）；
+/// - `ShutdownCtx<'ctx>`：关闭监听器时使用的上下文（如 `Context<'ctx>`）；
 /// - `accept` 返回 `(Connection, TransportSocketAddr)`，其中地址代表对端元数据；
 /// - `shutdown` 使用 [`ShutdownDirection`] 描述优雅关闭策略；
 /// - `scheme` 返回协议标识字符串。

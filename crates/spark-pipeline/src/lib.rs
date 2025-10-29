@@ -19,14 +19,27 @@ pub use spark_core::pipeline::{Controller, controller::HotSwapController};
 mod factory;
 
 pub use factory::DefaultControllerFactory;
-pub mod router;
 
-pub use router::{
-    RouterContextSnapshot, RouterContextState, load_router_context, store_router_context,
+
+pub mod router {
+    //! `spark-router` 中 Pipeline 集成模块的再导出包装。
+    //!
+    //! # 教案式说明
+    //! - **意图（Why）**：保持原 `spark-pipeline::router` 命名空间不变，便于现有调用方在迁移至
+    //!   `spark-router` 统一实现后无需修改路径；
+    //! - **逻辑（How）**：简单地将 `spark_router::pipeline` 全量再导出，保证类型与函数与原有
+    //!   模块一一对应；
+    //! - **契约（What）**：模块内所有符号均直接映射到 `spark-router` 提供的实现，包含上下文
+    //!   存取、路由处理器以及构造器接口；
+    //! - **风险提示（Trade-offs）**：再导出不会引入额外开销，但要求 `spark-router` 版本与当前
+    //!   Crate 同步更新；若未来出现破坏性变更，应优先在 `spark-router` 中维护兼容层。
+    pub use spark_router::pipeline::*;
+}
+
+pub use spark_router::pipeline::{
+    ExtensionsRoutingContextBuilder, RouterContextSnapshot, RouterContextState, RouterHandler,
+    RoutingContextBuilder, RoutingContextParts, load_router_context, store_router_context,
 };
-mod router_handler;
-
-pub use router_handler::{RouterHandler, RoutingContextBuilder, RoutingContextParts};
 
 /// `PipelineController` 是 `spark-pipeline` 对外推荐的默认控制器实现。
 ///
