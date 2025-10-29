@@ -30,6 +30,7 @@ pub mod health;
 pub mod keys;
 pub mod logging;
 pub mod metrics;
+pub mod resource;
 pub mod trace;
 
 pub use attributes::{
@@ -45,6 +46,8 @@ pub use facade::{DefaultObservabilityFacade, ObservabilityFacade};
 pub use health::{ComponentHealth, HealthCheckProvider, HealthChecks, HealthState};
 pub use logging::{LogField, LogRecord, LogSeverity, Logger};
 pub use metrics::{Counter, Gauge, Histogram, InstrumentDescriptor, MetricsProvider};
+pub use resource::{OwnedResourceAttrs, ResourceAttr, ResourceAttrSet};
 pub use trace::{
-    TraceContext, TraceContextError, TraceFlags, TraceState, TraceStateEntry, TraceStateError,
+    SpanId, TraceContext, TraceContextError, TraceFlags, TraceId, TraceState, TraceStateEntry,
+    TraceStateError,
 };

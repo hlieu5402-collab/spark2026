@@ -4,6 +4,8 @@
 - 作为全局契约中心，统一定义调用上下文、错误分类、状态机与背压语义，供 `crates/` 下所有运行时、传输与编解码实现复用。
 - 向外提供 `no_std + alloc` 友好的基础设施：包括缓冲池、配置系统、可观测性挂钩与任务调度抽象，确保扩展 crate 不直接依赖具体运行时。
 - 通过 [`docs/global-architecture.md`](../../docs/global-architecture.md) 中描述的分层架构衔接上层 SDK 与下层传输通道，是契约测试与合规审计的锚点。
+- 在可观测性层仅保留 `TraceContext`、`TraceId`、`SpanId`、`AuditTag` 与资源属性等纯类型及键常量，具体的 OpenTelemetry 安装与导出
+  逻辑由 [`crates/spark-otel`](../spark-otel) 提供，避免核心 crate 引入第三方运行时依赖。
 
 ## 公共接口入口
 - [`src/contract.rs`](./src/contract.rs)：公开 `CallContext`、`Budget`、`Deadline` 等运行期契约，同时封装取消、关闭原因与安全上下文。

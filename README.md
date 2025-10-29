@@ -8,7 +8,7 @@ Spark 2026 是面向高性能、协议无关场景的异步通信契约集合，
 
 | 层级 | 入口 | 说明 |
 | --- | --- | --- |
-| **核心契约** | [`crates/spark-core`](crates/spark-core/README.md) | 定义 `CallContext`、`ReadyState`、`CoreError` 等基础类型，是所有实现与测试的锚点。 |
+| **核心契约** | [`crates/spark-core`](crates/spark-core/README.md) | 定义 `CallContext`、`ReadyState`、`CoreError` 等基础类型，并仅保留 `TraceId`/`SpanId`/`AuditTag`/`ResourceAttr` 等纯观测契约，是所有实现与测试的锚点。 |
 | **过程宏** | [`crates/spark-macros`](crates/spark-macros/README.md) | 提供 `#[spark::service]` 等宏，自动生成符合契约的 `Service` 实现。 |
 | **契约测试** | [`crates/spark-contract-tests`](crates/spark-contract-tests/README.md) | 汇总 ReadyState、错误分类、半关闭等主题化测试；[`crates/spark-contract-tests-macros`](crates/spark-contract-tests-macros/README.md) 提供编译期套件注册。 |
 | **实现 TCK** | [`crates/spark-tck`](crates/spark-tck/README.md) | 在真实 TCP/TLS/QUIC/UDP 环境执行合规检查，验证传输实现遵守契约。 |
