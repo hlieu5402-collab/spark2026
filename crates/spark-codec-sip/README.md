@@ -19,7 +19,7 @@
 
 ## 关联契约与测试
 - 使用 [`crates/spark-contract-tests`](../../spark-contract-tests) 的 backpressure、errors 与 graceful_shutdown 套件验证 ReadyState、错误分类与半关闭流程。
-- 与 [`crates/codecs/spark-codec-sdp`](../spark-codec-sdp) 协同，SIP 消息中的 SDP 负载需保持字段一致，相关示例在两个 README 中相互引用。
+- 与 [`crates/spark-codec-sdp`](../spark-codec-sdp) 协同，SIP 消息中的 SDP 负载需保持字段一致，相关示例在两个 README 中相互引用。
 - WebSocket 传输扩展位于 [`src/ws`](./src/ws)，未来若启用需同步更新 [`docs/global-architecture.md`](../../../docs/global-architecture.md) 的信令通道描述。
 
 ## 集成注意事项

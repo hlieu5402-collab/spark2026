@@ -39,7 +39,7 @@ mod runtime_impl {
     };
 
     use spark_core::{
-        CoreError, context::ExecutionContext, error::ErrorCategory, status::RetryAdvice,
+        CoreError, context::Context, error::ErrorCategory, status::RetryAdvice,
         transport::TransportBuilder,
     };
     use spark_transport::{DatagramEndpoint, TransportSocketAddr};
@@ -343,7 +343,7 @@ mod runtime_impl {
             "udp"
         }
 
-        fn build<'ctx>(self, ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+        fn build<'ctx>(self, ctx: &'ctx Context<'ctx>) -> Self::BuildFuture<'ctx> {
             let cancelled = ctx.cancellation().is_cancelled();
             let addr = self.addr;
             let options = self.options;
@@ -673,7 +673,7 @@ mod runtime_stub {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
     use spark_core::{
-        CoreError, context::ExecutionContext, error::ErrorCategory, prelude::Result,
+        CoreError, context::Context, error::ErrorCategory, prelude::Result,
         transport::TransportBuilder,
     };
     use spark_transport::{DatagramEndpoint, TransportSocketAddr};
@@ -839,7 +839,7 @@ mod runtime_stub {
             "udp"
         }
 
-        fn build<'ctx>(self, _ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+        fn build<'ctx>(self, _ctx: &'ctx Context<'ctx>) -> Self::BuildFuture<'ctx> {
             Box::pin(async { Err(runtime_disabled_error()) })
         }
     }

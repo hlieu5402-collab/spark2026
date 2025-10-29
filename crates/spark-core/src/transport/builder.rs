@@ -4,19 +4,19 @@
 //! - **零耦合原则**：Codec 与 Transport 之间必须经由 `spark-core` 定义的契约互动，本模块提供“建造器”抽象，确保介质特有的
 //!   配置项在各自实现内部下沉，却依旧遵循统一的调度接口；
 //! - **一致的生命周期控制**：监听器/端点的初始化往往涉及异步步骤（绑定套接字、握手预热等），通过统一 trait，
-//!   宿主可以在不关心具体协议的前提下，以同一模式注入 `ExecutionContext` 并获得 Future；
+//!   宿主可以在不关心具体协议的前提下，以同一模式注入 [`Context`] 并获得 Future；
 //! - **可扩展性**：Builder 返回的 Future 具备 `Send` 约束，兼容多线程运行时，同时允许后续在不破坏现有实现的情况下扩展自定义介质。
 //!
 //! # 使用方式（How）
 //! - 每个具体 Transport 实现（TCP/UDP/QUIC/TLS 等）提供自身的 `Builder` 结构体，封装介质特有的参数；
 //! - 实现 [`TransportBuilder`] trait，即可被宿主或运行时统一调度：调用 `scheme()` 了解协议名，调用 `build` 即返回异步构建结果；
-//! - `build` 的 Future 会继承 [`ExecutionContext`]，因此实现者应在构造过程中尊重取消与截止时间。
+//! - `build` 的 Future 会继承 [`Context`]，因此实现者应在构造过程中尊重取消与截止时间。
 //!
 //! # 契约与约束（What）
 //! - `TransportBuilder` 要求 `Send + 'static`，保证可以跨线程移动或存储在异步任务中；
 //! - `Output` 须携带 `Send + 'static`，以便与运行时后续的监听/建连逻辑结合；
 //! - `scheme()` 必须返回 `'static` 字符串，用于在观测与注册中心中区分协议；
-//! - `build` 接收 [`ExecutionContext`]：实现者应在 Future 内检查取消标记或剩余预算，必要时提前返回 [`CoreError`]。
+//! - `build` 接收 [`Context`]：实现者应在 Future 内检查取消标记或剩余预算，必要时提前返回 [`CoreError`]。
 //!
 //! # 风险提示（Trade-offs & Gotchas）
 //! - Builder 模式强调延迟配置：若实现者在构造 Builder 后修改内部状态，请确保线程安全；
@@ -25,7 +25,7 @@
 
 use core::future::Future;
 
-use crate::{CoreError, context::ExecutionContext};
+use crate::{CoreError, context::Context};
 
 /// 统一的传输建造器 trait。
 ///
@@ -33,7 +33,7 @@ use crate::{CoreError, context::ExecutionContext};
 ///
 /// ## 意图（Why）
 /// - 将 TCP/UDP/QUIC/TLS 等介质特有的 builder 抽象为统一接口，使上层调度器能够在不分支判断的前提下批量启动监听器或端点；
-/// - 通过 `ExecutionContext` 把取消、截止与预算语义延伸到构造阶段，避免慢启动或阻塞导致的资源占用。
+/// - 通过 [`Context`] 把取消、截止与预算语义延伸到构造阶段，避免慢启动或阻塞导致的资源占用。
 ///
 /// ## 契约（What）
 /// - `Output`：具体介质构造出的对象类型，例如 `TcpListener`、`UdpEndpoint`；要求实现 `Send + 'static`，以便后续跨线程使用；
@@ -77,5 +77,5 @@ pub trait TransportBuilder: Send + 'static {
     /// ## 实现注意（Trade-offs）
     /// - Builder 应避免在 `build` 外部就启动异步任务，以免在取消时出现悬挂；
     /// - 若需要长时间同步操作，可考虑在实现内部使用 `spawn_blocking` 等手段结合 `ctx` 的预算策略。
-    fn build<'ctx>(self, ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx>;
+    fn build<'ctx>(self, ctx: &'ctx Context<'ctx>) -> Self::BuildFuture<'ctx>;
 }

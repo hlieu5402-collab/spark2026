@@ -4,6 +4,7 @@ use crate::{
     util::{deadline_expired, run_with_context, to_socket_addr},
 };
 use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
+use spark_core::transport::TransportBuilder;
 use spark_transport::{ShutdownDirection, TransportListener as TransportListenerTrait};
 use std::boxed::Box;
 use std::{future::Future, pin::Pin, time::Duration};
@@ -179,7 +180,7 @@ impl TcpListener {
 /// - `new`：以监听地址创建 Builder，默认配置等同于 [`TcpSocketConfig::default`]；
 /// - `with_default_socket_config`：显式替换默认配置；
 /// - `with_linger`：提供常见的快捷设置；
-/// - `build`：遵循 [`TransportBuilder`] 契约，若 `ExecutionContext` 已取消则立即返回取消错误，否则调用 [`TcpListener::bind_with_config`]。
+/// - `build`：遵循 [`TransportBuilder`] 契约，若 [`Context`](spark_core::context::Context) 已取消则立即返回取消错误，否则调用 [`TcpListener::bind_with_config`]。
 ///
 /// ## 风险提示（Trade-offs）
 /// - Builder 被消费后无法复用，若需不同配置请分别构建；
@@ -224,7 +225,7 @@ impl TransportBuilder for TcpListenerBuilder {
         "tcp"
     }
 
-    fn build<'ctx>(self, ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+    fn build<'ctx>(self, ctx: &'ctx Context<'ctx>) -> Self::BuildFuture<'ctx> {
         let cancelled = ctx.cancellation().is_cancelled();
         let addr = self.addr;
         let config = self.default_config;

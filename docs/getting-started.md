@@ -18,8 +18,8 @@
 .
 ├── crates/
 │   ├── spark-core/                 # 框架核心契约与稳定 API
-│   └── codecs/
-│       └── spark-codec-line/      # 演示用行分隔文本编解码扩展
+│   ├── spark-codec-line/           # 演示用行分隔文本编解码扩展
+│   └── spark-transport-tcp/        # 典型传输实现示例之一
 ├── docs/                # 设计说明、规范与操作指南
 └── snapshots/           # 标准化样例数据
 ```
@@ -28,7 +28,7 @@
 
 ## 3. 10 分钟跑通最小例
 
-本仓库提供 `crates/codecs/spark-codec-line` 扩展中的 `minimal` 样例，演示如何在自定义缓冲池上复用 `spark-core` 的编解码契约。
+本仓库提供 `crates/spark-codec-line` 扩展中的 `minimal` 样例，演示如何在自定义缓冲池上复用 `spark-core` 的编解码契约。
 
 1. **拉取依赖并编译：**
    ```bash
@@ -47,7 +47,7 @@
 
 ### 3.1 样例代码结构
 
-- 入口文件：`crates/codecs/spark-codec-line/examples/minimal.rs`
+- 入口文件：`crates/spark-codec-line/examples/minimal.rs`
 - 核心要点：
   - 用 `SimpleBufferPool` 构造 `EncodeContext`/`DecodeContext`，演示最小依赖注入；
   - 实例化 `LineDelimitedCodec` 并完成一次编码/解码往返；

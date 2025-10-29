@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "crates/codecs/spark-codec-line",
-    "crates/codecs/spark-codec-rtcp",
-    "crates/codecs/spark-codec-rtp",
-    "crates/codecs/spark-codec-sdp",
-    "crates/codecs/spark-codec-sip",
-    "crates/codecs/spark-codecs",
+    "crates/spark-codec-line",
+    "crates/spark-codec-rtcp",
+    "crates/spark-codec-rtp",
+    "crates/spark-codec-sdp",
+    "crates/spark-codec-sip",
+    "crates/spark-codecs",
     "crates/spark-contract-tests",
     "crates/spark-contract-tests-macros",
     "crates/spark-core",
@@ -18,10 +18,10 @@ members = [
     "crates/spark-impl-tck",
     "crates/spark-macros",
     "crates/spark-otel", "crates/spark-transport",
-    "crates/transport/spark-transport-quic",
-    "crates/transport/spark-transport-tcp",
-    "crates/transport/spark-transport-tls",
-    "crates/transport/spark-transport-udp",
+    "crates/spark-transport-quic",
+    "crates/spark-transport-tcp",
+    "crates/spark-transport-tls",
+    "crates/spark-transport-udp",
     "crates/3p/tck-mock-transport",
     "crates/spark-deprecation-lint",
 ]
@@ -67,19 +67,19 @@ spark-contract-tests-macros = { path = "crates/spark-contract-tests-macros" }
 spark-core = { path = "crates/spark-core", default-features = false }
 spark-macros = { path = "crates/spark-macros" }
 spark-otel = { path = "crates/spark-otel" }
-spark-codecs = { path = "crates/codecs/spark-codecs", default-features = false }
-spark-codec-line = { path = "crates/codecs/spark-codec-line" }
-spark-codec-rtcp = { path = "crates/codecs/spark-codec-rtcp" }
-spark-codec-rtp = { path = "crates/codecs/spark-codec-rtp" }
-spark-codec-sdp = { path = "crates/codecs/spark-codec-sdp" }
-spark-codec-sip = { path = "crates/codecs/spark-codec-sip" }
+spark-codecs = { path = "crates/spark-codecs", default-features = false }
+spark-codec-line = { path = "crates/spark-codec-line" }
+spark-codec-rtcp = { path = "crates/spark-codec-rtcp" }
+spark-codec-rtp = { path = "crates/spark-codec-rtp" }
+spark-codec-sdp = { path = "crates/spark-codec-sdp" }
+spark-codec-sip = { path = "crates/spark-codec-sip" }
 spark-impl-tck = { path = "crates/spark-impl-tck" }
 spark-router = { path = "crates/spark-router", default-features = false }
 spark-transport = { path = "crates/spark-transport", default-features = false }
-spark-transport-quic = { path = "crates/transport/spark-transport-quic" }
-spark-transport-tcp = { path = "crates/transport/spark-transport-tcp" }
-spark-transport-tls = { path = "crates/transport/spark-transport-tls" }
-spark-transport-udp = { path = "crates/transport/spark-transport-udp" }
+spark-transport-quic = { path = "crates/spark-transport-quic" }
+spark-transport-tcp = { path = "crates/spark-transport-tcp" }
+spark-transport-tls = { path = "crates/spark-transport-tls" }
+spark-transport-udp = { path = "crates/spark-transport-udp" }
 syn = { version = "2.0", features = ["full"] }
 thiserror = "2.0"
 tokio = { version = "1.48.0", default-features = false }

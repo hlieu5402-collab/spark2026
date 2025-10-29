@@ -20,10 +20,7 @@ mod factory;
 
 pub use factory::DefaultControllerFactory;
 
-pub use router::{
-    RouterContextSnapshot, RouterContextState, RouterHandler as LegacyRouterHandler,
-    load_router_context, store_router_context,
-};
+pub use router::RouterHandler as LegacyRouterHandler;
 
 /// 教案级别别名说明：`LegacyRouterHandler`
 ///
@@ -34,8 +31,7 @@ pub use router::{
 ///   的 `router_handler::RouterHandler` 冲突，同时维持模块路径 `spark_pipeline::router::RouterHandler` 的可用性。
 /// - **风险（Trade-offs）**：别名强调“旧版”定位，提醒维护者未来在完全迁移后可考虑移除；当前做法牺牲
 ///   了一些命名纯粹性，但换取向后兼容。
-
-mod router_handler;
+pub mod router_handler;
 
 pub mod router {
     //! `spark-router` 中 Pipeline 集成模块的再导出包装。

@@ -1,7 +1,7 @@
 use crate::{channel::QuicChannel, error, util::to_socket_addr};
 use quinn::{ClientConfig, Connection, Endpoint, ServerConfig};
 use spark_core::{
-    CoreError, context::ExecutionContext, prelude::TransportSocketAddr, transport::TransportBuilder,
+    CoreError, context::Context, prelude::TransportSocketAddr, transport::TransportBuilder,
 };
 use std::{future::Future, pin::Pin};
 
@@ -170,7 +170,7 @@ impl TransportBuilder for QuicEndpointBuilder {
         "quic"
     }
 
-    fn build<'ctx>(self, ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+    fn build<'ctx>(self, ctx: &'ctx Context<'ctx>) -> Self::BuildFuture<'ctx> {
         let cancelled = ctx.cancellation().is_cancelled();
         let addr = self.addr;
         let server_config = self.server_config;

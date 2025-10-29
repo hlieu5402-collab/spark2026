@@ -16,7 +16,7 @@ path = "../crates/spark-core"
 features = ["std"]
 
 [dependencies.spark-codec-line]
-path = "../crates/codecs/spark-codec-line"
+path = "../spark-codec-line"
 features = ["std"]
 
 [[bin]]
