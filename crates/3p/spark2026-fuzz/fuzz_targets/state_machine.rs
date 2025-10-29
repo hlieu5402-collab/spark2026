@@ -1,10 +1,10 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use core::convert::Infallible;
 use libfuzzer_sys::fuzz_target;
 use spark_core::service::simple::{ReadyFutureGuard, ServiceReadyCoordinator};
 use spark_core::status::ready::{ReadyCheck, ReadyState};
+use spark_core::CoreError;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 /// Fuzz 指令：描述一次状态机操作序列。
@@ -48,7 +48,7 @@ fuzz_target!(|case: StateMachineCase| {
                 let idx = map_index(&coordinators, id);
                 let waker = noop_waker();
                 let mut cx = Context::from_waker(&waker);
-                match coordinators[idx].poll_ready::<Infallible>(&mut cx) {
+                match coordinators[idx].poll_ready::<CoreError>(&mut cx) {
                     Poll::Ready(ReadyCheck::Ready(ReadyState::Ready)) => {
                         permits[idx] = true;
                     }
@@ -60,6 +60,13 @@ fuzz_target!(|case: StateMachineCase| {
                     }
                     Poll::Pending => {
                         permits[idx] = false;
+                    }
+                    Poll::Ready(other) => {
+                        // Why：`ReadyCheck` 在未来版本可能新增 `Backoff`、`TimedOut` 等分支。
+                        // How：将未知分支统一视作“当前不可开始新调用”，避免 Fuzzer 因未匹配导致编译失败。
+                        // What：复位许可标记，保持状态机与现有分支行为一致，确保不会误发放 permit。
+                        permits[idx] = false;
+                        let _ = other; // 显式使用以维持 exhaustiveness。
                     }
                 }
             }
