@@ -297,3 +297,78 @@ jobs:
                 body,
               });
             }
+
+  boot3-core-no-std:
+    name: BOOT-3 spark-core no_std 预检 (${{ matrix.cargo_cmd }})
+    needs: boot2-prewarm
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        cargo_cmd:
+          - check
+          - build
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: boot3-core-no-std
+          cache-on-failure: true
+
+      - name: 准备工件目录
+        run: mkdir -p ci-artifacts
+
+      - name: 执行 spark-core no_std alloc (${{ matrix.cargo_cmd }})
+        id: boot3_run
+        continue-on-error: true
+        env:
+          CI_ARTIFACT_DIR: ${{ github.workspace }}/ci-artifacts
+          NO_STD_MATRIX_PACKAGES: spark-core
+          NO_STD_MATRIX_CARGO_CMD: ${{ matrix.cargo_cmd }}
+          NO_STD_MATRIX_LOG_SUFFIX: ${{ matrix.cargo_cmd }}
+        run: |
+          set +e
+          set -o pipefail
+          tools/ci/no_std_matrix.sh
+          status=$?
+          set +o pipefail
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          exit "${status}"
+
+      - name: 汇总 BOOT-3 执行结果
+        if: always()
+        env:
+          STEP_STATUS: ${{ steps.boot3_run.outputs.status }}
+          STEP_OUTCOME: ${{ steps.boot3_run.outcome }}
+          CARGO_CMD: ${{ matrix.cargo_cmd }}
+        run: |
+          {
+            echo "### BOOT-3 spark-core no_std(${CARGO_CMD})"
+            if [ "${STEP_OUTCOME}" = "success" ]; then
+              echo "- 结果：✅ 通过"
+            else
+              echo "- 结果：⚠️ 失败（已降级为警告，不阻断 CI）"
+              echo "- 退出码：${STEP_STATUS:-未知}" 
+              echo "::warning::spark-core no_std(${CARGO_CMD}) 验证失败，详见工件日志。"
+            fi
+            echo "- 日志：ci-artifacts/no-std-spark-core-${CARGO_CMD}.log"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 上传 BOOT-3 工件
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot3-spark-core-${{ matrix.cargo_cmd }}
+          path: ci-artifacts/no-std-spark-core-${{ matrix.cargo_cmd }}.log
+          if-no-files-found: warn

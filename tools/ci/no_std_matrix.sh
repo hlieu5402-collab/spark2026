@@ -43,6 +43,21 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 readonly ARTIFACT_DIR="${CI_ARTIFACT_DIR:-${REPO_ROOT}/ci-artifacts}"
 readonly CARGO_CMD="${NO_STD_MATRIX_CARGO_CMD:-check}"
+# 教案级补充说明（Why & What）
+# -----------------------------------------------------------------------------
+# R1.1-R1.3: 为支持 BOOT-3 “双矩阵” 预检，此处新增 `LOG_SUFFIX_RAW`，使得同一包可在
+#            不同 cargo 子命令（如 check/build）下生成互不覆盖的日志文件。该策略确保
+#            我们能同时追踪“语义检查 + 实际构建”两条流水线的健康度。
+# R3.1-R3.3: 环境变量 `NO_STD_MATRIX_LOG_SUFFIX` 若设置，将作为日志文件名的后缀，用于
+#            区分不同预检上下文；为空时保持向后兼容。为了避免非法字符污染文件系统，
+#            本地通过 `tr -c '[:alnum:]_-' '-'` 将非字母数字字符归一化为连字符。
+# R4.1-R4.3: 选择在脚本层处理后缀而非工作流层拼接文件名，一方面让调用方无需关心
+#            文件命名细节，另一方面也便于未来在其他 CI 任务中复用该脚本；若后缀过
+#            长会被压缩为多重连字符，但对可读性影响可接受。
+# R5.1-R5.2: 通过 `readonly LOG_SUFFIX` 统一处理，避免后续维护者在脚本中多处拼接字符串。
+# -----------------------------------------------------------------------------
+readonly LOG_SUFFIX_RAW="${NO_STD_MATRIX_LOG_SUFFIX:-}"
+readonly LOG_SUFFIX="$(printf '%s' "${LOG_SUFFIX_RAW}" | tr -c '[:alnum:]_-\n' '-')"
 
 log() {
   printf '[no-std-matrix] %s\n' "$1" >&2
@@ -50,7 +65,8 @@ log() {
 
 run_for_package() {
   local package="$1"
-  local log_file="${ARTIFACT_DIR}/no-std-${package}.log"
+  local suffix="${LOG_SUFFIX:+-${LOG_SUFFIX}}"
+  local log_file="${ARTIFACT_DIR}/no-std-${package}${suffix}.log"
 
   log "开始校验包 '${package}' 的 no_std(alloc) 组合。日志: ${log_file}"
   (
