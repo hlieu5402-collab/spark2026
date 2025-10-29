@@ -366,7 +366,7 @@ pub trait Controller: Send + Sync + 'static + Sealed {
     fn register_inbound_handler(&self, label: &str, handler: Box<dyn InboundHandler>);
 
     /// 以 `'static` 借用方式注册入站 Handler，复用长生命周期单例。
-    fn register_inbound_handler_static(&self, label: &str, handler: &'static (dyn InboundHandler)) {
+    fn register_inbound_handler_static(&self, label: &str, handler: &'static dyn InboundHandler) {
         self.register_inbound_handler(label, handler::box_inbound_from_static(handler));
     }
 
@@ -374,11 +374,7 @@ pub trait Controller: Send + Sync + 'static + Sealed {
     fn register_outbound_handler(&self, label: &str, handler: Box<dyn OutboundHandler>);
 
     /// 以 `'static` 借用方式注册出站 Handler，语义与入站版本一致。
-    fn register_outbound_handler_static(
-        &self,
-        label: &str,
-        handler: &'static (dyn OutboundHandler),
-    ) {
+    fn register_outbound_handler_static(&self, label: &str, handler: &'static dyn OutboundHandler) {
         self.register_outbound_handler(label, handler::box_outbound_from_static(handler));
     }
 
@@ -983,7 +979,7 @@ impl ChainBuilder for HotSwapMiddlewareBuilder<'_> {
         self.controller.register_inbound_handler(label, handler);
     }
 
-    fn register_inbound_static(&mut self, label: &str, handler: &'static (dyn InboundHandler)) {
+    fn register_inbound_static(&mut self, label: &str, handler: &'static dyn InboundHandler) {
         // 教案级说明：复用控制器的静态注册逻辑，避免在 Builder 内部重复封装。
         self.controller
             .register_inbound_handler_static(label, handler);
@@ -994,7 +990,7 @@ impl ChainBuilder for HotSwapMiddlewareBuilder<'_> {
         self.controller.register_outbound_handler(label, handler);
     }
 
-    fn register_outbound_static(&mut self, label: &str, handler: &'static (dyn OutboundHandler)) {
+    fn register_outbound_static(&mut self, label: &str, handler: &'static dyn OutboundHandler) {
         self.controller
             .register_outbound_handler_static(label, handler);
     }
@@ -1145,7 +1141,7 @@ impl ChainBuilder for dyn Controller<HandleId = ControllerHandleId> {
         Controller::register_inbound_handler(self, label, handler);
     }
 
-    fn register_inbound_static(&mut self, label: &str, handler: &'static (dyn InboundHandler)) {
+    fn register_inbound_static(&mut self, label: &str, handler: &'static dyn InboundHandler) {
         Controller::register_inbound_handler_static(self, label, handler);
     }
 
@@ -1153,7 +1149,7 @@ impl ChainBuilder for dyn Controller<HandleId = ControllerHandleId> {
         Controller::register_outbound_handler(self, label, handler);
     }
 
-    fn register_outbound_static(&mut self, label: &str, handler: &'static (dyn OutboundHandler)) {
+    fn register_outbound_static(&mut self, label: &str, handler: &'static dyn OutboundHandler) {
         Controller::register_outbound_handler_static(self, label, handler);
     }
 }

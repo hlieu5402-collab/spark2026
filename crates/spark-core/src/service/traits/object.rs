@@ -183,7 +183,7 @@ impl BoxService {
     }
 
     /// 以 trait 对象形式访问内部服务。
-    pub fn as_dyn(&self) -> &(dyn DynService) {
+    pub fn as_dyn(&self) -> &dyn DynService {
         &*self.inner
     }
 

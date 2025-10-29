@@ -125,7 +125,7 @@ impl<T> DuplexHandler for T where T: InboundHandler + OutboundHandler {}
 /// - 若底层 Handler 非 `'static`，请使用 `Box` 拥有型入口避免悬垂引用；
 /// - 代理不会拦截或扩展回调，如需在转发前后注入逻辑，仍应实现自定义 Handler。
 pub(crate) fn box_inbound_from_static(
-    handler: &'static (dyn InboundHandler),
+    handler: &'static dyn InboundHandler,
 ) -> Box<dyn InboundHandler> {
     Box::new(BorrowedInboundHandlerAdapter { inner: handler })
 }
@@ -141,14 +141,14 @@ pub(crate) fn box_inbound_from_static(
 /// - **返回值**：可交由 `Controller::register_outbound_handler` 继续处理；
 /// - **前置条件/后置条件**：与 [`box_inbound_from_static`] 一致。
 pub(crate) fn box_outbound_from_static(
-    handler: &'static (dyn OutboundHandler),
+    handler: &'static dyn OutboundHandler,
 ) -> Box<dyn OutboundHandler> {
     Box::new(BorrowedOutboundHandlerAdapter { inner: handler })
 }
 
 /// 代理入站 Handler，将所有调用转发给底层 `'static` 引用。
 struct BorrowedInboundHandlerAdapter {
-    inner: &'static (dyn InboundHandler),
+    inner: &'static dyn InboundHandler,
 }
 
 impl InboundHandler for BorrowedInboundHandlerAdapter {
@@ -187,7 +187,7 @@ impl InboundHandler for BorrowedInboundHandlerAdapter {
 
 /// 代理出站 Handler，将所有调用转发给底层 `'static` 引用。
 struct BorrowedOutboundHandlerAdapter {
-    inner: &'static (dyn OutboundHandler),
+    inner: &'static dyn OutboundHandler,
 }
 
 impl OutboundHandler for BorrowedOutboundHandlerAdapter {

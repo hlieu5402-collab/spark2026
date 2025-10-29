@@ -1,17 +1,17 @@
-use alloc::borrow::ToOwned;
-use alloc::{borrow::Cow, boxed::Box, format, sync::Arc, vec::Vec};
+//! 优雅关闭契约类型：在 `spark-core` 内保存跨宿主实现的共享语义。
+//!
+//! # 教案式导航
+//! - **定位（Where）**：本模块仅包含轻量类型，不再绑定任何运行时或日志依赖；实际协调流程迁移至
+//!   `spark_hosting::shutdown` 模块。
+//! - **动机（Why）**：确保所有实现均复用统一的枚举、结构体与回调签名，避免“契约 vs. 实现”分裂；
+//! - **扩展（How）**：宿主方可在 `spark-hosting` 或自定义扩展中组合这些类型构建关闭协调器。
+
+use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
 use core::{fmt, time::Duration};
 
-use crate::{
-    SparkError,
-    future::BoxFuture,
-    observability::{
-        OpsEvent, OwnedAttributeSet, TraceContext, keys::logging::shutdown as shutdown_fields,
-    },
-    runtime::{AsyncRuntime, CoreServices, MonotonicTimePoint},
-};
-
+use crate::SparkError;
 use crate::contract::{CloseReason, Deadline};
+use crate::future::BoxFuture;
 use crate::pipeline::Channel;
 
 type TriggerFn = dyn Fn(&CloseReason, Option<Deadline>) + Send + Sync + 'static;
@@ -132,6 +132,23 @@ impl GracefulShutdownReport {
             .filter(|record| matches!(record.status, GracefulShutdownStatus::Failed(_)))
             .count()
     }
+
+    /// 构造新的关闭报告。
+    ///
+    /// - **输入参数**：业务关闭原因、可选截止时间、目标关闭记录列表；
+    /// - **使用场景**：宿主实现（例如 `spark-hosting`）在完成协调流程后生成最终报告；
+    /// - **注意事项**：调用方应确保 `results` 顺序与注册顺序一致，便于交叉对齐日志与追踪。
+    pub fn new(
+        reason: CloseReason,
+        deadline: Option<Deadline>,
+        results: Vec<GracefulShutdownRecord>,
+    ) -> Self {
+        Self {
+            reason,
+            deadline,
+            results,
+        }
+    }
 }
 
 /// `GracefulShutdownTarget` 描述协调器可管理的单个关闭对象。
@@ -200,6 +217,55 @@ impl GracefulShutdownTarget {
             force_close: Box::new(force_close),
         }
     }
+
+    /// 返回注册时记录的目标标识。
+    ///
+    /// - **用途**：日志与指标在触发关闭事件时需要引用该标识；
+    /// - **注意**：返回值为借用，调用方若需延长生命周期请显式克隆。
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// 触发优雅关闭回调。
+    ///
+    /// - **契约**：调用必须无阻塞，且允许重复触发（幂等）；
+    /// - **行为**：直接转发给注册时提供的闭包，实现层负责派发 FIN 等操作。
+    pub fn trigger(&self, reason: &CloseReason, deadline: Option<Deadline>) {
+        (self.trigger_graceful)(reason, deadline);
+    }
+
+    /// 构造等待关闭完成的 Future。
+    ///
+    /// - **返回值**：与 `for_callbacks` 注册时一致的 `BoxFuture`；
+    /// - **风险提示**：调用者负责在 Future 被丢弃时触发硬关闭或记录日志。
+    pub fn await_closed(&self) -> BoxFuture<'static, crate::Result<(), SparkError>> {
+        (self.await_closed)()
+    }
+
+    /// 执行硬关闭回调。
+    ///
+    /// - **用途**：用于截止时间到期或上游指令要求强制关闭的场景；
+    /// - **要求**：实现需保证幂等性，可选择记录额外日志。
+    pub fn force_close(&self) {
+        (self.force_close)();
+    }
+
+    /// 消耗目标并生成关闭记录。
+    ///
+    /// - **输入**：目标最终状态与耗时；
+    /// - **输出**：对应的 [`GracefulShutdownRecord`]；
+    /// - **后置条件**：内部回调被丢弃，调用方不能再触发关闭行为。
+    pub fn into_record(
+        self,
+        status: GracefulShutdownStatus,
+        elapsed: Duration,
+    ) -> GracefulShutdownRecord {
+        GracefulShutdownRecord {
+            label: self.label,
+            status,
+            elapsed,
+        }
+    }
 }
 
 impl fmt::Debug for GracefulShutdownTarget {
@@ -207,248 +273,5 @@ impl fmt::Debug for GracefulShutdownTarget {
         f.debug_struct("GracefulShutdownTarget")
             .field("label", &self.label)
             .finish_non_exhaustive()
-    }
-}
-
-/// `GracefulShutdownCoordinator` 负责串联宿主的优雅关闭流程。
-///
-/// # 设计初衷（Why）
-/// - T19 任务要求“所有长寿对象可通知关闭并等待完成”，协调器提供统一入口管理这些对象；
-/// - 将日志、运维事件、超时策略集中，实现停机流程“可观测、可审计、可测试”。
-///
-/// # 行为逻辑（How）
-/// 1. `register_target` / `register_channel` 注册需要协同关闭的对象；
-/// 2. `shutdown`：
-///    - 广播 `ShutdownTriggered` 运维事件，并记录日志；
-///    - 向所有目标并行发出优雅关闭通知；
-///    - 逐个等待关闭完成，期间根据整体截止时间创建 `sleep` 计时；
-///    - 若 Future 返回错误或超时，分别记录 `Failed` / `ForcedTimeout`；
-///    - 汇总 [`GracefulShutdownReport`] 返回调用方。
-///
-/// # 契约说明（What）
-/// - **前置条件**：`CoreServices` 内的 `runtime`、`logger`、`ops_bus` 必须有效；
-/// - **输入**：`reason` 表示业务关闭原因，`deadline` 为整体截止时间（可选）；
-/// - **后置条件**：所有目标至少被通知一次，超时路径会调用硬关闭钩子并输出 WARN 日志。
-///
-/// # 风险提示（Trade-offs）
-/// - 目前按注册顺序依次等待目标完成，若需要并发等待可在后续引入 `join` 优化；
-/// - 当 `deadline` 已过期时会立即触发硬关闭，确保停机流程不会卡死，但可能造成未刷写数据丢失，应结合日志评估影响。
-pub struct GracefulShutdownCoordinator {
-    services: CoreServices,
-    targets: Vec<GracefulShutdownTarget>,
-    audit_traces: Vec<TraceContext>,
-}
-
-impl GracefulShutdownCoordinator {
-    /// 使用宿主运行时服务构造协调器。
-    pub fn new(services: CoreServices) -> Self {
-        Self {
-            services,
-            targets: Vec::new(),
-            audit_traces: Vec::new(),
-        }
-    }
-
-    /// 注册关闭目标。
-    pub fn register_target(&mut self, target: GracefulShutdownTarget) {
-        self.targets.push(target);
-    }
-
-    /// 以 Channel 注册关闭目标的便捷方法。
-    pub fn register_channel(
-        &mut self,
-        label: impl Into<Cow<'static, str>>,
-        channel: Arc<dyn Channel>,
-    ) {
-        self.register_target(GracefulShutdownTarget::for_channel(label, channel));
-    }
-
-    /// 附加审计链路追踪上下文，便于停机日志与分布式追踪关联。
-    pub fn add_audit_trace(&mut self, trace: TraceContext) {
-        self.audit_traces.push(trace);
-    }
-
-    /// 发起优雅关闭并等待结果，返回结构化报告。
-    pub fn shutdown(
-        mut self,
-        reason: CloseReason,
-        deadline: Option<Deadline>,
-    ) -> BoxFuture<'static, GracefulShutdownReport> {
-        let services = self.services.clone();
-        let targets = core::mem::take(&mut self.targets);
-        let traces = core::mem::take(&mut self.audit_traces);
-
-        Box::pin(async move {
-            let runtime = Arc::clone(&services.runtime);
-            let logger = Arc::clone(&services.logger);
-            let ops_bus = Arc::clone(&services.ops_bus);
-
-            let now = runtime.now();
-            let absolute_deadline = deadline.and_then(|d| d.instant());
-            let deadline_duration = absolute_deadline
-                .map(|point| point.saturating_duration_since(now))
-                .unwrap_or(Duration::MAX);
-
-            ops_bus.broadcast(OpsEvent::ShutdownTriggered {
-                deadline: deadline_duration,
-            });
-
-            let mut fields = OwnedAttributeSet::new();
-            fields.push_owned(shutdown_fields::FIELD_REASON_CODE, reason.code().to_owned());
-            fields.push_owned(
-                shutdown_fields::FIELD_REASON_MESSAGE,
-                reason.message().to_owned(),
-            );
-            fields.push_owned(shutdown_fields::FIELD_TARGET_COUNT, targets.len() as u64);
-            fields.push_owned(
-                shutdown_fields::FIELD_DEADLINE_MS,
-                deadline_duration.as_millis() as i64,
-            );
-            let message = format!(
-                "graceful shutdown initiated (code={}, targets={})",
-                reason.code(),
-                targets.len()
-            );
-            logger.info_with_fields(message.as_str(), fields.as_slice(), traces.first());
-
-            for trace in traces.iter().skip(1) {
-                logger.trace("shutdown trace-context attached", Some(trace));
-            }
-
-            for target in &targets {
-                (target.trigger_graceful)(&reason, deadline);
-            }
-
-            let mut results = Vec::with_capacity(targets.len());
-            for target in targets {
-                let start = runtime.now();
-                let wait_future = TimeoutFuture::new(
-                    (target.await_closed)(),
-                    absolute_deadline,
-                    Arc::clone(&runtime),
-                );
-
-                match wait_future.await {
-                    TimeoutOutcome::Completed(Ok(())) => {
-                        let elapsed = runtime.now().saturating_duration_since(start);
-                        results.push(GracefulShutdownRecord {
-                            label: target.label,
-                            status: GracefulShutdownStatus::Completed,
-                            elapsed,
-                        });
-                    }
-                    TimeoutOutcome::Completed(Err(err)) => {
-                        let mut warn_fields = OwnedAttributeSet::new();
-                        warn_fields.push_owned(
-                            shutdown_fields::FIELD_TARGET_LABEL,
-                            target.label.clone().into_owned(),
-                        );
-                        warn_fields.push_owned(shutdown_fields::FIELD_ERROR_CODE, err.code());
-                        logger.error_with_fields(
-                            "graceful shutdown failed",
-                            Some(&err),
-                            warn_fields.as_slice(),
-                            err.trace_context(),
-                        );
-                        let elapsed = runtime.now().saturating_duration_since(start);
-                        results.push(GracefulShutdownRecord {
-                            label: target.label,
-                            status: GracefulShutdownStatus::Failed(err),
-                            elapsed,
-                        });
-                    }
-                    TimeoutOutcome::TimedOut => {
-                        (target.force_close)();
-                        let elapsed = runtime.now().saturating_duration_since(start);
-                        let mut warn_fields = OwnedAttributeSet::new();
-                        warn_fields.push_owned(
-                            shutdown_fields::FIELD_TARGET_LABEL,
-                            target.label.clone().into_owned(),
-                        );
-                        warn_fields.push_owned(
-                            shutdown_fields::FIELD_ELAPSED_MS,
-                            elapsed.as_millis() as i64,
-                        );
-                        logger.warn_with_fields(
-                            "graceful shutdown timed out and forced",
-                            warn_fields.as_slice(),
-                            None,
-                        );
-                        results.push(GracefulShutdownRecord {
-                            label: target.label,
-                            status: GracefulShutdownStatus::ForcedTimeout,
-                            elapsed,
-                        });
-                    }
-                }
-            }
-
-            GracefulShutdownReport {
-                reason,
-                deadline,
-                results,
-            }
-        })
-    }
-}
-
-/// 内部 Future，负责在目标 Future 与超时计时之间做竞赛。
-///
-/// # 设计动机（Why）
-/// - 避免引入额外依赖，在 `no_std + alloc` 环境下手工实现 `select` 语义；
-/// - 保证协调器能够在 Future 未完成时基于运行时计时器触发硬关闭。
-struct TimeoutFuture {
-    future: BoxFuture<'static, crate::Result<(), SparkError>>,
-    timer: Option<BoxFuture<'static, ()>>,
-}
-
-impl TimeoutFuture {
-    fn new(
-        future: BoxFuture<'static, crate::Result<(), SparkError>>,
-        deadline: Option<MonotonicTimePoint>,
-        runtime: Arc<dyn AsyncRuntime>,
-    ) -> Self {
-        let timer = deadline.map(|abs_deadline| {
-            let now = runtime.now();
-            let wait = abs_deadline.saturating_duration_since(now);
-            if wait.is_zero() {
-                let fut: BoxFuture<'static, ()> = Box::pin(async {});
-                fut
-            } else {
-                let driver = Arc::clone(&runtime);
-                let fut: BoxFuture<'static, ()> = Box::pin(async move {
-                    driver.sleep(wait).await;
-                });
-                fut
-            }
-        });
-
-        Self { future, timer }
-    }
-}
-
-enum TimeoutOutcome<T> {
-    Completed(T),
-    TimedOut,
-}
-
-impl core::future::Future for TimeoutFuture {
-    type Output = TimeoutOutcome<crate::Result<(), SparkError>>;
-
-    fn poll(
-        mut self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        if let core::task::Poll::Ready(result) = self.future.as_mut().poll(cx) {
-            return core::task::Poll::Ready(TimeoutOutcome::Completed(result));
-        }
-
-        if let Some(timer) = self.timer.as_mut()
-            && let core::task::Poll::Ready(()) = timer.as_mut().poll(cx)
-        {
-            return core::task::Poll::Ready(TimeoutOutcome::TimedOut);
-        }
-
-        core::task::Poll::Pending
     }
 }

@@ -34,7 +34,7 @@ fn main() {
     }
 }
 
-fn run() -> crate::Result<(), String> {
+fn run() -> spark_core::Result<(), String> {
     let mut raw_args: Vec<String> = env::args().skip(1).collect();
     raw_args.retain(|arg| arg != "--quick");
     let mut args = raw_args.into_iter();
@@ -93,7 +93,7 @@ fn replay_log(
     log_path: &PathBuf,
     state: &mut BTreeMap<ConfigKey, ConfigValue>,
     gap_report: Option<&PathBuf>,
-) -> crate::Result<(), String> {
+) -> spark_core::Result<(), String> {
     let file = File::open(log_path).map_err(|error| format!("打开日志失败: {error}"))?;
     let reader = BufReader::new(file);
 
@@ -146,7 +146,7 @@ fn apply_changes(state: &mut BTreeMap<ConfigKey, ConfigValue>, diff: &AuditChang
     }
 }
 
-fn load_state(path: &PathBuf) -> crate::Result<BTreeMap<ConfigKey, ConfigValue>, io::Error> {
+fn load_state(path: &PathBuf) -> spark_core::Result<BTreeMap<ConfigKey, ConfigValue>, io::Error> {
     let file = File::open(path)?;
     let entries: Vec<AuditChangeEntry> = serde_json::from_reader(file)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
@@ -160,7 +160,7 @@ fn load_state(path: &PathBuf) -> crate::Result<BTreeMap<ConfigKey, ConfigValue>,
 fn write_state(
     path: &PathBuf,
     state: &BTreeMap<ConfigKey, ConfigValue>,
-) -> crate::Result<(), io::Error> {
+) -> spark_core::Result<(), io::Error> {
     let entries: Vec<AuditChangeEntry> = state
         .iter()
         .map(|(key, value)| AuditChangeEntry {
@@ -180,7 +180,7 @@ fn write_gap_report(
     path: &PathBuf,
     expected_hash: &str,
     event: &AuditEventV1,
-) -> crate::Result<(), io::Error> {
+) -> spark_core::Result<(), io::Error> {
     let report = json!({
         "expected_prev_hash": expected_hash,
         "incoming_prev_hash": event.state_prev_hash,

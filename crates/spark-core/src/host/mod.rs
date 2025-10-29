@@ -33,6 +33,5 @@ pub use provisioning::{
     ConfigChange, ConfigConsumer, ConfigEnvelope, ConfigQuery, ProvisioningOutcome,
 };
 pub use shutdown::{
-    GracefulShutdownCoordinator, GracefulShutdownRecord, GracefulShutdownReport,
-    GracefulShutdownStatus, GracefulShutdownTarget,
+    GracefulShutdownRecord, GracefulShutdownReport, GracefulShutdownStatus, GracefulShutdownTarget,
 };

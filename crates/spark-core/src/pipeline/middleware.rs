@@ -79,7 +79,7 @@ pub trait ChainBuilder: Sealed {
     fn register_inbound(&mut self, label: &str, handler: Box<dyn InboundHandler>);
 
     /// 以 `'static` 借用方式注册入站 Handler，默认桥接到拥有型入口。
-    fn register_inbound_static(&mut self, label: &str, handler: &'static (dyn InboundHandler)) {
+    fn register_inbound_static(&mut self, label: &str, handler: &'static dyn InboundHandler) {
         self.register_inbound(label, handler::box_inbound_from_static(handler));
     }
 
@@ -87,7 +87,7 @@ pub trait ChainBuilder: Sealed {
     fn register_outbound(&mut self, label: &str, handler: Box<dyn OutboundHandler>);
 
     /// 以 `'static` 借用方式注册出站 Handler。
-    fn register_outbound_static(&mut self, label: &str, handler: &'static (dyn OutboundHandler)) {
+    fn register_outbound_static(&mut self, label: &str, handler: &'static dyn OutboundHandler) {
         self.register_outbound(label, handler::box_outbound_from_static(handler));
     }
 }

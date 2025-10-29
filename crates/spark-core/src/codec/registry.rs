@@ -151,7 +151,7 @@ pub trait CodecRegistry: Send + Sync + 'static + Sealed {
     /// 注册 `'static` 生命周期的对象层编解码工厂。
     fn register_static(
         &self,
-        factory: &'static (dyn DynCodecFactory),
+        factory: &'static dyn DynCodecFactory,
     ) -> crate::Result<(), CoreError> {
         self.register(box_dyn_codec_factory_from_static(factory))
     }
@@ -172,13 +172,13 @@ pub trait CodecRegistry: Send + Sync + 'static + Sealed {
 
 /// 将 `'static` DynCodecFactory 引用适配为拥有型 Box，便于在借用入口与原有 API 之间复用。
 fn box_dyn_codec_factory_from_static(
-    factory: &'static (dyn DynCodecFactory),
+    factory: &'static dyn DynCodecFactory,
 ) -> Box<dyn DynCodecFactory> {
     Box::new(BorrowedDynCodecFactory { inner: factory })
 }
 
 struct BorrowedDynCodecFactory {
-    inner: &'static (dyn DynCodecFactory),
+    inner: &'static dyn DynCodecFactory,
 }
 
 impl DynCodecFactory for BorrowedDynCodecFactory {

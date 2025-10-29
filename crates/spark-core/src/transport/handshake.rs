@@ -511,6 +511,7 @@ impl fmt::Display for HandshakeError {
 }
 
 impl crate::Error for HandshakeError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn crate::Error + 'static)> {
         None
     }

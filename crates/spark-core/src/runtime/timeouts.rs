@@ -236,6 +236,7 @@ impl fmt::Display for TimeoutConfigError {
 }
 
 impl crate::Error for TimeoutConfigError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn crate::Error + 'static)> {
         None
     }

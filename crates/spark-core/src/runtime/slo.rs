@@ -471,6 +471,7 @@ impl fmt::Display for SloPolicyConfigError {
 }
 
 impl Error for SloPolicyConfigError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }

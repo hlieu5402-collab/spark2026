@@ -16,8 +16,10 @@ pub mod builder;
 mod host;
 mod pipeline;
 mod service;
+pub mod shutdown;
 
 pub use builder::{HostBuildError, HostBuilder, HostBuilderError};
 pub use host::Host;
 pub use pipeline::{MiddlewareRegistrationError, MiddlewareRegistry};
 pub use service::{ServiceEntry, ServiceFactory, ServiceRegistrationError, ServiceRegistry};
+pub use shutdown::GracefulShutdownCoordinator;
