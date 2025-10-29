@@ -4,7 +4,9 @@
 组合，以确定性方式重现 FIN、半关闭、超时与错误路径。
 
 ## MockTimer + ShutdownDriver 设计
-- **意图**：在无需真实线程调度的前提下，控制 `GracefulShutdownCoordinator` 的计时器与 Future 轮询顺序，避免竞态。
+- **意图**：在无需真实线程调度的前提下，控制
+  [`GracefulShutdownCoordinator`](spark_hosting::shutdown::GracefulShutdownCoordinator)
+  的计时器与 Future 轮询顺序，避免竞态。
 - **核心逻辑**：
   1. `ShutdownDriver` 保存 `shutdown()` 返回的 Future，允许测试在 `Poll::Pending` 状态插入断言；
   2. `MockTimer` 拦截 `sleep(duration)` 调用，返回可手动 `fire()` 的句柄，并记录触发顺序；

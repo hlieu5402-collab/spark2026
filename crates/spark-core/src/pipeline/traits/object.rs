@@ -53,7 +53,7 @@ impl ControllerHandle {
     }
 
     /// 以 trait 对象形式访问内部控制器。
-    pub fn as_dyn(&self) -> &(dyn Controller<HandleId = ControllerHandleId>) {
+    pub fn as_dyn(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
         &*self.inner
     }
 }
@@ -72,7 +72,7 @@ impl Controller for ControllerHandle {
     fn register_inbound_handler_static(
         &self,
         label: &str,
-        handler: &'static (dyn crate::pipeline::InboundHandler),
+        handler: &'static dyn crate::pipeline::InboundHandler,
     ) {
         self.inner.register_inbound_handler_static(label, handler)
     }
@@ -88,7 +88,7 @@ impl Controller for ControllerHandle {
     fn register_outbound_handler_static(
         &self,
         label: &str,
-        handler: &'static (dyn crate::pipeline::OutboundHandler),
+        handler: &'static dyn crate::pipeline::OutboundHandler,
     ) {
         self.inner.register_outbound_handler_static(label, handler)
     }

@@ -383,7 +383,7 @@ impl TcpChannel {
     /// ## 意图（Why）
     /// - 满足“先写半关闭、等待对端确认后再释放资源”的协议契约，确保数据不会
     ///   在关闭过程中被截断；
-    /// - 为 [`GracefulShutdownCoordinator`](spark_core::host::shutdown::GracefulShutdownCoordinator)
+    /// - 为 `GracefulShutdownCoordinator`（定义于 `spark_hosting::shutdown` 模块）
     ///   等上层组件提供可等待的半关闭原语。
     ///
     /// ## 体系位置（Architecture）

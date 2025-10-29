@@ -30,6 +30,7 @@ pub trait DynCodec: Send + Sync + 'static + Sealed {
     fn descriptor(&self) -> &CodecDescriptor;
 
     /// 对象安全的编码入口。
+    #[allow(unused_parens)]
     fn encode_dyn(
         &self,
         item: &(dyn Any + Send + Sync),
@@ -92,6 +93,7 @@ where
         self.inner.descriptor()
     }
 
+    #[allow(unused_parens)]
     fn encode_dyn(
         &self,
         item: &(dyn Any + Send + Sync),

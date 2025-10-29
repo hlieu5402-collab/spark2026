@@ -232,6 +232,7 @@ impl fmt::Display for CoreError {
 }
 
 impl Error for CoreError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.cause
             .as_ref()
@@ -446,6 +447,7 @@ impl fmt::Display for SparkError {
 }
 
 impl Error for SparkError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(self.core() as &dyn Error)
     }
@@ -532,6 +534,7 @@ impl fmt::Display for ImplError {
 }
 
 impl Error for ImplError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         if let Some(ref cause) = self.source_cause {
             Some(cause.as_ref())
@@ -751,6 +754,7 @@ impl fmt::Display for DomainError {
 }
 
 impl Error for DomainError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.impl_cause
             .as_ref()

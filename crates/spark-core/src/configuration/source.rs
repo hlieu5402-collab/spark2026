@@ -201,13 +201,13 @@ where
 
 /// 将 `'static` 配置源引用转换为拥有型 `Box`，用于桥接借用/拥有双入口。
 pub(crate) fn boxed_static_source(
-    source: &'static (dyn DynConfigurationSource),
+    source: &'static dyn DynConfigurationSource,
 ) -> Box<dyn DynConfigurationSource> {
     Box::new(BorrowedConfigurationSource { inner: source })
 }
 
 struct BorrowedConfigurationSource {
-    inner: &'static (dyn DynConfigurationSource),
+    inner: &'static dyn DynConfigurationSource,
 }
 
 impl DynConfigurationSource for BorrowedConfigurationSource {

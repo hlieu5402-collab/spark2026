@@ -3,7 +3,7 @@ use crate::support::monotonic;
 use parking_lot::Mutex;
 use spark_core::contract::{CloseReason, Deadline};
 use spark_core::future::Stream;
-use spark_core::host::{GracefulShutdownCoordinator, GracefulShutdownStatus};
+use spark_core::host::GracefulShutdownStatus;
 use spark_core::observability::{
     Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram, LogRecord, LogSeverity,
     Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
@@ -19,6 +19,7 @@ use spark_core::runtime::{
 };
 use spark_core::test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogram};
 use spark_core::{BoxStream, SparkError};
+use spark_hosting::shutdown::GracefulShutdownCoordinator;
 use std::any::Any;
 use std::collections::VecDeque;
 use std::future::Future;

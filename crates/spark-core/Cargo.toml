@@ -47,6 +47,7 @@ spark-contract-tests = { workspace = true }
 futures = { workspace = true, features = ["executor"] }
 serde_json = { workspace = true }
 toml = { workspace = true }
+spark-hosting = { workspace = true, features = ["std"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(spark_loom)'] }
@@ -110,20 +111,6 @@ path = "tests/time/mod.rs"
 [[test]]
 name = "retry"
 path = "tests/retry/mod.rs"
-
-[[bin]]
-name = "audit_replay"
-path = "src/bin/audit_replay.rs"
-required-features = ["std", "std_json"]
-bench = false
-test = false
-
-[[bin]]
-name = "cancel_deadline_slo"
-path = "src/bin/cancel_deadline_slo.rs"
-required-features = ["std", "std_json"]
-bench = false
-test = false
 
 [[bin]]
 name = "gen_error_doc"

@@ -250,6 +250,7 @@ use core::fmt;
 /// - 调用方需注意：若底层错误不提供 `source`，则错误链会在此处终止，这是设计上允许的边界情况。
 pub trait Error: fmt::Debug + fmt::Display + crate::sealed::Sealed {
     /// 返回当前错误的上游来源。
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn Error + 'static)>;
 }
 
@@ -257,6 +258,7 @@ impl<E> Error for Box<E>
 where
     E: Error + ?Sized,
 {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         (**self).source()
     }

@@ -13,9 +13,8 @@ use spark_core::buffer::BufferPool;
 use spark_core::contract::{CallContext, CloseReason, Deadline};
 use spark_core::error::CoreError;
 use spark_core::future::{BoxFuture, Stream};
-use spark_core::host::{
-    GracefulShutdownCoordinator, GracefulShutdownStatus, GracefulShutdownTarget,
-};
+use spark_core::host::{GracefulShutdownStatus, GracefulShutdownTarget};
+use spark_hosting::shutdown::GracefulShutdownCoordinator;
 use spark_core::observability::{
     AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram, LogRecord,
     LogSeverity, Logger, MetricAttributeValue, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,

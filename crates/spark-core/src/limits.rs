@@ -635,6 +635,7 @@ impl fmt::Display for LimitConfigError {
 }
 
 impl crate::Error for LimitConfigError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn crate::Error + 'static)> {
         None
     }

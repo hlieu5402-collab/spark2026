@@ -260,6 +260,7 @@ impl fmt::Display for KeyRetrievalError {
 }
 
 impl crate::Error for KeyRetrievalError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn crate::Error + 'static)> {
         None
     }

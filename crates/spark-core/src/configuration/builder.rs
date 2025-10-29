@@ -612,6 +612,7 @@ impl fmt::Display for BuildError {
 }
 
 impl crate::Error for BuildError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn crate::Error + 'static)> {
         self.cause.as_ref().map(|error| error as &dyn crate::Error)
     }
@@ -757,7 +758,7 @@ impl ConfigurationBuilder {
     /// - **后置条件**：Builder 仅持有对单例的引用包装，不负责析构。
     pub fn register_source_static(
         &mut self,
-        source: &'static (dyn DynConfigurationSource),
+        source: &'static dyn DynConfigurationSource,
     ) -> crate::Result<(), SourceRegistrationError> {
         self.register_source(super::source::boxed_static_source(source))
     }

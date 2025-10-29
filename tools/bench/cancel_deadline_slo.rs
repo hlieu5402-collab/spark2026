@@ -7,8 +7,8 @@
 //!
 //! # 工作机制（How）
 //! - 构建两种场景：
-//!   1. `manual_call_context`：直接克隆 [`CallContext`](spark_core::contract::CallContext) 并轮询取消标记；
-//!   2. `runtime_sugar_context`：通过 [`rt::CallContext`](spark_core::rt::CallContext) 语法糖访问同一取消标记，覆盖 DX 包装层；
+//!   1. `manual_call_context`：直接克隆 [`CallContext`] 并轮询取消标记；
+//!   2. `runtime_sugar_context`：通过 [`rt::CallContext`] 语法糖访问同一取消标记，覆盖 DX 包装层；
 //! - 每轮基准都会：
 //!   - 创建带 50ms 截止时间的 `CallContext`；
 //!   - 生成 `concurrency` 份视图并同步触发 `cancel()`；

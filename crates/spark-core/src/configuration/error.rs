@@ -86,6 +86,7 @@ impl fmt::Display for ConfigurationError {
 }
 
 impl Error for ConfigurationError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
@@ -141,6 +142,7 @@ impl fmt::Display for SourceRegistrationError {
 }
 
 impl Error for SourceRegistrationError {
+    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }

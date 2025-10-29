@@ -9,6 +9,7 @@ members = [
     "crates/spark-contract-tests",
     "crates/spark-contract-tests-macros",
     "crates/spark-core",
+    "crates/spark-examples",
     "crates/spark-buffer",
     "crates/spark-hosting",
     "crates/spark-ember",
@@ -65,6 +66,7 @@ socket2 = "0.6"
 spark-contract-tests = { path = "crates/spark-contract-tests" }
 spark-contract-tests-macros = { path = "crates/spark-contract-tests-macros" }
 spark-core = { path = "crates/spark-core", default-features = false }
+spark-hosting = { path = "crates/spark-hosting", default-features = false }
 spark-macros = { path = "crates/spark-macros" }
 spark-otel = { path = "crates/spark-otel" }
 spark-codecs = { path = "crates/spark-codecs", default-features = false }
