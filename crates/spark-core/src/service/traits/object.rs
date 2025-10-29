@@ -4,7 +4,7 @@ use core::fmt;
 use crate::{
     SparkError, async_trait,
     buffer::PipelineMessage,
-    context::ExecutionContext,
+    context::Context,
     contract::{CallContext, CloseReason},
     sealed::Sealed,
     status::PollReady,
@@ -41,7 +41,7 @@ pub trait DynService: Send + Sync + Sealed {
     /// 检查对象层服务是否就绪。
     fn poll_ready_dyn(
         &mut self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         cx: &mut core::task::Context<'_>,
     ) -> PollReady<SparkError>;
 
@@ -134,7 +134,7 @@ where
 {
     fn poll_ready_dyn(
         &mut self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         cx: &mut core::task::Context<'_>,
     ) -> PollReady<SparkError> {
         self.inner.poll_ready(ctx, cx)

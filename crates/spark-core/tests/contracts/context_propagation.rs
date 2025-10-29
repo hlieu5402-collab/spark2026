@@ -16,7 +16,7 @@ use spark_core::contract::{
     Budget, BudgetKind, CallContext, Cancellation, Deadline, SecurityContextSnapshot,
     DEFAULT_OBSERVABILITY_CONTRACT,
 };
-use spark_core::context::ExecutionContext;
+use spark_core::context::Context;
 use spark_core::error::codes;
 use spark_core::future::BoxFuture;
 use spark_core::observability::trace::{TraceContext, TraceFlags};
@@ -353,7 +353,7 @@ struct StageObservation {
 }
 
 impl StageObservation {
-    fn from_execution(stage: Stage, ctx: &ExecutionContext<'_>) -> Self {
+    fn from_execution(stage: Stage, ctx: &Context<'_>) -> Self {
         let deadline_ms = ctx
             .deadline()
             .instant()
@@ -495,7 +495,7 @@ struct RecordingServiceCore {
 }
 
 impl RecordingServiceCore {
-    fn record_execution(&self, ctx: &ExecutionContext<'_>) {
+    fn record_execution(&self, ctx: &Context<'_>) {
         self.events
             .lock()
             .expect("写入阶段快照时锁应可用")
@@ -517,7 +517,7 @@ impl Service<PipelineMessage> for RecordingServiceHandle {
 
     fn poll_ready(
         &mut self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         _: &mut TaskContext<'_>,
     ) -> spark_core::status::PollReady<Self::Error> {
         self.core.record_execution(ctx);
@@ -668,7 +668,7 @@ impl TransportFactory for RecordingTransportFactory {
 
     type ConnectFuture<'a> = core::future::Ready<spark_core::Result<Self::Channel, CoreError>> where Self: 'a;
 
-    fn scheme(&self, ctx: &ExecutionContext<'_>) -> &'static str {
+    fn scheme(&self, ctx: &Context<'_>) -> &'static str {
         self.events
             .lock()
             .expect("传输阶段锁应可用")
@@ -678,7 +678,7 @@ impl TransportFactory for RecordingTransportFactory {
 
     fn bind<P>(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         _config: ListenerConfig,
         _pipeline_factory: Arc<P>,
     ) -> Self::BindFuture<'_, P>
@@ -698,7 +698,7 @@ impl TransportFactory for RecordingTransportFactory {
 
     fn connect(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         _intent: ConnectionIntent,
         _discovery: Option<Arc<dyn spark_core::cluster::ServiceDiscovery>>,
     ) -> Self::ConnectFuture<'_> {
@@ -729,7 +729,7 @@ impl TestServerTransport {
 impl ServerTransport for TestServerTransport {
     type ShutdownFuture<'a> = core::future::Ready<spark_core::Result<(), CoreError>> where Self: 'a;
 
-    fn local_addr(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
+    fn local_addr(&self, ctx: &Context<'_>) -> TransportSocketAddr {
         self.events
             .lock()
             .expect("传输阶段锁应可用")
@@ -739,7 +739,7 @@ impl ServerTransport for TestServerTransport {
 
     fn shutdown(
         &self,
-        _ctx: &ExecutionContext<'_>,
+        _ctx: &Context<'_>,
         _plan: ListenerShutdown,
     ) -> Self::ShutdownFuture<'_> {
         core::future::ready(Ok(()))

@@ -124,6 +124,8 @@ pub use configuration::{
     SnapshotLayer, SnapshotMetadata, SnapshotProfile, SnapshotValue, SourceMetadata,
     ValidationFinding, ValidationReport, ValidationState,
 };
+pub use context::Context;
+#[allow(deprecated)]
 pub use context::ExecutionContext;
 pub use contract::{
     CallContext, CallContextBuilder, Cancellation, DEFAULT_OBSERVABILITY_CONTRACT, Deadline,

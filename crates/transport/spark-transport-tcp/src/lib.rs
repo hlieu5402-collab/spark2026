@@ -12,7 +12,7 @@
 
 ## 核心契约（What）
 - **输入条件**：调用方必须在 Tokio 运行时中使用本实现，并显式传递
-  `CallContext`/`ExecutionContext`；
+  `CallContext`/`Context`；
 - **输出保障**：监听、通道读写、半关闭与背压检查均返回语义化结果，
   出错时附带稳定错误码及 [`ErrorCategory`](spark_core::error::ErrorCategory)；半关闭方向采用
   `spark-core::transport::ShutdownDirection` 统一表述。

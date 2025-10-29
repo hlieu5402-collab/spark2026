@@ -20,15 +20,15 @@ rg: error parsing flag -E: grep config error: unknown encoding: I
 rg: error parsing flag -E: grep config error: unknown encoding: I
 ```
 
-### 命令：`rg -n "fn .*\\(.*&ExecutionContext" crates/spark-core/src/transport/traits`
+### 命令：`rg -n "fn .*\\(.*&Context" crates/spark-core/src/transport/traits`
 
 ```
-crates/spark-core/src/transport/traits/generic.rs:60:    fn local_addr(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
-crates/spark-core/src/transport/traits/generic.rs:140:    fn scheme(&self, ctx: &ExecutionContext<'_>) -> &'static str;
-crates/spark-core/src/transport/traits/object.rs:54:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
-crates/spark-core/src/transport/traits/object.rs:110:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
-crates/spark-core/src/transport/traits/object.rs:160:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str;
-crates/spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str {
+crates/spark-core/src/transport/traits/generic.rs:60:    fn local_addr(&self, ctx: &Context<'_>) -> TransportSocketAddr;
+crates/spark-core/src/transport/traits/generic.rs:140:    fn scheme(&self, ctx: &Context<'_>) -> &'static str;
+crates/spark-core/src/transport/traits/object.rs:54:    fn local_addr_dyn(&self, ctx: &Context<'_>) -> TransportSocketAddr;
+crates/spark-core/src/transport/traits/object.rs:110:    fn local_addr_dyn(&self, ctx: &Context<'_>) -> TransportSocketAddr {
+crates/spark-core/src/transport/traits/object.rs:160:    fn scheme_dyn(&self, ctx: &Context<'_>) -> &'static str;
+crates/spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &Context<'_>) -> &'static str {
 ```
 
 ## DevX

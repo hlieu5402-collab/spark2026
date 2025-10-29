@@ -3,11 +3,11 @@
 
 use core::future::Future;
 use core::pin::pin;
-use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use core::task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker};
 
 use spark_core::SparkError;
 use spark_core::buffer::PipelineMessage;
-use spark_core::context::ExecutionContext;
+use spark_core::context::Context as ExecutionView;
 use spark_core::contract::CallContext;
 use spark_core::service::{
     AutoDynBridge, Decode, Encode, Service, bridge_to_box_service, type_mismatch_error,
@@ -72,8 +72,8 @@ impl Service<MyRequest> for MyService {
 
     fn poll_ready(
         &mut self,
-        _: &ExecutionContext<'_>,
-        _: &mut Context<'_>,
+        _: &ExecutionView<'_>,
+        _: &mut TaskContext<'_>,
     ) -> PollReady<Self::Error> {
         Poll::Ready(ReadyCheck::Ready(ReadyState::Ready))
     }
@@ -109,7 +109,7 @@ where
     F: Future,
 {
     let waker = noop_waker();
-    let mut cx = Context::from_waker(&waker);
+    let mut cx = TaskContext::from_waker(&waker);
     let mut future = pin!(future);
     match future.as_mut().poll(&mut cx) {
         Poll::Ready(result) => result,
@@ -131,7 +131,7 @@ fn into_dyn_bridge_roundtrip() {
     let dyn_service = Arc::get_mut(&mut arc).expect("bridge should hand out unique Arc");
 
     let waker = noop_waker();
-    let mut task_cx = Context::from_waker(&waker);
+    let mut task_cx = TaskContext::from_waker(&waker);
     let readiness = dyn_service.poll_ready_dyn(&call_ctx.execution(), &mut task_cx);
     match readiness {
         Poll::Ready(ReadyCheck::Ready(ReadyState::Ready)) => {}
