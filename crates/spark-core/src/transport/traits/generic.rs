@@ -14,6 +14,21 @@ use super::super::{
 
 /// 泛型层的监听器合约，描述服务端优雅关闭语义。
 ///
+/// # 契约维度速览
+/// - **语义**：统一监听生命周期 —— 启动后 `local_addr` 暴露绑定地址，`shutdown` 推进优雅关闭直至链接排空。
+/// - **错误**：所有失败返回 [`CoreError`]，常用错误码：`transport.bind_failed`、`transport.shutdown_failed`。
+/// - **并发**：实现需 `Send + Sync`，允许在多个控制协程中并发查询地址与发起关闭；内部状态更新需保持原子性。
+/// - **背压**：在关闭阶段可结合 [`BackpressureSignal::ShutdownPending`](crate::contract::BackpressureSignal::ShutdownPending) 向上游广播背压。
+/// - **超时**：`ListenerShutdown` 携带截止时间；实现应在 Future 中尊重 `deadline`，超时后返回 `CoreError`。
+/// - **取消**：`Context` 包含取消信号；Future 执行期间须监听 `ctx.cancellation()` 并在取消时停止等待。
+/// - **观测标签**：统一记录 `transport.listener`, `transport.addr`, `transport.shutdown_phase`，便于诊断关闭耗时。
+/// - **示例(伪码)**：
+///   ```text
+///   addr = listener.local_addr(ctx)
+///   metrics.record("listener.active", addr)
+///   await listener.shutdown(ctx, plan)
+///   ```
+///
 /// # 设计初衷（Why）
 /// - 为内建传输实现提供零虚分派路径，在热路径（大规模建连/关闭）下避免对象层额外开销。
 /// - 保持与对象层 [`super::object::DynServerTransport`] 等价的语义，方便插件或脚本重用相同行为。
@@ -84,6 +99,21 @@ pub trait ServerTransport: Send + Sync + 'static + Sealed {
 }
 
 /// 泛型层传输工厂，统一建连与监听流程。
+///
+/// # 契约维度速览
+/// - **语义**：向上暴露“协议标识 + 监听器 + 客户端通道”三元组，负责在 Transport 与 Pipeline 之间桥接控制面。
+/// - **错误**：所有失败需返回 [`CoreError`]，推荐错误码：`transport.scheme_mismatch`、`transport.connect_failed`、`transport.bind_failed`。
+/// - **并发**：工厂实现必须 `Send + Sync`；`bind`/`connect` 可在多个异步任务中同时调用，内部需确保资源竞态被序列化。
+/// - **背压**：当内部发现资源紧张（线程池、FD 用尽），应返回 `CoreError` 并建议上层传播 [`BackpressureSignal::Busy`](crate::contract::BackpressureSignal::Busy)。
+/// - **超时**：所有方法通过 [`Context`] 接收截止时间；实现应在 Future 内定期检查并在超时后返回 `CoreError`。
+/// - **取消**：[`Context`] 携带取消标记；`bind`/`connect` 的 Future 需在取消时尽快退出并回滚部分初始化。
+/// - **观测标签**：建议上报 `transport.scheme`、`transport.intent`、`transport.listener_addr`、`transport.channel_peer` 等标签。
+/// - **示例(伪码)**：
+///   ```text
+///   factory = registry.pick("tcp")
+///   server = await factory.bind(ctx, config, pipeline_factory)
+///   channel = await factory.connect(ctx, intent, discovery)
+///   ```
 ///
 /// # 设计初衷（Why）
 /// - 内建实现可完全使用泛型接口，避免 `BoxFuture` 与 trait object 带来的运行时开销；

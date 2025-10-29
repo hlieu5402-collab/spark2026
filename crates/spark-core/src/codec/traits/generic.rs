@@ -5,6 +5,21 @@ use crate::{CoreError, sealed::Sealed};
 
 /// `Codec` 统一封装编码与解码逻辑，是泛型层的零成本编解码契约。
 ///
+/// # 契约维度速览
+/// - **语义**：以单一 Trait 同时描述 `encode`/`decode`，配合 [`CodecDescriptor`](super::super::metadata::CodecDescriptor) 揭示内容类型、压缩、schema。
+/// - **错误**：所有失败返回 [`CoreError`]；常见码值包含 `protocol.decode`、`protocol.encode`、`protocol.type_mismatch`。
+/// - **并发**：实现需 `Send + Sync`，允许多个协程并发调用；若内部缓存状态，请使用原子或锁保护。
+/// - **背压**：编码/解码上下文暴露预算接口；当 `ctx.budget(BudgetKind::Flow)` 耗尽时，应返回 `CoreError` 并附带 `BusyReason`。
+/// - **超时**：上下文中的 `deadline()` 可用于限时编解码；实现应在可能阻塞的流程（压缩/解压）中检查并尽早失败。
+/// - **取消**：`DecodeContext`/`EncodeContext` 持有 [`Cancellation`](crate::contract::Cancellation)；长时间操作需定期轮询 `is_cancelled()` 并提前结束。
+/// - **观测标签**：统一打点 `codec.name`、`codec.phase`（`encode`/`decode`）、`codec.content_type`，便于跨实现聚合指标。
+/// - **示例(伪码)**：
+///   ```text
+///   ctx = EncodeContext::from(call_ctx)
+///   payload = codec.encode(&request, &mut ctx)?
+///   transport.write(payload)
+///   ```
+///
 /// # 设计初衷（Why）
 /// - 借鉴 `tokio-util::codec::Decoder + Encoder` 的组合模式，以单一 trait 同时表达双向能力；
 /// - 通过关联类型区分入站/出站业务对象，保证静态类型安全；

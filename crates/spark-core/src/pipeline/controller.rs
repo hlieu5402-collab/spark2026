@@ -359,6 +359,21 @@ impl Handler for OutboundHandlerSlot {
 /// - 在高负载场景下，Middleware 装配应尽量避免动态分配，可预先缓存 Handler 实例。
 /// - 若实现支持热更新，需保证 `install_middleware` 幂等且可回滚。
 pub trait Controller: Send + Sync + 'static + Sealed {
+    /// # 契约维度速览
+    /// - **语义**：`Controller` 代表 Pipeline 的运行时调度核心，负责 Handler/Middleware 装配、事件广播与热更新。
+    /// - **错误**：链路装配失败需返回 [`CoreError`]，建议使用 `pipeline.install_failed`、`pipeline.handler_conflict` 等错误码。
+    /// - **并发**：实现必须支持多线程同时操作（注册 Handler、广播事件），常用 `ArcSwap`/`Mutex` 维护一致性。
+    /// - **背压**：通过 [`Self::emit_read`]、[`Self::emit_writability_changed`] 等方法向上层反馈 [`BackpressureSignal`](crate::contract::BackpressureSignal) 映射的事件。
+    /// - **超时**：控制器自身不直接处理超时，但在安装 Middleware 时应尊重 `CallContext::deadline()` 并在耗时操作前检查。
+    /// - **取消**：当 `CallContext` 取消或 `ShutdownPending` 发出时，控制器应停止新的写入并驱动关闭流程。
+    /// - **观测标签**：统一记录 `pipeline.controller`, `pipeline.handler`, `pipeline.event`，用于日志与指标聚合。
+    /// - **示例(伪码)**：
+    ///   ```text
+    ///   controller.install_middleware(authz, services)
+    ///   controller.emit_read(message)
+    ///   controller.replace_handler(id, new_handler)
+    ///   ```
+    ///
     /// Handler 句柄类型，由具体实现指定。
     type HandleId: Copy + Eq + Send + Sync + 'static;
 

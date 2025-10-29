@@ -27,6 +27,22 @@ use core::fmt;
 
 /// `CoreError` 表示 `spark-core` 跨层共享的稳定错误域，是所有可观察错误的最终形态。
 ///
+/// # 契约维度速览
+/// - **语义**：统一错误码、消息与链路上下文，形成“域层 → 核心层”唯一稳定回传格式。
+/// - **错误**：自身即为错误结构；内部可携带底层 `cause`，并通过 `with_category`/`category` 映射到可重试、预算等语义。
+/// - **并发**：`CoreError` 实现 `Send + Sync + 'static`，可安全在多线程间传递；内部使用 `Arc` 持有可选追踪信息。
+/// - **背压**：结合 [`ErrorCategory::Retryable`] 与 [`RetryAdvice`] 转换为 [`BackpressureSignal`](crate::contract::BackpressureSignal)；错误本身不主动发出背压。
+/// - **超时**：错误分类矩阵可附带 [`RetryAdvice`]，调用方可在超时场景中据此安排退避窗口。
+/// - **取消**：当 `CallContext` 取消导致操作终止时，应构造 `CoreError` 并将 `code` 设置为 `contract.cancelled` 或等价语义。
+/// - **观测标签**：建议统一上报 `error.code`、`error.category`、`error.retryable`、`error.node_id`，并关联 `TraceContext`。
+/// - **示例(伪码)**：
+///   ```text
+///   let err = CoreError::new(codes::SERVICE_UNAVAILABLE, "backend drained")
+///       .with_category(ErrorCategory::Retryable);
+///   metrics.count("error", {"code": err.code()});
+///   return Err(err);
+///   ```
+///
 /// # 设计背景（Why）
 /// - 运行时、域服务与实现细节在不同层次产生的故障需要合流为统一的错误码，以便日志、指标与告警系统能够执行精确的自动化治理。
 /// - 框架仍需兼容 `no_std + alloc` 场景，因此不直接依赖 `std::error::Error`，而是复用 crate 内部定义的轻量抽象。

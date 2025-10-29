@@ -94,6 +94,20 @@ pub trait ChainBuilder: Sealed {
 
 /// Middleware 合约：以声明式方式将 Handler 注入 Controller。
 ///
+/// # 契约维度速览
+/// - **语义**：`configure` 接口负责描述 Handler 链路拓扑，`descriptor` 提供自描述元数据，保证热更新与 introspection 的一致性。
+/// - **错误**：`configure` 返回 [`CoreError`]；常见错误码为 `pipeline.middleware_conflict`、`pipeline.middleware_init_failed`。
+/// - **并发**：Middleware 实例需 `Send + Sync`；`configure` 可能在多个线程同时调用，内部状态必须以 `Arc`/锁保护或保持无状态。
+/// - **背压**：中间件应在 Handler 内遵守 [`BackpressureSignal`](crate::contract::BackpressureSignal) 语义，不在装配阶段自行短路背压。
+/// - **超时**：若装配需要访问外部配置，应使用 `CoreServices::timer` 与 [`CallContext::deadline()`](crate::contract::CallContext::deadline) 控制超时，超时即返回错误。
+/// - **取消**：当 Pipeline 关闭或部署回滚触发取消时，装配过程需检查取消标记并提前退出，避免遗留半初始化 Handler。
+/// - **观测标签**：`descriptor` 返回的 `name`/`category`/`summary` 将作为统一的观测标签，建议遵循 `vendor.component` 命名规范。
+/// - **示例(伪码)**：
+///   ```text
+///   middleware.configure(chain, services)?
+///   chain.register_inbound("authz", Box::new(AuthzHandler::new(policy)))
+///   ```
+///
 /// # 设计背景（Why）
 /// - 综合 Express Middleware、Envoy Filter、gRPC Interceptor、Tower Layer 的经验，通过 `configure` 方法实现可重入、可组合的链路装配。
 /// - 支持科研场景：可在 `configure` 中注入测量 Handler 或模型驱动的策略。
