@@ -21,8 +21,293 @@
 /// - 所有真实测试迁移至 `tests/` 目录中的集成测试。
 pub(crate) mod placeholder {}
 
-#[cfg(test)]
-mod sdp;
+/// UDP 主题 TCK 断言集合。
+///
+/// # 教案式说明
+/// - **意图（Why）**：集中维护对 UDP 传输实现的契约断言，便于在多个 transport crate 中复用，
+///   在实现发生回归时提供统一的阻断信号。
+/// - **架构定位**：模块位于 `spark-tck` 顶层，由各传输实现作为 Dev 依赖直接调用，属于
+///   "行为验证" 层，确保核心契约在外部实现中得到遵守。
+/// - **设计取舍**：所有断言均以 Tokio 异步测试形式实现，以保证与生产运行时一致，同时
+///   使用 `anyhow::Context` 提供更友好的错误信息，牺牲少量依赖体积换取调试效率。
+pub mod udp {
+    use std::{net::SocketAddr, str};
+
+    use anyhow::Context;
+    use tokio::net::UdpSocket;
+
+    use spark_core::transport::TransportSocketAddr;
+    use spark_transport_udp::{SipViaRportDisposition, UdpEndpoint};
+
+    /// 将 `TransportSocketAddr` 转换为标准库地址类型。
+    ///
+    /// - **意图（Why）**：`UdpEndpoint` 返回抽象地址；测试需转成 `std::net::SocketAddr`
+    ///   才能与 Tokio `UdpSocket` 交互。
+    /// - **流程（How）**：匹配传入枚举，仅支持 IPv4/IPv6，遇到未实现变体直接 panic，以
+    ///   暴露 TCK 尚未覆盖的新协议族。
+    /// - **契约（What）**：输入为 `TransportSocketAddr`；返回可用于标准库 IO 的地址。
+    ///   前置条件：地址变体必须是 `V4` 或 `V6`；后置条件：返回值可安全传入 Tokio API。
+    /// - **权衡（Trade-off）**：选择 panic 而非 `Result`，让开发者在引入新枚举时显式扩展
+    ///   TCK，避免悄然吞下未测试路径。
+    fn transport_to_std(addr: TransportSocketAddr) -> SocketAddr {
+        match addr {
+            TransportSocketAddr::V4 { addr, port } => SocketAddr::from((addr, port)),
+            TransportSocketAddr::V6 { addr, port } => {
+                SocketAddr::new(std::net::IpAddr::V6(std::net::Ipv6Addr::from(addr)), port)
+            }
+            _ => panic!("测试暂不支持额外的 TransportSocketAddr 变体"),
+        }
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    /// 验证 `UdpEndpoint` 能完成最小“绑定-发送-接收”闭环。
+    ///
+    /// - **意图（Why）**：确保 UDP 实现的基本收发路径正常，避免基础通信被破坏。
+    /// - **流程（How）**：
+    ///   1. 绑定服务端 `UdpEndpoint` 与客户端 `UdpSocket`；
+    ///   2. 客户端发送 `ping`，服务端读取并比对；
+    ///   3. 服务端使用 `return_route` 回复 `pong`，客户端验证来源与载荷；
+    ///   4. 在每一步通过 `anyhow::Context` 追加错误提示。
+    /// - **契约（What）**：函数无参数，返回 `anyhow::Result<()>`。
+    ///   前置条件：调用方需在 Tokio 多线程运行时内执行；后置条件：若成功返回则保证绑定、
+    ///   收发与返回路由均满足契约，否则断言或 IO 失败会立刻报错。
+    /// - **边界/权衡（Trade-offs & Gotchas）**：使用固定 `127.0.0.1`，避免依赖外网；
+    ///   缓冲固定为 1 KiB，若实现需要更大报文，应在 TCK 扩展前调整此值。
+    pub async fn assert_bind_send_recv() -> anyhow::Result<()> {
+        let endpoint = UdpEndpoint::bind(TransportSocketAddr::V4 {
+            addr: [127, 0, 0, 1],
+            port: 0,
+        })
+        .await?;
+        let server_addr = transport_to_std(endpoint.local_addr()?);
+
+        let client = UdpSocket::bind("127.0.0.1:0").await?;
+        let client_addr = client.local_addr()?;
+        let payload = b"ping";
+
+        client
+            .send_to(payload, server_addr)
+            .await
+            .context("客户端发送 ping 失败")?;
+
+        let mut buffer = vec![0u8; 1024];
+        let incoming = endpoint
+            .recv_from(&mut buffer)
+            .await
+            .context("服务端接收 ping 失败")?;
+
+        assert_eq!(&buffer[..incoming.len()], payload);
+        assert_eq!(incoming.peer().port(), client_addr.port());
+
+        let route = incoming.return_route().clone();
+        let response = b"pong";
+        endpoint
+            .send_to(response, &route)
+            .await
+            .context("服务端发送 pong 失败")?;
+
+        let mut recv_buffer = vec![0u8; 1024];
+        let (received, addr) = client
+            .recv_from(&mut recv_buffer)
+            .await
+            .context("客户端接收 pong 失败")?;
+
+        assert_eq!(addr, server_addr);
+        assert_eq!(&recv_buffer[..received], response);
+        assert_eq!(route.target().port(), client_addr.port());
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    /// 检查 `Via;rport` 回写逻辑是否符合 RFC 3581。
+    ///
+    /// - **意图（Why）**：SIP 终端依赖 `rport` 获得真实响应端口，若实现遗漏回写会造成
+    ///   长连接失败。
+    /// - **流程（How）**：
+    ///   1. 服务端绑定 `UdpEndpoint`，客户端发送带 `rport` 的 REGISTER 报文；
+    ///   2. 断言 TCK 捕获到 `SipViaRportDisposition::Requested`；
+    ///   3. 使用返回路由回复 200 OK，并验证响应头包含 `;rport=<客户端端口>`。
+    /// - **契约（What）**：返回 `anyhow::Result<()>`；无输入参数。
+    ///   前置条件：Tokio 运行时就绪；后置条件：成功返回表示 `return_route` 会写回真实端口。
+    /// - **权衡（Trade-offs & Gotchas）**：报文内容精简到最小字段，若未来实现要求额外头部，
+    ///   需同步更新此测试；解析 UTF-8 前已由 SIP 协议保证格式合法。
+    pub async fn assert_rport_round_trip() -> anyhow::Result<()> {
+        let endpoint = UdpEndpoint::bind(TransportSocketAddr::V4 {
+            addr: [127, 0, 0, 1],
+            port: 0,
+        })
+        .await?;
+        let server_addr = transport_to_std(endpoint.local_addr()?);
+
+        let client = UdpSocket::bind("127.0.0.1:0").await?;
+        let client_addr = client.local_addr()?;
+
+        let request = "REGISTER sip:spark.invalid SIP/2.0\r\nVia: SIP/2.0/UDP client.invalid;branch=z9hG4bK-1;rport\r\n\r\n";
+        client
+            .send_to(request.as_bytes(), server_addr)
+            .await
+            .context("客户端发送 SIP 请求失败")?;
+
+        let mut buffer = vec![0u8; 1024];
+        let incoming = endpoint
+            .recv_from(&mut buffer)
+            .await
+            .context("服务端接收 SIP 请求失败")?;
+
+        assert_eq!(
+            incoming.return_route().sip_rport(),
+            SipViaRportDisposition::Requested
+        );
+
+        let route = incoming.return_route().clone();
+        let response =
+            "SIP/2.0 200 OK\r\nVia: SIP/2.0/UDP client.invalid;branch=z9hG4bK-1;rport\r\n\r\n";
+        endpoint
+            .send_to(response.as_bytes(), &route)
+            .await
+            .context("服务端发送 SIP 响应失败")?;
+
+        let mut recv_buffer = vec![0u8; 1024];
+        let (received, _) = client
+            .recv_from(&mut recv_buffer)
+            .await
+            .context("客户端接收 SIP 响应失败")?;
+
+        let text = str::from_utf8(&recv_buffer[..received])?;
+        let expected_marker = format!(";rport={}", client_addr.port());
+        assert!(
+            text.contains(&expected_marker),
+            "响应缺少正确的 rport，期望片段：{}，实际：{}",
+            expected_marker,
+            text
+        );
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    /// 验证批量收发（scatter/gather）契约，防止批量优化发生回归。
+    ///
+    /// - **意图（Why）**：批量接口承担高并发场景的性能路径，一旦失效会显著降低吞吐。
+    /// - **流程（How）**：
+    ///   1. 使用 Tokio 原生 `UdpSocket` 作为服务端/客户端，模拟批量请求；
+    ///   2. 调用 `batch::recv_from` 接收全部请求，逐条比对来源、截断标记与载荷；
+    ///   3. 构造响应文本，通过 `batch::send_to` 回发并校验 `sent` 字段；
+    ///   4. 客户端逐条读取响应，验证顺序与内容。
+    /// - **契约（What）**：返回 `anyhow::Result<()>`；无输入参数。
+    ///   前置条件：需在 Tokio 运行时内执行；后置条件：成功返回意味着批量接口遵循“长度=槽位”
+    ///   与“地址不缺失”契约。
+    /// - **权衡与边界（Trade-offs & Gotchas）**：
+    ///   - 选用 3 条报文以覆盖非零、连续槽位，兼顾执行时间；
+    ///   - 若底层实现不保证响应顺序，应调整测试改为集合对比；
+    ///   - 若缓冲区不足会导致 `truncated` 触发，从而暴露潜在性能问题。
+    pub async fn assert_batch_round_trip() -> anyhow::Result<()> {
+        use spark_transport_udp::batch::{self, RecvBatchSlot, SendBatchSlot};
+
+        let server = UdpSocket::bind("127.0.0.1:0")
+            .await
+            .context("服务端绑定失败")?;
+        let server_addr = server.local_addr().context("获取服务端地址失败")?;
+
+        let client = UdpSocket::bind("127.0.0.1:0")
+            .await
+            .context("客户端绑定失败")?;
+        let client_addr = client.local_addr().context("获取客户端地址失败")?;
+
+        let requests = [
+            "batch-one".as_bytes(),
+            "batch-two".as_bytes(),
+            "batch-three".as_bytes(),
+        ];
+        for payload in &requests {
+            client
+                .send_to(payload, server_addr)
+                .await
+                .context("客户端批量发送请求失败")?;
+        }
+
+        let mut recv_buffers: Vec<Vec<u8>> = vec![vec![0u8; 128]; requests.len()];
+        let mut recv_slots: Vec<RecvBatchSlot<'_>> = recv_buffers
+            .iter_mut()
+            .map(|buf| RecvBatchSlot::new(buf.as_mut_slice()))
+            .collect();
+
+        let received = batch::recv_from(&server, &mut recv_slots)
+            .await
+            .context("服务端批量接收失败")?;
+        assert_eq!(received, requests.len(), "应读取到全部请求报文");
+
+        for (idx, slot) in recv_slots.iter().take(received).enumerate() {
+            assert_eq!(slot.addr(), Some(client_addr));
+            assert!(!slot.truncated(), "缓冲不应被截断");
+            assert_eq!(slot.payload(), requests[idx]);
+        }
+
+        let expected_texts: Vec<String> = (0..received).map(|idx| format!("ack-{}", idx)).collect();
+        let response_buffers: Vec<Vec<u8>> = expected_texts
+            .iter()
+            .map(|text| text.as_bytes().to_vec())
+            .collect();
+        let mut send_slots: Vec<SendBatchSlot<'_>> = response_buffers
+            .iter()
+            .zip(recv_slots.iter())
+            .take(received)
+            .map(|(payload, slot)| {
+                SendBatchSlot::new(payload.as_slice(), slot.addr().expect("应存在来源地址"))
+            })
+            .collect();
+
+        batch::send_to(&server, &mut send_slots)
+            .await
+            .context("服务端批量发送失败")?;
+
+        for (slot, payload) in send_slots.iter().zip(response_buffers.iter()) {
+            assert_eq!(slot.sent(), payload.len());
+        }
+
+        for expected in &expected_texts {
+            let mut buffer = vec![0u8; 128];
+            let (len, addr) = client
+                .recv_from(&mut buffer)
+                .await
+                .context("客户端接收响应失败")?;
+            assert_eq!(addr, server_addr);
+            let text = std::str::from_utf8(&buffer[..len]).context("响应非 UTF-8")?;
+            assert_eq!(text, expected);
+        }
+
+        Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{assert_batch_round_trip, assert_bind_send_recv, assert_rport_round_trip};
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn bind_send_recv() {
+            assert_bind_send_recv()
+                .await
+                .expect("UDP 烟囱闭环应满足契约");
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn udp_rport_return() {
+            assert_rport_round_trip()
+                .await
+                .expect("SIP Via;rport 应被正确回写");
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn round_trip() {
+            assert_batch_round_trip()
+                .await
+                .expect("UDP 批量收发契约验证失败");
+        }
+    }
+}
+
+pub mod sdp;
 #[cfg(all(test, feature = "transport-tests"))]
 mod transport_graceful {
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};

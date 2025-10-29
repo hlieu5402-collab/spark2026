@@ -1,4 +1,4 @@
-.PHONY: ci-lints ci-zc-asm ci-no-std-alloc ci-doc-warning ci-bench-smoke
+.PHONY: ci-lints ci-zc-asm ci-no-std-alloc ci-doc-warning ci-bench-smoke ci-fuzz-regression
 
 ci-lints:
 	cargo fmt --all --check
@@ -23,3 +23,6 @@ ci-bench-smoke:
 	@rm -f bench.out
 	/bin/bash -o pipefail -c 'cargo bench --workspace --exclude spark-macros -- --quick | tee bench.out'
 	python3 tools/ci/check_zerocopy_bench.py bench.out
+
+ci-fuzz-regression:
+	./tools/ci/fuzz_regression.sh

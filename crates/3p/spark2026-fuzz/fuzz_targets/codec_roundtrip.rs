@@ -3,11 +3,9 @@
 use arbitrary::Arbitrary;
 use core::mem::MaybeUninit;
 use libfuzzer_sys::fuzz_target;
+use spark2026_fuzz::support::{FuzzBufferPool, LinearReadable};
 use spark_codec_line::LineDelimitedCodec;
-use spark_core::buffer::{BufferPool, PoolStats, ReadableBuffer, WritableBuffer};
 use spark_core::codec::{Codec, DecodeContext, DecodeOutcome, EncodeContext};
-use spark_core::error::codes;
-use spark_core::CoreError;
 use std::sync::Arc;
 
 /// Fuzz 用例：描述需要编码的帧序列以及可选的长度预算。
@@ -41,174 +39,6 @@ fn sanitize_frame_text(input: &str) -> String {
         .chars()
         .filter(|ch| *ch != '\n' && *ch != '\r')
         .collect()
-}
-
-/// 简易内存池实现，复用 `Vec<u8>` 为编码/解码上下文提供缓冲。
-///
-/// - **Why**：运行时环境中 `BufferPool` 由具体传输实现提供。Fuzz 环境需要轻量且稳定的实现，避免
-///   因外部依赖导致噪声崩溃。
-/// - **How**：始终返回基于 `Vec` 的缓冲，不做复用，以换取实现简单性与可预期行为；统计接口返回默认值，
-///   保证满足契约。
-/// - **What**：实现 [`BufferPool`] 后即可通过 blanket impl 充当 [`BufferAllocator`]。
-#[derive(Default)]
-struct FuzzBufferPool;
-
-impl BufferPool for FuzzBufferPool {
-    fn acquire(&self, min_capacity: usize) -> Result<Box<dyn WritableBuffer>, CoreError> {
-        Ok(Box::new(FuzzWritable::with_capacity(min_capacity)))
-    }
-
-    fn shrink_to_fit(&self) -> Result<usize, CoreError> {
-        Ok(0)
-    }
-
-    fn statistics(&self) -> Result<PoolStats, CoreError> {
-        Ok(PoolStats::default())
-    }
-}
-
-/// Fuzz 写缓冲：基于 `Vec<u8>` 的最小实现，满足 `WritableBuffer` 契约。
-struct FuzzWritable {
-    data: Vec<u8>,
-}
-
-impl FuzzWritable {
-    fn with_capacity(min_capacity: usize) -> Self {
-        Self {
-            data: Vec::with_capacity(min_capacity.max(1)),
-        }
-    }
-}
-
-impl WritableBuffer for FuzzWritable {
-    fn capacity(&self) -> usize {
-        self.data.capacity()
-    }
-
-    fn remaining_mut(&self) -> usize {
-        self.data.capacity().saturating_sub(self.data.len())
-    }
-
-    fn written(&self) -> usize {
-        self.data.len()
-    }
-
-    fn reserve(&mut self, additional: usize) -> Result<(), CoreError> {
-        self.data.reserve(additional);
-        Ok(())
-    }
-
-    fn put_slice(&mut self, src: &[u8]) -> Result<(), CoreError> {
-        self.data.extend_from_slice(src);
-        Ok(())
-    }
-
-    fn write_from(&mut self, src: &mut dyn ReadableBuffer, len: usize) -> Result<(), CoreError> {
-        ensure_capacity(src.remaining() >= len, "source buffer exhausted")?;
-        let mut tmp = vec![0u8; len];
-        src.copy_into_slice(&mut tmp)?;
-        self.data.extend_from_slice(&tmp);
-        Ok(())
-    }
-
-    fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
-        if self.data.len() == self.data.capacity() {
-            self.data.reserve(1);
-        }
-        let spare = self.data.capacity().saturating_sub(self.data.len());
-        if spare == 0 {
-            return empty_mut_slice();
-        }
-        unsafe {
-            let start = self.data.as_mut_ptr().add(self.data.len()) as *mut MaybeUninit<u8>;
-            core::slice::from_raw_parts_mut(start, spare)
-        }
-    }
-
-    fn advance_mut(&mut self, len: usize) -> Result<(), CoreError> {
-        let spare = self.data.capacity().saturating_sub(self.data.len());
-        if len > spare {
-            return Err(CoreError::new(
-                codes::APP_INVALID_ARGUMENT,
-                format!("advance_mut requested {} bytes but only {} spare", len, spare),
-            ));
-        }
-        unsafe {
-            let new_len = self.data.len() + len;
-            self.data.set_len(new_len);
-        }
-        Ok(())
-    }
-
-    fn clear(&mut self) {
-        self.data.clear();
-    }
-
-    fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError> {
-        Ok(Box::new(FuzzReadable::from(self.data)))
-    }
-}
-
-fn empty_mut_slice() -> &'static mut [MaybeUninit<u8>] {
-    static mut EMPTY: [MaybeUninit<u8>; 0] = [];
-    unsafe { &mut EMPTY[..] }
-}
-
-/// Fuzz 只读缓冲，实现增量读取与拆分能力。
-struct FuzzReadable {
-    data: Vec<u8>,
-    cursor: usize,
-}
-
-impl From<Vec<u8>> for FuzzReadable {
-    fn from(data: Vec<u8>) -> Self {
-        Self { data, cursor: 0 }
-    }
-}
-
-impl ReadableBuffer for FuzzReadable {
-    fn remaining(&self) -> usize {
-        self.data.len().saturating_sub(self.cursor)
-    }
-
-    fn chunk(&self) -> &[u8] {
-        &self.data[self.cursor..]
-    }
-
-    fn split_to(&mut self, len: usize) -> Result<Box<dyn ReadableBuffer>, CoreError> {
-        ensure_capacity(len <= self.remaining(), "split exceeds remaining bytes")?;
-        let end = self.cursor + len;
-        let slice = self.data[self.cursor..end].to_vec();
-        self.cursor = end;
-        Ok(Box::new(FuzzReadable::from(slice)))
-    }
-
-    fn advance(&mut self, len: usize) -> Result<(), CoreError> {
-        ensure_capacity(len <= self.remaining(), "advance exceeds remaining bytes")?;
-        self.cursor += len;
-        Ok(())
-    }
-
-    fn copy_into_slice(&mut self, dst: &mut [u8]) -> Result<(), CoreError> {
-        ensure_capacity(dst.len() <= self.remaining(), "insufficient bytes for copy")?;
-        let end = self.cursor + dst.len();
-        dst.copy_from_slice(&self.data[self.cursor..end]);
-        self.cursor = end;
-        Ok(())
-    }
-
-    fn try_into_vec(self: Box<Self>) -> Result<Vec<u8>, CoreError> {
-        Ok(self.data)
-    }
-}
-
-/// 帮助函数：在违反契约时返回统一的 `protocol.decode` 错误。
-fn ensure_capacity(predicate: bool, message: &str) -> Result<(), CoreError> {
-    if predicate {
-        Ok(())
-    } else {
-        Err(CoreError::new(codes::PROTOCOL_DECODE, message.to_owned()))
-    }
 }
 
 fuzz_target!(|case: CodecFuzzCase| {
@@ -258,7 +88,7 @@ fuzz_target!(|case: CodecFuzzCase| {
     let mut decode_failed = false;
 
     {
-        let mut source_buf: Box<dyn ReadableBuffer> = Box::new(FuzzReadable::from(encoded_stream));
+        let mut source_buf = LinearReadable::from(encoded_stream).into_box();
         let source = source_buf.as_mut();
         loop {
             let before = source.remaining();
