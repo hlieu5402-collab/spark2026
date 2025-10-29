@@ -47,6 +47,6 @@ mod error;
 mod util;
 
 #[cfg(feature = "runtime-tokio")]
-pub use acceptor::TlsAcceptor;
+pub use acceptor::{TlsAcceptor, TlsAcceptorBuilder};
 #[cfg(feature = "runtime-tokio")]
 pub use channel::TlsChannel;

@@ -1,4 +1,4 @@
-use spark_core::prelude::{CallContext, CoreError, ExecutionContext, TransportSocketAddr};
+use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use std::{borrow::Cow, pin::Pin, sync::Arc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -173,7 +173,7 @@ impl TlsChannel {
 impl TransportConnectionTrait for TlsChannel {
     type Error = CoreError;
     type CallCtx<'ctx> = CallContext;
-    type ReadyCtx<'ctx> = ExecutionContext<'ctx>;
+    type ReadyCtx<'ctx> = Context<'ctx>;
 
     type ReadFuture<'ctx>
         = Pin<

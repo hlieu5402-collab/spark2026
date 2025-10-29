@@ -38,4 +38,4 @@
 > **提示**：当新增错误码时，请执行：
 > 1. 更新 `contracts/error_matrix.toml`；
 > 2. 运行 `cargo run -p spark-core --bin gen_error_doc --features std,error_contract_doc` 生成文档；
-> 3. 触发构建脚本（`cargo build -p spark-core`）更新 `src/error/category_matrix.rs` 并补充契约测试。
+> 3. 触发构建脚本（`cargo build -p spark-core`）更新 `src/error/generated/category_matrix.rs` 并补充契约测试。

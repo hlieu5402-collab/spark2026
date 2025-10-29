@@ -12,7 +12,7 @@
 //! # 合约范围（What）
 //! - 覆盖 `spark_core::contract` 暴露的稳定 API，包括 `Cancellation`, `Deadline`, `Budget`,
 //!   `CallContext`, `SecurityContextSnapshot`, `ObservabilityContract`, `CloseReason`；
-//! - 追加针对 `ExecutionContext` 的一致性校验，确保三元组视图与原始上下文保持同步。
+//! - 追加针对 `Context` 的一致性校验，确保三元组视图与原始上下文保持同步。
 //!
 //! # 风险提示（Trade-offs）
 //! - 若新增契约类型，请同步扩展本入口，以便在覆盖率统计中自动纳入；

@@ -1,6 +1,6 @@
 use crate::{
     SparkError,
-    context::ExecutionContext,
+    context::Context,
     observability::TraceContext,
     security::{IdentityDescriptor, SecurityPolicy},
 };
@@ -401,13 +401,13 @@ impl CallContext {
     ///   通过该方法避免克隆整个 [`CallContext`]，降低热路径负担。
     ///
     /// # 契约说明（What）
-    /// - **前置条件**：`self` 必须保持有效，且在返回的 [`ExecutionContext`] 存活期间不得释放；
+    /// - **前置条件**：`self` 必须保持有效，且在返回的 [`Context`] 存活期间不得释放；
     /// - **后置条件**：返回视图仅提供只读访问；预算消费仍需通过原始 [`Budget`] 调用。
-    pub fn execution(&self) -> ExecutionContext<'_> {
-        ExecutionContext::from(self)
+    pub fn execution(&self) -> Context<'_> {
+        Context::from(self)
     }
 
-    /// 供 `ExecutionContext` 生成零拷贝视图的内部辅助函数。
+    /// 供 `Context` 生成零拷贝视图的内部辅助函数。
     pub(crate) fn budgets_slice(&self) -> &[Budget] {
         &self.inner.budgets
     }

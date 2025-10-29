@@ -32,7 +32,7 @@ use core::{convert::TryFrom, marker::PhantomData, task::Context as TaskContext};
 
 use crate::SparkError;
 use crate::buffer::PipelineMessage;
-use crate::context::ExecutionContext;
+use crate::context::Context;
 use crate::contract::CallContext;
 use crate::error::codes;
 use crate::service::traits::object::ServiceObject;
@@ -150,7 +150,7 @@ where
 
     fn poll_ready(
         &mut self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         cx: &mut TaskContext<'_>,
     ) -> PollReady<Self::Error> {
         self.inner.poll_ready(ctx, cx)

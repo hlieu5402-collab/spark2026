@@ -428,7 +428,7 @@ pub mod transport {
         use rustls::RootCertStore;
         use rustls_pki_types::{CertificateDer, PrivateKeyDer};
         use spark_core::{
-            context::ExecutionContext,
+            context::Context,
             contract::CallContext,
             error::CoreError,
             status::ready::{ReadyCheck, ReadyState},
@@ -511,7 +511,7 @@ pub mod transport {
             let mut responses = Vec::with_capacity(payloads.len());
             for payload in &payloads {
                 let ctx = CallContext::builder().build();
-                let exec_ctx = ExecutionContext::from(&ctx);
+                let exec_ctx = Context::from(&ctx);
                 let channel = connection.open_bi().await.map_err(|err| anyhow!(err))?;
                 match channel.poll_ready(&exec_ctx) {
                     Poll::Ready(ReadyCheck::Ready(state)) => {

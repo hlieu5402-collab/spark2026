@@ -18,6 +18,7 @@
 //! - 避免晦涩缩写，除 QoS 等广泛接受的术语外，均使用完整单词。
 
 pub mod address;
+pub mod builder;
 pub mod endpoint;
 pub mod factory;
 pub mod handshake;
@@ -29,6 +30,7 @@ pub mod shutdown;
 pub mod traits;
 
 pub use address::TransportSocketAddr;
+pub use builder::TransportBuilder;
 pub use endpoint::{Endpoint, EndpointKind};
 pub use factory::ListenerConfig;
 pub use handshake::{

@@ -9,7 +9,14 @@ use std::{
 use heck::ToShoutySnakeCase;
 use serde::Deserialize;
 
-/// 构建脚本入口：读取 TOML 契约，生成 `crates/spark-core/src/error/category_matrix.rs`。
+#[path = "../../tools/error_matrix_contract.rs"]
+mod error_matrix_contract;
+use error_matrix_contract::{
+    BudgetDispositionSpec, BusyDispositionSpec, CategoryTemplateSpec, ExpandedEntry,
+    SecurityClassSpec, expand_entries, read_error_matrix_contract,
+};
+
+/// 构建脚本入口：读取 TOML 契约，生成 `crates/spark-core/src/error/generated/category_matrix.rs`。
 ///
 /// # 教案式说明（Why）
 /// - 避免手写静态矩阵导致的代码/文档漂移，将错误分类声明集中在 `contracts/error_matrix.toml`；
@@ -28,11 +35,13 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let contract_path = manifest_dir.join("../../contracts/error_matrix.toml");
     println!("cargo:rerun-if-changed={}", contract_path.display());
-    let contract = read_contract(&contract_path);
+    let contract = read_error_matrix_contract(&contract_path);
     let entries = expand_entries(&contract);
     let generated = render_category_matrix(&entries);
-    let output_path = manifest_dir.join("src/error/category_matrix.rs");
-    fs::write(&output_path, generated).expect("写入 category_matrix.rs");
+    let generated_dir = manifest_dir.join("src/error/generated");
+    fs::create_dir_all(&generated_dir).expect("创建 error/generated 目录");
+    let output_path = generated_dir.join("category_matrix.rs");
+    fs::write(&output_path, generated).expect("写入 generated/category_matrix.rs");
 
     let observability_contract_path = manifest_dir.join("../../contracts/observability_keys.toml");
     println!(
@@ -55,132 +64,6 @@ fn main() {
     let config_events_output_path = manifest_dir.join("src/configuration/events.rs");
     fs::write(&config_events_output_path, config_events_generated)
         .expect("写入 configuration/events.rs");
-}
-
-/// 合约文件的顶层结构：包含若干行数据。
-#[derive(Debug, Deserialize)]
-struct ErrorMatrixContract {
-    rows: Vec<ErrorMatrixRow>,
-}
-
-/// 每行描述一组共享分类模板的错误码。
-#[derive(Debug, Deserialize)]
-struct ErrorMatrixRow {
-    codes: Vec<String>,
-    category: CategoryTemplateSpec,
-    #[allow(dead_code)]
-    doc: DocSpec,
-}
-
-/// 文档列对应的文本说明，构建脚本虽然不直接使用，但保留以验证完整性。
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct DocSpec {
-    rationale: String,
-    tuning: String,
-}
-
-/// 错误分类模板的声明式表示。
-#[derive(Debug, Deserialize, Clone)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum CategoryTemplateSpec {
-    Retryable {
-        wait_ms: u64,
-        reason: String,
-        #[serde(default)]
-        busy: Option<BusyDispositionSpec>,
-    },
-    Timeout,
-    ProtocolViolation {
-        close_message: String,
-    },
-    ResourceExhausted {
-        budget: BudgetDispositionSpec,
-    },
-    Cancelled,
-    NonRetryable,
-    Security {
-        class: SecurityClassSpec,
-    },
-}
-
-/// 可选的 Busy 语义。
-#[derive(Debug, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-enum BusyDispositionSpec {
-    Upstream,
-    Downstream,
-}
-
-/// 预算分类枚举。
-#[derive(Debug, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-enum BudgetDispositionSpec {
-    Decode,
-    Flow,
-}
-
-/// 安全事件分类。
-#[derive(Debug, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-enum SecurityClassSpec {
-    Authentication,
-    Authorization,
-    Confidentiality,
-    Integrity,
-    Audit,
-    Unknown,
-}
-
-/// 展开后的矩阵条目，每个错误码对应一条记录。
-struct ExpandedEntry {
-    code: String,
-    template: CategoryTemplateSpec,
-}
-
-/// 读取并解析 TOML 合约。
-///
-/// # Why
-/// - 将解析逻辑集中到单处，方便未来扩展字段并统一错误处理。
-///
-/// # How
-/// - 使用 `toml::from_str` 将文本映射到强类型结构，解析失败时提供上下文。
-///
-/// # What
-/// - 输入：合约文件路径；返回：结构化的 [`ErrorMatrixContract`]。
-fn read_contract(path: &Path) -> ErrorMatrixContract {
-    let raw = fs::read_to_string(path).unwrap_or_else(|err| {
-        panic!("读取 {path:?} 失败: {err}");
-    });
-    toml::from_str(&raw).unwrap_or_else(|err| {
-        panic!("解析 {path:?} 失败: {err}");
-    })
-}
-
-/// 将包含多个错误码的行展开为逐条记录，并按字典序排序。
-///
-/// # Why
-/// - 生成文件需要稳定顺序，避免无意义 diff；
-/// - 测试依赖 `entries()` 遍历顺序，与文档一致更易核对。
-///
-/// # How
-/// - 遍历每行，对其中每个 `code` 克隆模板；
-/// - 使用 `sort_by` 依据错误码字符串排序。
-///
-/// # What
-/// - 输入：解析后的合约；输出：排序后的 [`ExpandedEntry`] 列表。
-fn expand_entries(contract: &ErrorMatrixContract) -> Vec<ExpandedEntry> {
-    let mut entries = Vec::new();
-    for row in &contract.rows {
-        for code in &row.codes {
-            entries.push(ExpandedEntry {
-                code: code.clone(),
-                template: row.category.clone(),
-            });
-        }
-    }
-    entries.sort_by(|a, b| a.code.cmp(&b.code));
-    entries
 }
 
 /// 可观测性键名合约的顶层结构：按分组列出键及其元数据。

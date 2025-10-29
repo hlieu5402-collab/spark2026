@@ -26,7 +26,7 @@ impl<T> ControllerFactory for T where T: DynControllerFactory {}
 ///
 /// ## 解析逻辑 (How)
 /// - 构造阶段记录运行时依赖（`CoreServices`）、监听配置与对象层 `DynTransportFactory`；
-/// - `run` 方法根据默认 `CallContext` 派生 `ExecutionContext`，调用扩展的 `listen` 启动监听器，并将返回的 `DynServerTransport` 缓存；
+/// - `run` 方法根据默认 `CallContext` 派生 `Context`，调用扩展的 `listen` 启动监听器，并将返回的 `DynServerTransport` 缓存；
 /// - 监听器缓存使用 `spin::Mutex` 封装，保证在 `no_std + alloc` 环境中同样安全；后续的优雅关闭可以复用该缓存。
 ///
 /// ## 契约定义 (What)
@@ -80,7 +80,7 @@ impl EmberServer {
     /// - 为后续的连接接受循环做准备：缓存监听器句柄，便于添加健康检查与优雅关闭逻辑。
     ///
     /// ## 解析逻辑 (How)
-    /// 1. 构造最小化的 [`CallContext`] 并派生 `ExecutionContext`，确保 `listen` 调用遵循取消/截止契约；
+    /// 1. 构造最小化的 [`CallContext`] 并派生 `Context`，确保 `listen` 调用遵循取消/截止契约；
     /// 2. 调用扩展方法 `TransportFactoryExt::listen`，将监听配置与 Pipeline 工厂交给传输实现；
     /// 3. 使用内部 `Mutex` 缓存成功返回的 `DynServerTransport`，自动释放旧句柄；
     /// 4. 暂未开启实际的接受循环——`DynServerTransport` 目前尚未公开 `accept` 契约，待后续任务补齐。

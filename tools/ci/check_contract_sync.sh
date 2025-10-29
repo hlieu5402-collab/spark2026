@@ -13,7 +13,7 @@
 # 2. 自动解析对比基线：优先使用 PR 基线 SHA；若缺失则回退到目标分支或 `origin/main`，保证 fork 与分支均可运行。
 # 3. 限定扫描范围：只分析 `crates/spark-core/src/**/*.rs` 的 diff，过滤测试/文档噪声；随后匹配四个关键契约的标识符。
 # 4. 收集触发契约：若 diff 中包含 `ReadyState|ErrorCategory|ObservabilityContract|BufView`，记录涉及的源文件列表。
-# 5. 错误分类矩阵 SOT 守门：要求 `crates/spark-core/src/error/category_matrix.rs` 与 `docs/error-category-matrix.md` 必须同步改动，防止代码与文档分离。
+# 5. 错误分类矩阵 SOT 守门：要求 `crates/spark-core/src/error/generated/category_matrix.rs` 与 `docs/error-category-matrix.md` 必须同步改动，防止代码与文档分离。
 # 6. 校验文档更新：检查本次提交是否修改了任意 `docs/` 前缀的文件；若缺失则输出详细指引并失败退出。
 #
 # 契约说明 (What)：
@@ -86,7 +86,7 @@ readonly BASE_COMMIT="$(resolve_base_commit "$BASE_SHA_ENV" "$BASE_REF_ENV")"
 # 限定扫描范围：使用 GIT pathspec 的 glob 语法，仅关注 crates/spark-core/src 下的 Rust 文件。
 readonly SCOPE_PATHSPEC=':(glob)crates/spark-core/src/**/*.rs'
 readonly CONTRACT_REGEX='\b(ReadyState|ErrorCategory|ObservabilityContract|BufView)\b'
-readonly CATEGORY_MATRIX_SOURCE='crates/spark-core/src/error/category_matrix.rs'
+readonly CATEGORY_MATRIX_SOURCE='crates/spark-core/src/error/generated/category_matrix.rs'
 readonly CATEGORY_MATRIX_DOC='docs/error-category-matrix.md'
 readonly CATEGORY_MATRIX_CONTRACT='contracts/error_matrix.toml'
 readonly CONFIG_EVENTS_SOURCE='crates/spark-core/src/configuration/events.rs'
@@ -98,12 +98,12 @@ readonly PYTHON_SDK_PATHSPEC=':(glob)sdk/python/**'
 readonly JAVA_SDK_PATHSPEC=':(glob)sdk/java/**'
 readonly CATEGORY_SURFACE_PATHS=(
   'crates/spark-core/src/error.rs'
-  'crates/spark-core/src/error/category_matrix.rs'
+  'crates/spark-core/src/error/generated/category_matrix.rs'
   'crates/spark-core/src/pipeline/default_handlers.rs'
 )
 
 # 教案级注释：错误分类矩阵 SOT 守门（Why / How / What / Trade-offs）
-# - Why：`contracts/error_matrix.toml` 是声明式 SOT，`category_matrix.rs` 与 `docs/error-category-matrix.md` 分别承载代码与知识库视图。
+# - Why：`contracts/error_matrix.toml` 是声明式 SOT，`generated/category_matrix.rs` 与 `docs/error-category-matrix.md` 分别承载代码与知识库视图。
 #   任何一侧单独更新都会导致契约偏差，因此 CI 要求三者保持一致。
 # - How：
 #   1. 分别通过 `git diff --name-only` 检测合约、代码、文档是否在当前 PR 中被修改；

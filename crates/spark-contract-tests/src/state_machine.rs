@@ -1,6 +1,6 @@
 use crate::case::{TckCase, TckSuite};
 use crate::support::{build_allow_all_policy, build_identity, monotonic};
-use spark_core::context::ExecutionContext;
+use spark_core::context::Context;
 use spark_core::{
     contract::{
         CallContext, Cancellation, Deadline, ObservabilityContract, SecurityContextSnapshot,
@@ -83,7 +83,7 @@ fn call_context_preserves_inputs_and_execution_view() {
     let fetched_budget = ctx.budget(&budget_kind).expect("应能按种类检索预算");
     assert_eq!(fetched_budget.limit(), 8);
 
-    let exec: ExecutionContext<'_> = ctx.execution();
+    let exec: Context<'_> = ctx.execution();
     assert!(exec.cancellation().is_cancelled());
     assert_eq!(exec.deadline(), deadline);
     let exec_budget = exec.budget(&budget_kind).expect("执行视图也应能找到预算");
