@@ -23,7 +23,7 @@
 
 ## 关联契约与测试
 - [`crates/spark-contract-tests`](../../spark-contract-tests) 的 security、backpressure、graceful_shutdown 主题覆盖流半关闭、退避与安全事件。
-- [`crates/spark-impl-tck`](../../spark-impl-tck) 的 QUIC 套件运行真实握手、连接迁移与 0-RTT 流程，校验 ReadyState 序列与错误分类。
+- [`crates/spark-tck`](../../spark-tck) 的 QUIC 套件运行真实握手、连接迁移与 0-RTT 流程，校验 ReadyState 序列与错误分类。
 - 观测仪表与 SLO 在 [`docs/observability/dashboards/transport-health.json`](../../../docs/observability/dashboards/transport-health.json) 中维护，确保字段同步。
 
 ## 半关闭顺序

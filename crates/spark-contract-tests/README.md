@@ -18,7 +18,7 @@
 - 安全场景与 QUIC/TLS 相关用例参照 [`docs/transport-handshake-negotiation.md`](../../docs/transport-handshake-negotiation.md) 与 [`docs/safety-audit.md`](../../docs/safety-audit.md)。
 
 ## 关联契约与测试
-- [`crates/spark-impl-tck`](../spark-impl-tck) 在此基础上拓展宿主行为测试（如配置热更新、任务调度），两者需保持接口兼容。
+- [`crates/spark-tck`](../spark-tck) 在此基础上拓展宿主行为测试（如配置热更新、任务调度），两者需保持接口兼容。
 - [`crates/spark-contract-tests-macros`](../spark-contract-tests-macros) 通过编译期宏生成器补充测试数据，减少样板代码。
 - 编解码器与传输实现需在自身 CI 中引用本 crate，以满足 `docs/scorecard.md` 中的合规要求。
 

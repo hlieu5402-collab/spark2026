@@ -23,7 +23,7 @@
 
 ## 关联契约与测试
 - 与 [`crates/spark-contract-tests`](../../spark-contract-tests) 的 backpressure、errors、graceful_shutdown 主题直接对接，验证 ReadyState 序列与半关闭流程。
-- [`crates/spark-impl-tck`](../../spark-impl-tck) 使用该实现执行真实 socket 场景，覆盖取消、超时与多路并发。
+- [`crates/spark-tck`](../../spark-tck) 使用该实现执行真实 socket 场景，覆盖取消、超时与多路并发。
 - 性能指标与观测面在 [`docs/observability/dashboards/transport-health.json`](../../../docs/observability/dashboards/transport-health.json) 中展示，需保持字段一致。
 
 ## 半关闭顺序

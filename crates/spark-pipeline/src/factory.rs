@@ -14,7 +14,7 @@ use crate::PipelineController;
 ///
 /// # 教案级说明
 /// - **定位（Where）**：
-///   - 位于 `spark-pipeline` crate，对外作为 `spark-ember`/`spark-hosting` 在运行时按连接
+///   - 位于 `spark-pipeline` crate，对外作为 `spark-examples`/`spark-hosting` 在运行时按连接
 ///     装配控制器的默认实现；
 ///   - 与 `spark-core` 的 `ControllerFactory` trait 对齐，确保既能服务泛型层也能被对象层
 ///     适配器复用。

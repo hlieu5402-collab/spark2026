@@ -1,5 +1,5 @@
 #![doc = r#"
-# spark-impl-tck
+# spark-tck
 
 ## 章节定位（Why）
 - **目标**：为传输实现提供最小可运行的 TCK（Transport Compatibility Kit），确保每个传输模块在引入真实逻辑后立即被回归验证覆盖。

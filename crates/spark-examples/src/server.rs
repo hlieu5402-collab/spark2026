@@ -16,7 +16,7 @@ pub trait ControllerFactory: DynControllerFactory {}
 
 impl<T> ControllerFactory for T where T: DynControllerFactory {}
 
-/// `EmberServer` 负责在运行时协调 Transport 监听器与 Pipeline 控制面的装配。
+/// `ExamplesServer` 负责在运行时协调 Transport 监听器与 Pipeline 控制面的装配。
 ///
 /// # 教案级说明
 ///
@@ -39,16 +39,16 @@ impl<T> ControllerFactory for T where T: DynControllerFactory {}
 /// ## 风险与权衡 (Trade-offs & Gotchas)
 /// - 当前 `run` 仅负责启动监听并缓存句柄，真正的连接接受将在后续迭代补充；
 /// - 为兼容 `no_std`，选择 `spin::Mutex` 而非 `std::sync::Mutex`；在高并发场景需注意自旋锁对 CPU 的影响，但监听器启动属于冷路径，可接受该开销；
-/// - 缓存监听器意味着 `EmberServer` 必须在停机路径显式释放资源，后续实现需确保 `shutdown` 时清理该字段。
-pub struct EmberServer {
+/// - 缓存监听器意味着 `ExamplesServer` 必须在停机路径显式释放资源，后续实现需确保 `shutdown` 时清理该字段。
+pub struct ExamplesServer {
     services: CoreServices,
     config: ListenerConfig,
     transport_factory: Arc<dyn DynTransportFactory>,
     listener: Mutex<Option<Box<dyn DynServerTransport>>>,
 }
 
-impl EmberServer {
-    /// 构造 `EmberServer`，聚合运行时服务与传输工厂。
+impl ExamplesServer {
+    /// 构造 `ExamplesServer`，聚合运行时服务与传输工厂。
     ///
     /// # 参数说明
     /// - `services`: 核心运行时能力集合，供后续接受任务、指标上报等场景使用；
@@ -88,7 +88,7 @@ impl EmberServer {
     /// ## 契约定义 (What)
     /// - `controller_factory`: 负责构建 Pipeline 的对象层工厂，调用方需确保其中 Handler 满足线程安全；
     /// - 返回：`CoreResult<()>`，成功表示监听器已就绪并被缓存，失败时传播底层 `CoreError`。
-    /// - **前置条件**：`EmberServer` 已通过 [`Self::new`] 正确初始化；
+    /// - **前置条件**：`ExamplesServer` 已通过 [`Self::new`] 正确初始化；
     /// - **后置条件**：`self.listener` 保存最新监听器，供后续关闭或观测；尚未开始消费连接。
     ///
     /// ## 风险提示 (Trade-offs & Gotchas)

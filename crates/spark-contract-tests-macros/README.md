@@ -15,7 +15,7 @@
 
 ## 关联契约与测试
 - 依赖 [`crates/spark-contract-tests`](../spark-contract-tests) 暴露的 Runner API；升级核心测试后必须同步调整宏生成的函数签名。
-- 与 [`crates/spark-impl-tck`](../spark-impl-tck) 协同：impl TCK 可选择附加套件，宏负责保证最小集合始终包含核心契约。
+- 与 [`crates/spark-tck`](../spark-tck) 协同：impl TCK 可选择附加套件，宏负责保证最小集合始终包含核心契约。
 - 使用示例可参考 [`docs/ci/redline.md`](../../docs/ci/redline.md) 所描述的 CI 红线流程，确保在本地执行到相同的测试矩阵。
 
 ## 集成注意事项
