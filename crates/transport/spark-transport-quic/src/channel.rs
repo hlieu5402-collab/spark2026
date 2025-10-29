@@ -6,8 +6,8 @@ use crate::{
 use futures::task::noop_waker_ref;
 use quinn::{Connection, RecvStream, SendStream, VarInt};
 use spark_core::prelude::{
-    CallContext, CoreError, ExecutionContext, PollReady, ReadyCheck, ReadyState, ShutdownDirection,
-    TransportSocketAddr,
+    CallContext, Context as ExecutionView, CoreError, PollReady, ReadyCheck, ReadyState,
+    ShutdownDirection, TransportSocketAddr,
 };
 use spark_transport::{
     BackpressureDecision, BackpressureMetrics, TransportConnection as TransportConnectionTrait,
@@ -16,7 +16,7 @@ use std::borrow::Cow;
 use std::{
     pin::Pin,
     sync::{Arc, Mutex},
-    task::{Context, Poll},
+    task::{Context as TaskContext, Poll},
 };
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -164,7 +164,7 @@ impl QuicChannel {
         Ok(())
     }
 
-    pub fn poll_ready(&self, ctx: &ExecutionContext<'_>) -> PollReady<CoreError> {
+    pub fn poll_ready(&self, ctx: &ExecutionView<'_>) -> PollReady<CoreError> {
         if deadline_expired(ctx.deadline()) {
             return Poll::Ready(ReadyCheck::Err(error::timeout_error(error::POLL_READY)));
         }
@@ -185,7 +185,7 @@ impl QuicChannel {
         match self.inner.send.try_lock() {
             Ok(mut guard) => {
                 let waker = noop_waker_ref();
-                let mut cx = Context::from_waker(waker);
+                let mut cx = TaskContext::from_waker(waker);
                 match Pin::new(&mut *guard).poll_write(&mut cx, &[]) {
                     Poll::Ready(Ok(_)) => {
                         let ready = state.on_ready();
@@ -239,7 +239,7 @@ impl QuicChannel {
 impl TransportConnectionTrait for QuicChannel {
     type Error = CoreError;
     type CallCtx<'ctx> = CallContext;
-    type ReadyCtx<'ctx> = ExecutionContext<'ctx>;
+    type ReadyCtx<'ctx> = ExecutionView<'ctx>;
 
     type ReadFuture<'ctx>
         = Pin<

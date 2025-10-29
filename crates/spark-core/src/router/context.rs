@@ -133,6 +133,12 @@ impl<'a> RoutingSnapshot<'a> {
 /// - **前置**：`request` 必须在整个路由决策周期内保持有效；
 ///   调用方需要确保路由完成前不会释放或修改引用的数据。
 /// - **后置**：路由器不可修改 `dynamic_metadata`，但可以读取其内容决定策略。
+///
+/// # 与执行上下文协同
+/// - 路由阶段通常在 Pipeline 调用链中早于服务执行，因此会同时收到 [`crate::context::Context`] 与 `RoutingContext`；
+///   前者用于读取取消/截止/预算约束，后者补充路由所需的请求、意图与拓扑信息；
+/// - 设计上二者互为补集：`Context` 负责“调用能否继续”，`RoutingContext` 负责“应当如何路由”；
+///   若异步任务需要跨线程持有路由上下文，应复制必要的请求/意图数据，避免借用超出 `Context` 生命周期。
 #[derive(Debug)]
 pub struct RoutingContext<'a, Request> {
     request: &'a Request,

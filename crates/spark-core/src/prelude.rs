@@ -15,7 +15,7 @@
 //! 1. **常量/别名 re-export**：直接透出核心错误类型与 `Result` 别名，
 //!    保持错误语义统一；
 //! 2. **契约类型聚合**：集中导出调用上下文（`CallContext` 等）、预算（`Budget*` 系列）、
-//!    管道扩展（`PipelineMessage` 等）以及运行时能力（`ExecutionContext`、`CoreServices` 等）；
+//!    管道扩展（`PipelineMessage` 等）以及运行时能力（`Context`、`CoreServices` 等）；
 //! 3. **状态机语义**：包含 `status::ready` 中的核心判定枚举，支撑背压与管道调度；
 //! 4. **传输层契约**：将 `TransportSocketAddr`、`ShutdownDirection` 等常用结构一并暴露，
 //!    便于传输实现 crate 直接复用；
@@ -74,7 +74,7 @@ pub use crate::{
         BufView, BufferAllocator, BufferPool, Bytes, PipelineMessage, PoolStats, ReadableBuffer,
         WritableBuffer,
     },
-    context::ExecutionContext,
+    context::Context,
     contract::DEFAULT_OBSERVABILITY_CONTRACT,
     error::{
         CoreError, DomainError, DomainErrorKind, ErrorCategory, ErrorCause, ImplError,
@@ -91,6 +91,9 @@ pub use crate::{
     transport::{ShutdownDirection, TransportSocketAddr},
     types::BudgetSet,
 };
+
+#[allow(deprecated)]
+pub use crate::context::ExecutionContext;
 
 pub use crate::{
     CallContext, CallContextBuilder, Cancellation, CloseReason, Deadline, Event, Frame,

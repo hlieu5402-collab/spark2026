@@ -506,7 +506,7 @@ mod tests {
 
         fn poll_ready(
             &mut self,
-            _: &spark_core::context::ExecutionContext<'_>,
+            _: &spark_core::context::Context<'_>,
             _: &mut core::task::Context<'_>,
         ) -> PollReady<Self::Error> {
             core::task::Poll::Ready(ReadyCheck::Ready(ReadyState::Ready))

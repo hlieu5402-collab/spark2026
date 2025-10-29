@@ -5,7 +5,7 @@ use crate::{
 };
 use socket2::SockRef;
 use spark_core::prelude::{
-    CallContext, CoreError, ExecutionContext, PollReady, ReadyCheck, ReadyState, ShutdownDirection,
+    CallContext, Context, CoreError, PollReady, ReadyCheck, ReadyState, ShutdownDirection,
     TransportSocketAddr,
 };
 use spark_transport::{
@@ -121,7 +121,7 @@ struct TcpChannelInner {
 /// ## 注意事项 (Trade-offs)
 /// - 由于使用互斥锁序列化读写，无法与 `TcpStream::split` 一样实现真正的
 ///   全双工；若需要高并发，可在未来引入独立的读/写半部实现；
-/// - `poll_ready` 的取消响应通过检查 `ExecutionContext` 的截止与取消标志，
+/// - `poll_ready` 的取消响应通过检查 `Context` 的截止与取消标志，
 ///   若调用频率极低可能感知不及时；
 /// - `writev` 目前只执行一次 vectored 写入，如需完全写满需上层循环调用。
 #[derive(Clone, Debug)]
@@ -460,7 +460,7 @@ impl TcpChannel {
     }
 
     /// 检查写通道的即时背压状态。
-    pub fn poll_ready(&self, ctx: &ExecutionContext<'_>) -> PollReady<CoreError> {
+    pub fn poll_ready(&self, ctx: &Context<'_>) -> PollReady<CoreError> {
         if deadline_expired(ctx.deadline()) {
             return Poll::Ready(ReadyCheck::Err(error::timeout_error(error::POLL_READY)));
         }
@@ -515,7 +515,7 @@ impl TcpChannel {
 impl TransportConnectionTrait for TcpChannel {
     type Error = CoreError;
     type CallCtx<'ctx> = CallContext;
-    type ReadyCtx<'ctx> = ExecutionContext<'ctx>;
+    type ReadyCtx<'ctx> = Context<'ctx>;
 
     type ReadFuture<'ctx>
         = Pin<

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# 教案级注释：该脚本为 ReadyState / PollReady / ExecutionContext 变更治理守门人
+# 教案级注释：该脚本为 ReadyState / PollReady / Context(含兼容别名 ExecutionContext) 变更治理守门人
 #
 # 目标 (Why):
-# - 核心目标：在 PR 触及 ReadyState / PollReady / ExecutionContext 的 Rust 代码时，确保提交者已经准备好契约测试、指标/Runbook 更新以及 cargo semver-checks 报告。
+# - 核心目标：在 PR 触及 ReadyState / PollReady / Context（或旧别名 ExecutionContext）的 Rust 代码时，确保提交者已经准备好契约测试、指标/Runbook 更新以及 cargo semver-checks 报告。
 # - 在 CI 架构中的作用：作为 Lints & docs 阶段的早期守门人，阻断缺少治理材料的 PR 合并，避免发布破坏性行为。
 # - 设计思路：通过 diff 分析识别敏感符号，再检索 PR 描述中是否勾选对应核对项，从而用最小成本获得合规信号。
 #
 # 逻辑解析 (How):
 # 1. 仅在 pull_request 场景下执行，其他触发源（如 push/main）不需要治理校验。
 # 2. 自动补全对比基线：优先使用 PR base SHA；若不可用则回退到 GITHUB_BASE_REF 或本地 origin/main。
-# 3. 仅检查 Rust (.rs) 文件的 diff，匹配 ReadyState / PollReady / ExecutionContext 关键字，避免文档噪声触发误报。
+# 3. 仅检查 Rust (.rs) 文件的 diff，匹配 ReadyState / PollReady / Context（含别名 ExecutionContext）关键字，避免文档噪声触发误报。
 # 4. 一旦命中敏感符号，就解析 PR 描述文本，确认三个核对项均被显式勾选（- [x]）。
 # 5. 若有缺失项，打印清晰的故障提示并返回非零退出码，CI 将因此失败。
 #
@@ -82,7 +82,7 @@ readonly BASE_COMMIT="$(resolve_base_commit "$BASE_SHA_ENV" "$BASE_REF_ENV")"
 # 在基线和当前 HEAD 之间比对 Rust 文件的 diff，查找敏感关键字。
 # 使用变量缓存 diff，以规避 `grep` 提前退出导致的 SIGPIPE（配合 `set -o pipefail` 会被视为失败）。
 diff_content="$(git diff "$BASE_COMMIT"...HEAD -- '*.rs')"
-if ! grep -Eq 'ReadyState|PollReady|ExecutionContext' <<<"$diff_content"; then
+if ! grep -Eq 'ReadyState|PollReady|context::Context|ExecutionContext' <<<"$diff_content"; then
   exit 0
 fi
 
@@ -101,7 +101,7 @@ if ((${#missing_checks[@]} == 0)); then
   exit 0
 fi
 
-echo "ReadyState / PollReady / ExecutionContext 相关变更缺少以下治理材料：" >&2
+echo "ReadyState / PollReady / Context 相关变更缺少以下治理材料：" >&2
 for item in "${missing_checks[@]}"; do
   echo "- ${item}" >&2
 done

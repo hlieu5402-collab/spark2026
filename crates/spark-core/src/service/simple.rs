@@ -39,7 +39,7 @@ use spin::Mutex;
 
 use crate::{
     Error,
-    context::ExecutionContext,
+    context::Context,
     contract::CallContext,
     service::Service,
     status::{PollReady, ReadyCheck, ReadyState},
@@ -110,7 +110,7 @@ where
 
     fn poll_ready(
         &mut self,
-        _ctx: &ExecutionContext<'_>,
+        _ctx: &Context<'_>,
         cx: &mut TaskContext<'_>,
     ) -> PollReady<Self::Error> {
         self.coordinator.poll_ready(cx)
@@ -195,7 +195,7 @@ where
 
     fn poll_ready(
         &mut self,
-        _ctx: &ExecutionContext<'_>,
+        _ctx: &Context<'_>,
         cx: &mut TaskContext<'_>,
     ) -> PollReady<Self::Error> {
         self.coordinator.poll_ready(cx)

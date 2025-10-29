@@ -2,7 +2,7 @@ use alloc::{boxed::Box, sync::Arc};
 
 use spark_core::{
     Result as CoreResult, async_trait,
-    context::ExecutionContext,
+    context::Context,
     pipeline::DynControllerFactory,
     transport::{DynServerTransport, DynTransportFactory, ListenerConfig},
 };
@@ -16,7 +16,7 @@ use spark_core::{
 /// - 隔离出未来可能扩展的生命周期管理（如监听器注册、健康检查预热），使上层不必直接操作底层 `bind`。
 ///
 /// ## 解析逻辑 (How)
-/// - 接收 `ExecutionContext` 以继承取消/截止约束；
+/// - 接收 `Context` 以继承取消/截止约束；
 /// - 透传 `ListenerConfig` 与 Pipeline 工厂给传输实现，由其按协议完成监听器构建；
 /// - 返回对象层 [`DynServerTransport`]，供宿主保存并在后续执行关闭或观测操作。
 ///
@@ -35,7 +35,7 @@ pub trait TransportFactoryExt {
     /// 将传输工厂启动为监听器。
     async fn listen(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynControllerFactory>,
     ) -> CoreResult<Box<dyn DynServerTransport>>;
@@ -48,7 +48,7 @@ where
 {
     async fn listen(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &Context<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynControllerFactory>,
     ) -> CoreResult<Box<dyn DynServerTransport>> {

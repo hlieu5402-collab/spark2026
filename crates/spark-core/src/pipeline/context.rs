@@ -5,7 +5,7 @@ use super::{
 use crate::{
     buffer::{BufferPool, PipelineMessage},
     cluster::{ClusterMembership, ServiceDiscovery},
-    context::ExecutionContext,
+    context::Context as ExecutionView,
     contract::{CallContext, CloseReason, Deadline},
     observability::{Logger, MetricsProvider, TraceContext},
     runtime::{TaskExecutor, TimeDriver},
@@ -84,9 +84,9 @@ pub trait Context: Send + Sync + Sealed {
     ///   若强制克隆整份 [`CallContext`] 将带来多余的 `Arc` 管理成本。
     ///
     /// # 契约说明（What）
-    /// - **前置条件**：`self` 必须保证返回的 [`CallContext`] 在 `ExecutionContext` 生命周期内有效；
-    /// - **后置条件**：返回值为 [`ExecutionContext`] 只读视图，禁止通过该视图修改预算或取消状态。
-    fn execution_context(&self) -> ExecutionContext<'_> {
+    /// - **前置条件**：`self` 必须保证返回的 [`CallContext`] 在 [`crate::context::Context`] 生命周期内有效；
+    /// - **后置条件**：返回值为 [`crate::context::Context`] 只读视图，禁止通过该视图修改预算或取消状态。
+    fn execution_context(&self) -> ExecutionView<'_> {
         self.call_context().execution()
     }
 
