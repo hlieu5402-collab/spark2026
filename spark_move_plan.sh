@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ================================= 教案级注释 =================================
 # 背景 (Why):
-# 1. 当前仓库中的各个 `spark-*` crate 分布在仓库根目录和 `crates/` 目录下, 违反
-#    约定的物理布局, 造成编译脚本与工具链难以按前缀批量发现模块。
-# 2. 本脚本是一次性迁移脚本, 通过执行 `git mv` 将 crate 移动到约定路径, 以便
-#    后续工具统一按 `crates/<域>/<crate>` 查找。
-# 3. 迁移策略对标内部架构文档, 要求运行时 (runtime)、传输 (transport)、编解码
-#    (codecs)、通用 (crates/spark-*) 以及三方依赖 (crates/3p) 采用分层目录结构。
+# 1. 早期目录结构将部分 `spark-*` crate 置于 `crates/<域>/` 的二级目录中, 使得工
+#    具难以通过前缀枚举所有实现层模块。
+# 2. 本脚本用于一次性迁移, 将旧的二级目录结构扁平化为 `crates/spark-*` 顶层, 让
+#    后续的构建脚本与治理工具能够通过统一规则定位 crate。
+# 3. 迁移策略与新版架构文档保持一致, 即运行时、传输、编解码等实现层全部以
+#    `crates/spark-*` 形式存在, 三方依赖继续驻留在 `crates/3p/`。
 #
 # 契约 (What):
 # - 输入: 在仓库根目录执行, 需要 git 工作区干净 (或开发者已知并接受文件的
@@ -17,9 +17,9 @@
 #
 # 设计权衡与注意事项 (Trade-offs & Gotchas):
 # - 使用 `git mv` 而不是 `mv`, 以保留历史并自动记录删除/新增操作。
-# - 迁移 `spark-core/` 时目的路径 `crates/spark-core` 已存在占位符, 需强制覆盖。
-#   脚本通过 `git mv -f` 确保替换, 但也意味着若本地修改未提交, 会被覆盖。
-# - 如需新增目录 (例如 `crates/codecs`), 必须在移动前调用 `mkdir -p`。
+# - 迁移阶段需确保源目录存在, 否则 `git mv` 会失败并终止脚本。
+# - 目标路径统一位于 `crates/` 顶层, 无需额外创建二级目录; 若已有同名目录, 脚
+#   本会覆盖并保留 git 历史。
 # - 本脚本幂等性有限: 再次执行将因源目录缺失而失败, 因此只应用于一次迁移。
 #
 # 执行步骤 (How):
@@ -38,19 +38,18 @@ fi
 # 第 2 步: 定义迁移映射表, 键为旧路径, 值为新路径。
 # 说明:
 # - 运行时相关 crate 目前仅有 `spark-core`, 暂定位于 `crates/spark-core` 层。
-# - 传输层包含 `spark-transport-*` 系列, 统一归档到 `crates/transport/`。
-# - 编解码器放入 `crates/codecs/`, 便于集中管理。
+# - 传输层与编解码器统一迁移到 `crates/spark-*` 顶层, 摆脱历史上的二级目录。
 declare -A MOVE_PLAN=(
-  ["spark-codec-line"]="crates/codecs/spark-codec-line"
-  ["spark-codec-rtcp"]="crates/codecs/spark-codec-rtcp"
-  ["spark-codec-rtp"]="crates/codecs/spark-codec-rtp"
-  ["spark-codec-sdp"]="crates/codecs/spark-codec-sdp"
-  ["spark-codec-sip"]="crates/codecs/spark-codec-sip"
+  ["crates/codecs/spark-codec-line"]="crates/spark-codec-line"
+  ["crates/codecs/spark-codec-rtcp"]="crates/spark-codec-rtcp"
+  ["crates/codecs/spark-codec-rtp"]="crates/spark-codec-rtp"
+  ["crates/codecs/spark-codec-sdp"]="crates/spark-codec-sdp"
+  ["crates/codecs/spark-codec-sip"]="crates/spark-codec-sip"
   ["spark-core"]="crates/spark-core"
-  ["crates/spark-transport-tcp"]="crates/transport/spark-transport-tcp"
-  ["crates/spark-transport-udp"]="crates/transport/spark-transport-udp"
-  ["crates/spark-transport-tls"]="crates/transport/spark-transport-tls"
-  ["crates/spark-transport-quic"]="crates/transport/spark-transport-quic"
+  ["crates/transport/spark-transport-tcp"]="crates/spark-transport-tcp"
+  ["crates/transport/spark-transport-udp"]="crates/spark-transport-udp"
+  ["crates/transport/spark-transport-tls"]="crates/spark-transport-tls"
+  ["crates/transport/spark-transport-quic"]="crates/spark-transport-quic"
 )
 
 # 第 3 步: 执行迁移。

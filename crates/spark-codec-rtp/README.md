@@ -2,7 +2,7 @@
 
 ## 职责边界
 - 为 RTP 报文提供零拷贝解析与构造，支撑实时媒体传输在 `spark-core` 背压与半关闭语义下运行。
-- 与 [`crates/codecs/spark-codec-sdp`](../spark-codec-sdp) 完成编解码协商，确保 `payload_type`、`ssrc`、`clock_rate` 等字段在媒体 pipeline 中保持一致。
+- 与 [`crates/spark-codec-sdp`](../spark-codec-sdp) 完成编解码协商，确保 `payload_type`、`ssrc`、`clock_rate` 等字段在媒体 pipeline 中保持一致。
 - 提供可复用的时钟同步、序列号管理与统计数据，供传输实现和观测链路（参见 [`docs/observability/metrics.md`](../../../docs/observability/metrics.md)）消费。
 
 ## 公共接口入口
@@ -17,7 +17,7 @@
 ## 关联契约与测试
 - 使用 [`crates/spark-contract-tests`](../../spark-contract-tests) 的 backpressure、graceful_shutdown 与 security 主题验证 ReadyState 序列。
 - 与 [`crates/spark-impl-tck`](../../spark-impl-tck) 的 TCP/TLS/QUIC 套件协作，覆盖真实网络下的抖动、重传与密钥轮换情景。
-- 媒体会话的 SDP 协商示例位于 [`crates/codecs/spark-codec-sdp`](../spark-codec-sdp)，README 需与之保持字段说明的一致性。
+- 媒体会话的 SDP 协商示例位于 [`crates/spark-codec-sdp`](../spark-codec-sdp)，README 需与之保持字段说明的一致性。
 
 ## 集成注意事项
 - `RtpCodec` 默认使用 `ErasedSparkBuf` 以满足 [`docs/buffer-zerocopy-contract.md`](../../../docs/buffer-zerocopy-contract.md)；在自定义内存池时需确保生命周期与 `CallContext` 对齐。

@@ -1,6 +1,6 @@
 # Feature 策略与命名规范
 
-> 适用范围：`spark-core`、`crates/transport/*` 以及依赖这些契约的实现层 crate。
+> 适用范围：`spark-core`、`crates/spark-transport-*` 以及依赖这些契约的实现层 crate。
 
 ## 背景（Why）
 - 框架需要同时覆盖 `std` 与 `no_std + alloc` 场景，若默认启用重量级运行时会造成最小化构建失败。

@@ -2,7 +2,7 @@
 
 ## 职责边界
 - 提供传输层与宿主实现的技术合规套件，覆盖 [`docs/global-architecture.md`](../../docs/global-architecture.md) 中约定的 ReadyState、半关闭、预算与错误分类契约。
-- 通过主题化入口（`graceful_shutdown`, `backpressure`, `errors`, `security` 等）复用测试脚手架，帮助 `crates/transport/*` 与编解码器快速对齐协议行为。
+- 通过主题化入口（`graceful_shutdown`, `backpressure`, `errors`, `security` 等）复用测试脚手架，帮助 `crates/spark-transport-*` 与编解码器快速对齐协议行为。
 - 作为发布门槛的一部分，在 CI 中被 `make ci-lints` 与 `make ci-bench-smoke` 调用，确保所有实现遵循统一接口。
 
 ## 公共接口入口

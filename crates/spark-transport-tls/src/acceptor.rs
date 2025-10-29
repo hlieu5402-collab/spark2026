@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use rustls::ServerConfig;
-use spark_core::{
-    CoreError, context::ExecutionContext, prelude::CallContext, transport::TransportBuilder,
-};
+use spark_core::{CoreError, context::Context, prelude::CallContext, transport::TransportBuilder};
 use spark_transport_tcp::TcpChannel;
 use std::{future::Future, pin::Pin};
 use tokio_rustls::TlsAcceptor as TokioTlsAcceptor;
@@ -104,7 +102,7 @@ impl TransportBuilder for TlsAcceptorBuilder {
         "tls"
     }
 
-    fn build<'ctx>(self, _ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+    fn build<'ctx>(self, _ctx: &'ctx Context<'ctx>) -> Self::BuildFuture<'ctx> {
         let config = self.config;
         Box::pin(async move { Ok(TlsAcceptor::new(config)) })
     }

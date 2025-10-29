@@ -88,9 +88,9 @@ validate_inputs() {
 }
 
 run_public_api() {
-  local output_file
+  local output_file=""
   output_file="$(mktemp)"
-  trap 'rm -f -- "${output_file}"' EXIT
+  trap 'if [[ -n "${output_file-}" ]]; then rm -f -- "${output_file}"; fi' EXIT
 
   log_info "正在统计 ${TARGET_CRATE} 公共 Trait，总预算 ${TRAIT_BUDGET}。"
   if ! cargo public-api \
@@ -105,13 +105,26 @@ run_public_api() {
   python3 - <<'PY' "${BASELINE_FILE}" "${output_file}" "${TRAIT_BUDGET}"
 import json
 import sys
+from json import JSONDecodeError
 from pathlib import Path
 
 baseline_path, current_path, budget_str = sys.argv[1:4]
 budget = int(budget_str)
-
-baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+baseline_text = Path(baseline_path).read_text(encoding="utf-8")
 current = Path(current_path).read_text(encoding="utf-8").splitlines()
+
+try:
+    baseline = json.loads(baseline_text)
+except JSONDecodeError:
+    # 教案级补充说明：部分历史基线缺少 JSON 数组包装，为兼容迁移期
+    # 的老格式，这里回退到逐行解析，并通过 json.loads 处理转义字符。
+    parsed_lines = []
+    for raw_line in baseline_text.splitlines():
+        stripped = raw_line.strip().rstrip(',')
+        if not stripped:
+            continue
+        parsed_lines.append(json.loads(stripped))
+    baseline = parsed_lines
 
 baseline_traits = {item for item in baseline if item.startswith("pub trait ")}
 current_traits = {line for line in current if line.startswith("pub trait ")}

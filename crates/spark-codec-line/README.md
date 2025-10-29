@@ -20,7 +20,7 @@
 ## 关联契约与测试
 - 对应的契约验证示例位于 [`examples`](./examples) 目录，并结合 [`crates/spark-contract-tests`](../../spark-contract-tests) 扩展覆盖真实场景。
 - ReadyState 映射在 [`docs/buffer-zerocopy-contract.md`](../../../docs/buffer-zerocopy-contract.md) 有详细说明，特别是缓冲租借与释放顺序。
-- 与 [`crates/codecs/spark-codec-sip`](../spark-codec-sip) 共享公共测试基类，确保不同协议间的错误分类保持一致。
+- 与 [`crates/spark-codec-sip`](../spark-codec-sip) 共享公共测试基类，确保不同协议间的错误分类保持一致。
 
 ## 集成注意事项
 - `encode`/`decode` 会检查 `CallContext::budget(BudgetKind::Codec)`，当预算耗尽时返回 `CoreError`，调用方需据此传播 `ReadyState::BudgetExhausted`。

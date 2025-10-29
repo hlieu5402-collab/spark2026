@@ -9,8 +9,8 @@
 
 ## 决策
 - **分层边界**：
-  1. `crates/codecs/*` 仅依赖 `spark-core` 提供的公共契约，不得引用任何 `crates/transport/*`。
-  2. `crates/transport/*` 仅与 `spark-core` 和运行时相关依赖（Tokio/Quinn/Rustls 等）耦合，禁止回指 codec 实现。
+  1. `crates/spark-codec-*` 仅依赖 `spark-core` 提供的公共契约，不得引用任何 `crates/spark-transport-*`。
+  2. `crates/spark-transport-*` 仅与 `spark-core` 和运行时相关依赖（Tokio/Quinn/Rustls 等）耦合，禁止回指 codec 实现。
 - **Feature 策略**：
   - Codec 层使用 `alloc/std/compat_v0` 等统一特性，覆盖 `no_std + alloc` 与兼容模式。
   - Transport 层仅通过 `runtime-*` 暴露运行时实现，关闭后应保留空壳契约，确保 `cargo build --no-default-features --features alloc` 可通过。
@@ -35,7 +35,7 @@
   - 开发者在调试跨层问题时需要通过 `spark-core` 的类型追踪上下文，学习成本略有增加。
 
 ## 落地动作
-1. 审查所有 `crates/codecs/*` 与 `crates/transport/*` 的 `Cargo.toml`，确保依赖列表符合上述规则。
+1. 审查所有 `crates/spark-codec-*` 与 `crates/spark-transport-*` 的 `Cargo.toml`，确保依赖列表符合上述规则。
 2. 在 `CONTRIBUTING.md` 中强调新增模块需遵循本 ADR；发现例外时需提交新的 ADR 说明理由。
 3. 将分层检查纳入 `tools/ci/check_contract_sync.sh` 的扩展计划，后续通过脚本自动比对。
 

@@ -3,7 +3,7 @@
 ## 职责边界
 - 在真实传输栈上执行 `spark-core` 契约验证，补齐 `crates/spark-contract-tests` 在纯内存环境下无法覆盖的 IO 行为。
 - 通过 `Tokio`/`quinn` 等运行时运行端到端场景，确认 [`docs/transport-handshake-negotiation.md`](../../docs/transport-handshake-negotiation.md) 与 [`docs/graceful-shutdown-contract.md`](../../docs/graceful-shutdown-contract.md) 的要求在真实网络中成立。
-- 为 `crates/transport/*` 与外部实现提供参考样例，作为 `make ci-bench-smoke` 的一部分评估性能与行为一致性。
+- 为 `crates/spark-transport-*` 与外部实现提供参考样例，作为 `make ci-bench-smoke` 的一部分评估性能与行为一致性。
 
 ## 公共接口入口
 - [`src/lib.rs`](./src/lib.rs)：保留传输契约测试的占位模块，并在 `transport` 测试集中组装半关闭、背压等端到端场景。
@@ -18,7 +18,7 @@
 
 ## 关联契约与测试
 - 与 [`crates/spark-contract-tests`](../spark-contract-tests) 紧耦合：此 crate 的每个主题均调用核心 Runner 以共享断言逻辑。
-- 默认测试拓扑由 [`crates/transport`](../transport) 下的实现提供；若替换传输实现，请确保 README 与索引指向新的路径。
+- 默认测试拓扑由 [`crates/spark-transport`](../spark-transport) 下的实现提供；若替换传输实现，请确保 README 与索引指向新的路径。
 - 性能冒烟数据会反馈到 [`docs/async-contract-performance.md`](../../docs/async-contract-performance.md)，用于追踪回归。
 
 ## 集成注意事项

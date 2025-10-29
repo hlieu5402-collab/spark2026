@@ -2,7 +2,7 @@
 
 ## 职责边界
 - 解析与构造 RTCP 控制报文，为媒体质量监控、拥塞控制与会话管理提供统计输入。
-- 与 [`crates/codecs/spark-codec-rtp`](../spark-codec-rtp) 协作，共享时钟同步与丢包统计，支撑 [`docs/observability/metrics.md`](../../../docs/observability/metrics.md) 中定义的媒体指标。
+- 与 [`crates/spark-codec-rtp`](../spark-codec-rtp) 协作，共享时钟同步与丢包统计，支撑 [`docs/observability/metrics.md`](../../../docs/observability/metrics.md) 中定义的媒体指标。
 - 在契约测试中模拟真实网络行为，确保 `CallContext` 背压与半关闭语义在控制面场景同样成立。
 
 ## 公共接口入口

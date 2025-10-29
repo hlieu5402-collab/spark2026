@@ -10,7 +10,7 @@
 /crates/spark-core/Cargo.toml           @spark-rs/runtime-owners @spark-rs/release-engineering
 
 # 编解码相关模块
-/crates/codecs/spark-codec-line/        @spark-rs/codec-team @spark-rs/core-maintainers
+/crates/spark-codec-line/              @spark-rs/codec-team @spark-rs/core-maintainers
 
 # 构建与工具链
 /tools/                                 @spark-rs/tooling

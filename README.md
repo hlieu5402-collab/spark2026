@@ -13,8 +13,8 @@ Spark 2026 是面向高性能、协议无关场景的异步通信契约集合，
 | **契约测试** | [`crates/spark-contract-tests`](crates/spark-contract-tests/README.md) | 汇总 ReadyState、错误分类、半关闭等主题化测试；[`crates/spark-contract-tests-macros`](crates/spark-contract-tests-macros/README.md) 提供编译期套件注册。 |
 | **实现 TCK** | [`crates/spark-impl-tck`](crates/spark-impl-tck/README.md) | 在真实 TCP/TLS/QUIC/UDP 环境执行合规检查，验证传输实现遵守契约。 |
 | **可观测性** | [`crates/spark-otel`](crates/spark-otel/README.md) | 将状态机与错误域映射到 OpenTelemetry，提供链路追踪与指标输出。 |
-| **传输层** | [`crates/transport/spark-transport-tcp`](crates/transport/spark-transport-tcp/README.md) · [`tls`](crates/transport/spark-transport-tls/README.md) · [`quic`](crates/transport/spark-transport-quic/README.md) · [`udp`](crates/transport/spark-transport-udp/README.md) | 提供不同网络介质上的通道实现，统一 ReadyState 与关闭语义。 |
-| **编解码器** | [`crates/codecs/spark-codec-line`](crates/codecs/spark-codec-line/README.md) · [`rtp`](crates/codecs/spark-codec-rtp/README.md) · [`rtcp`](crates/codecs/spark-codec-rtcp/README.md) · [`sdp`](crates/codecs/spark-codec-sdp/README.md) · [`sip`](crates/codecs/spark-codec-sip/README.md) | 演示文本、媒体与信令协议在统一契约下的实现方式。 |
+| **传输层** | [`crates/spark-transport-tcp`](crates/spark-transport-tcp/README.md) · [`tls`](crates/spark-transport-tls/README.md) · [`quic`](crates/spark-transport-quic/README.md) · [`udp`](crates/spark-transport-udp/README.md) | 提供不同网络介质上的通道实现，统一 ReadyState 与关闭语义。 |
+| **编解码器** | [`crates/spark-codec-line`](crates/spark-codec-line/README.md) · [`rtp`](crates/spark-codec-rtp/README.md) · [`rtcp`](crates/spark-codec-rtcp/README.md) · [`sdp`](crates/spark-codec-sdp/README.md) · [`sip`](crates/spark-codec-sip/README.md) | 演示文本、媒体与信令协议在统一契约下的实现方式。 |
 
 更多设计背景与治理策略可参考：
 
