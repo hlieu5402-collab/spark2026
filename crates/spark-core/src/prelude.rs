@@ -40,12 +40,12 @@
 /// `spark_core::prelude`：契约级常用类型一站式导入。
 ///
 /// # 设计意图（Why）
-/// - 降低新接入方的学习门槛，仅需 `use spark_core::prelude::*;` 即可获取三元组、错误、ID 等核心概念；
+/// - 降低新接入方的学习门槛，仅需 `use spark_core::prelude::*;` 即可获取调用上下文五元组、错误、ID 等核心概念；
 /// - 避免业务侧错误导出内部模块（例如 `configuration`），确保依赖面受控；
 /// - 支持 `no_std + alloc` 环境，全部类型均来源于本 crate。
 ///
 /// # 收录内容（What）
-/// - 调用三元组：[`CallContext`]、[`Cancellation`]、[`Deadline`];
+/// - 调用上下文：[`CallContext`]、[`CallContextBuilder`]、[`Cancellation`]、[`Deadline`]、[`TraceContext`];
 /// - 错误体系：[`CoreError`]、[`Result`];
 /// - 预算与协议：[`crate::contract::Budget`]、[`crate::contract::BudgetDecision`]、
 ///   [`crate::protocol::Event`]、[`crate::protocol::Frame`]、[`crate::protocol::Message`];
@@ -54,7 +54,7 @@
 /// - 辅助类型：[`NonEmptyStr`]、[`CloseReason`]、[`BudgetSet`]、[`TimeoutProfile`].
 ///
 /// ## 导出明细（How）
-/// - **入口综述（Why）**：`spark_core::prelude` 面向业务侧提供“调用三元组 + 错误语义 + 预算”一站式导入，
+/// - **入口综述（Why）**：`spark_core::prelude` 面向业务侧提供“调用上下文五元组 + 错误语义 + 预算”一站式导入，
 ///   上层仅需 `use spark_core::prelude::*;` 便可获得常见契约与辅助工具；
 /// - **调用上下文（What）**：[`crate::CallContext`]、[`crate::CallContextBuilder`]、[`crate::Cancellation`],
 ///   [`crate::Deadline`] 用于描述一次 RPC 生命周期与取消/截止语义；

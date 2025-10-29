@@ -38,8 +38,9 @@ use spark_core::transport::server::ListenerShutdown;
 use spark_core::transport::traits::generic::{ServerTransport, TransportFactory};
 use spark_core::transport::{Endpoint, TransportSocketAddr};
 use spark_core::{CoreError, SparkError};
+use spark_core::security::IdentityDescriptor;
 
-use super::support::{monotonic, Lcg64};
+use super::support::{build_identity, monotonic, Lcg64};
 
 /// 端到端上下文传递契约测试。
 ///
@@ -69,6 +70,25 @@ fn context_propagation_contract_is_deterministic() {
             .iter()
             .any(|event| matches!(event.stage, Stage::CancellationInjected(_))),
         "至少需要一次取消注入以验证优先级契约"
+    );
+    assert!(
+        baseline.iter().any(|event| {
+            matches!(event.stage, Stage::ServicePollReady | Stage::ServiceCall)
+                && event.identity.is_some()
+        }),
+        "服务阶段必须观察到调用身份"
+    );
+    assert!(
+        baseline
+            .iter()
+            .any(|event| matches!(event.stage, Stage::ServicePollReady) && event.peer_identity.is_some()),
+        "服务阶段必须观察到对端身份"
+    );
+    assert!(
+        baseline
+            .iter()
+            .any(|event| event.trace_sampled.is_some()),
+        "上下文应记录追踪采样标记"
     );
 
     let mut saw_cancel = false;
@@ -143,12 +163,28 @@ fn execute_replay(seed: u64) -> Vec<StageObservation> {
     let deadline = Deadline::with_timeout(base_time, Duration::from_millis(40));
     let flow_budget = Budget::new(BudgetKind::Flow, 128);
 
+    let trace_flags = if trace_is_sampled {
+        TraceFlags::SAMPLED
+    } else {
+        0
+    };
+    let trace_context = TraceContext::new(
+        [0xAB; TraceContext::TRACE_ID_LENGTH],
+        [0xCD; TraceContext::SPAN_ID_LENGTH],
+        TraceFlags::new(trace_flags),
+    );
+
+    let security = SecurityContextSnapshot::default()
+        .with_identity(build_identity("orders.caller"))
+        .with_peer_identity(build_identity("orders.peer"));
+
     let call_context = CallContext::builder()
         .with_cancellation(cancellation.clone())
         .with_deadline(deadline)
         .add_budget(flow_budget.clone())
-        .with_security(SecurityContextSnapshot::default())
+        .with_security(security)
         .with_observability(DEFAULT_OBSERVABILITY_CONTRACT)
+        .with_trace_context(trace_context.clone())
         .build();
 
     let route_pattern = RoutePattern::new(
@@ -185,31 +221,15 @@ fn execute_replay(seed: u64) -> Vec<StageObservation> {
         .with_security(security_choice.clone())
         .with_lifecycle(SessionLifecycle::BidirectionalStream);
 
-    let trace_flags = if trace_is_sampled {
-        TraceFlags::SAMPLED
-    } else {
-        0
-    };
-    let trace_context = TraceContext::new(
-        [0xAB; TraceContext::TRACE_ID_LENGTH],
-        [0xCD; TraceContext::SPAN_ID_LENGTH],
-        TraceFlags::new(trace_flags),
-    );
-    let trace_holder = if trace_is_sampled {
-        Some(trace_context.clone().mark_sampled())
-    } else {
-        Some(trace_context.clone())
-    };
-
     let router_request = PipelineMessage::from_user(TestUserMessage {
         tag: rng.next(),
     });
     let routing_snapshot = RoutingSnapshot::new(&catalog, 7);
     let routing_context = RoutingContext::new(
+        call_context.execution(),
         &router_request,
         &intent,
         Some(&connection_intent),
-        trace_holder.as_ref(),
         &dynamic_metadata,
         routing_snapshot,
     );
@@ -350,6 +370,8 @@ struct StageObservation {
     metadata_entries: Option<usize>,
     qos: Option<QualityOfService>,
     security_mode: Option<SecurityMode>,
+    identity: Option<IdentityDescriptor>,
+    peer_identity: Option<IdentityDescriptor>,
 }
 
 impl StageObservation {
@@ -365,10 +387,12 @@ impl StageObservation {
             deadline_ms,
             flow_limit: flow_budget.map(|budget| budget.limit()),
             flow_remaining: flow_budget.map(|budget| budget.remaining()),
-            trace_sampled: None,
+            trace_sampled: Some(ctx.trace_context().is_sampled()),
             metadata_entries: None,
             qos: None,
             security_mode: None,
+            identity: ctx.identity().cloned(),
+            peer_identity: ctx.peer_identity().cloned(),
         }
     }
 
@@ -383,10 +407,18 @@ impl StageObservation {
                 .map(|instant| instant.as_duration().as_millis()),
             flow_limit: flow_budget.as_ref().map(|budget| budget.limit()),
             flow_remaining: flow_budget.as_ref().map(|budget| budget.remaining()),
-            trace_sampled: None,
+            trace_sampled: Some(ctx.trace_context().is_sampled()),
             metadata_entries: None,
             qos: None,
             security_mode: None,
+            identity: ctx
+                .security()
+                .identity()
+                .map(|identity| identity.as_ref().clone()),
+            peer_identity: ctx
+                .security()
+                .peer_identity()
+                .map(|identity| identity.as_ref().clone()),
         }
     }
 
@@ -402,6 +434,8 @@ impl StageObservation {
             metadata_entries: None,
             qos: None,
             security_mode: None,
+            identity: None,
+            peer_identity: None,
         }
     }
 
@@ -417,20 +451,25 @@ impl StageObservation {
             metadata_entries: None,
             qos: None,
             security_mode: None,
+            identity: None,
+            peer_identity: None,
         }
     }
 
     fn from_routing(stage: Stage, context: &RoutingContext<'_, PipelineMessage>) -> Self {
+        let execution = context.execution();
         Self {
             stage,
             cancelled: None,
             deadline_ms: None,
             flow_limit: None,
             flow_remaining: None,
-            trace_sampled: context.trace().map(|trace| trace.is_sampled()),
+            trace_sampled: Some(execution.trace_context().is_sampled()),
             metadata_entries: Some(context.dynamic_metadata().iter().count()),
             qos: context.intent().expected_qos(),
             security_mode: context.intent().security_preference().cloned(),
+            identity: execution.identity().cloned(),
+            peer_identity: execution.peer_identity().cloned(),
         }
     }
 
@@ -445,6 +484,8 @@ impl StageObservation {
             metadata_entries: None,
             qos: None,
             security_mode: None,
+            identity: None,
+            peer_identity: None,
         }
     }
 }

@@ -363,10 +363,10 @@ impl InboundHandler for RouterHandler {
         };
 
         let routing_ctx = RoutingContext::new(
+            ctx.execution_context(),
             &msg,
             &parts.intent,
             parts.connection.as_ref(),
-            Some(ctx.trace_context()),
             &parts.dynamic_metadata,
             snapshot,
         );
