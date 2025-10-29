@@ -22,7 +22,7 @@
 
 ## 关联契约与测试
 - 契约测试通过 [`crates/spark-contract-tests`](../../spark-contract-tests) 的 security、graceful_shutdown 与 backpressure 主题验证握手、证书更新与半关闭流程。
-- [`crates/spark-impl-tck`](../../spark-impl-tck) 的 TLS 套件会在真实证书环境下执行端到端测试，包括 0-RTT 与会话恢复。
+- [`crates/spark-tck`](../../spark-tck) 的 TLS 套件会在真实证书环境下执行端到端测试，包括 0-RTT 与会话恢复。
 - 观测指标在 [`docs/observability/dashboards/transport-health.json`](../../../docs/observability/dashboards/transport-health.json) 中配置，需确保字段与 `SecurityContextSnapshot` 一致。
 
 ## 集成注意事项

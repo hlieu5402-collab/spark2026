@@ -1,7 +1,7 @@
 //! `frame_text_binary` 契约测试（集成测试版）。
 //!
 //! 通过在集成测试中嵌套模块，确保测试筛选指令
-//! `cargo test -p spark-impl-tck -- ws_sip::frame_text_binary::*`
+//! `cargo test -p spark-tck -- ws_sip::frame_text_binary::*`
 //! 仍能定位到期望的命名空间。
 
 mod ws_sip {

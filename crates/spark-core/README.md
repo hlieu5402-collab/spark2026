@@ -19,7 +19,7 @@
 
 ## 关联契约与测试
 - [`crates/spark-contract-tests`](../spark-contract-tests) 使用 `spark-core` 提供的类型驱动黑盒测试，验证传输与编解码实现是否遵循 ReadyState、错误分类与半关闭顺序。
-- [`crates/spark-impl-tck`](../spark-impl-tck) 扩展契约测试以覆盖宿主实现，重点围绕 `CallContext` 生命周期与 `Budget` 传播。
+- [`crates/spark-tck`](../spark-tck) 扩展契约测试以覆盖宿主实现，重点围绕 `CallContext` 生命周期与 `Budget` 传播。
 - 所有宏与代码生成通过 [`crates/spark-macros`](../spark-macros) 间接依赖 `spark-core`，需先在 `spark-core` 中完成契约定义再向外暴露。
 
 ## 集成注意事项

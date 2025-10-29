@@ -1,4 +1,4 @@
-# spark-impl-tck
+# spark-tck
 
 ## 职责边界
 - 在真实传输栈上执行 `spark-core` 契约验证，补齐 `crates/spark-contract-tests` 在纯内存环境下无法覆盖的 IO 行为。

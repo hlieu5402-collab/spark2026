@@ -3,7 +3,7 @@
 ## 职责边界
 - 将 SIP 请求与响应报文映射为结构化数据，提供零拷贝解析/序列化能力以契合 `spark-core::codec::Codec` 契约。
 - 支撑 `spark-core` 的呼叫控制、会话迁移与事务跟踪逻辑，确保与 `CallContext` 的预算、取消与半关闭语义保持一致。
-- 为 `spark-impl-tck` 的信令互操作测试提供基线实现，并在 `CodecRegistry` 中作为 SIP 族扩展的默认入口。
+- 为 `spark-tck` 的信令互操作测试提供基线实现，并在 `CodecRegistry` 中作为 SIP 族扩展的默认入口。
 
 ## 公共接口入口
 - [`src/lib.rs`](./src/lib.rs)：暴露 `SipCodec`、`parse_request`、`parse_response` 与编码器入口。

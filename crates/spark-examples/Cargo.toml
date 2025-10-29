@@ -1,10 +1,10 @@
 [package]
-name = "spark-ember"
+name = "spark-examples"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
-description = "spark-ember: Pipeline 运行时的轻量级监听器协调器"
+description = "spark-examples: Pipeline 运行时示例的轻量级监听器协调器"
 
 [lib]
 path = "src/lib.rs"

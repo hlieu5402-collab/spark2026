@@ -20,7 +20,7 @@
 
 ## 关联契约与测试
 - [`crates/spark-contract-tests`](../../spark-contract-tests) 的 backpressure 与 security 主题会验证 NAT 退避、非法来源与预算耗尽的行为。
-- [`crates/spark-impl-tck`](../../spark-impl-tck) 使用本实现模拟实际 UDP 流量（rport 回写、Keepalive），确保 ReadyState 与关闭顺序正确。
+- [`crates/spark-tck`](../../spark-tck) 使用本实现模拟实际 UDP 流量（rport 回写、Keepalive），确保 ReadyState 与关闭顺序正确。
 - 观测指标与报警配置可参照 [`docs/observability/dashboards/transport-health.json`](../../../docs/observability/dashboards/transport-health.json)。
 
 ## 集成注意事项

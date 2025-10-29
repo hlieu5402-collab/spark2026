@@ -328,7 +328,7 @@ spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
 
 spark-deprecation-lint v0.1.0 (/workspace/spark2026/crates/spark-deprecation-lint)
 
-spark-ember v0.1.0 (/workspace/spark2026/crates/spark-ember)
+spark-examples v0.1.0 (/workspace/spark2026/crates/spark-examples)
 ├── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
 └── spin v0.9.8
 
@@ -337,7 +337,7 @@ spark-hosting v0.1.0 (/workspace/spark2026/crates/spark-hosting)
 [dev-dependencies]
 └── thiserror v2.0.17 (*)
 
-spark-impl-tck v0.1.0 (/workspace/spark2026/crates/spark-impl-tck)
+spark-tck v0.1.0 (/workspace/spark2026/crates/spark-tck)
 ├── spark-codec-sip v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-sip) (*)
 └── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
 [dev-dependencies]

@@ -6,7 +6,7 @@
 //! ## 教案目的（Why）
 //! - **定位**：Real-time Transport Control Protocol (RTCP) 控制平面的编解码骨架，负责媒体质量反馈与会话控制消息。
 //! - **架构角色**：与 RTP 数据面配对，提供统计、拥塞控制和同步信息，保障实时会话体验。
-//! - **设计策略**：在占位结构之上补充 RTCP 复合包解析能力，使 `spark-impl-tck` 可以加载真实测试载荷。
+//! - **设计策略**：在占位结构之上补充 RTCP 复合包解析能力，使 `spark-tck` 可以加载真实测试载荷。
 //!
 //! ## 交互契约（What）
 //! - **依赖输入**：依托 `spark-codecs` 聚合的 [`BufView`](spark_codecs::buffer::BufView) 实现，从零拷贝缓冲视图中提取字节流。
@@ -76,7 +76,7 @@ impl RtcpCodecScaffold {
     /// 构造 RTCP 编解码占位实例。
     ///
     /// ### 设计动机（Why）
-    /// - 为 `spark-impl-tck` 即将添加的控制面测试准备构造入口。
+    /// - 为 `spark-tck` 即将添加的控制面测试准备构造入口。
     /// - 统一向调用方暴露实例化方法，减少后续 breaking change 的概率。
     ///
     /// ### 契约定义（What）
