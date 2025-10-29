@@ -1,4 +1,4 @@
-use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use bytes::BytesMut;
@@ -194,31 +194,32 @@ impl PoolInner {
         let pool_misses = self.metrics.pool_misses.load(Ordering::Relaxed);
         let total_bytes = self.metrics.total_bytes.load(Ordering::Relaxed);
 
-        let mut custom_dimensions = Vec::with_capacity(6);
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("slab_free_slots"),
-            value: free_slots,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("active_buffers"),
-            value: active_buffers,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("total_allocated"),
-            value: total_allocated,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("total_recycled"),
-            value: total_recycled,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("pool_misses"),
-            value: pool_misses,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("total_bytes"),
-            value: total_bytes,
-        });
+        let custom_dimensions = vec![
+            PoolStatDimension {
+                key: Cow::Borrowed("slab_free_slots"),
+                value: free_slots,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("active_buffers"),
+                value: active_buffers,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("total_allocated"),
+                value: total_allocated,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("total_recycled"),
+                value: total_recycled,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("pool_misses"),
+                value: pool_misses,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("total_bytes"),
+                value: total_bytes,
+            },
+        ];
 
         PoolStats {
             allocated_bytes: self.metrics.allocated_bytes.load(Ordering::Relaxed),

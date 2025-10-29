@@ -60,5 +60,5 @@ mod util;
 #[cfg(feature = "runtime-tokio")]
 pub use channel::{TcpChannel, TcpChannelParts, TcpSocketConfig};
 #[cfg(feature = "runtime-tokio")]
-pub use listener::TcpListener;
+pub use listener::{TcpListener, TcpListenerBuilder};
 pub use spark_core::transport::ShutdownDirection;
