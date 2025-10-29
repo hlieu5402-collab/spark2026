@@ -141,6 +141,181 @@ impl Default for Deadline {
 
 pub use crate::types::{Budget, BudgetDecision, BudgetKind, BudgetSnapshot, CloseReason};
 
+/// 背压信号的统一表示，服务、Pipeline 与传输层通过它共享“是否可继续推进”的决策。
+///
+/// # 设计目标（Why）
+/// - 以一个集中定义取代历史上散落在 `status::ready`、`transport::backpressure`、`service::metrics`
+///   的多套枚举，确保“就绪/繁忙/预算耗尽/等待”四态在跨模块间具备一致含义；
+/// - 将关闭语义（[`ShutdownGraceful`]、[`ShutdownImmediate`]) 纳入同一信号流，方便实现者在
+///   收到强制关闭时快速短路业务逻辑；
+/// - 为未来扩展（如限速建议、突发保护级别）预留空间，通过 `#[non_exhaustive]` 避免调用方匹配
+///   时写死全部分支。
+///
+/// # 语义详解（How）
+/// - `Ready`：明确表示可接受下一单位工作，常对应 `Service::poll_ready` 返回 `ReadyState::Ready`；
+/// - `Busy`：通用忙碌信号，提示调用方稍后重试（无额外上下文）；
+/// - `RetryAfter { delay }`：建议的退避时间，通常来自 I/O 层或队列节流策略；
+/// - `BudgetExhausted { snapshot }`：预算耗尽，携带 [`BudgetSnapshot`] 用于日志或指标；
+/// - `ShutdownPending`：优雅关闭已经开始，引用 [`ShutdownGraceful`] 解释原因与截止时间；
+/// - `ShutdownEnforced`：立即关闭，表示后续操作应立刻终止，携带 [`ShutdownImmediate`]。
+///
+/// # 契约说明（What）
+/// - **前置条件**：信号发布者需确保 `BudgetSnapshot`、`Shutdown*` 内的上下文字段已完成构造；
+/// - **后置条件**：接收方可依据变体采取相应动作（例如停止重试、触发降级、刷新指标）；
+/// - **互操作性**：该枚举不直接绑定具体通道或服务实例，可在任意 `Send + Sync` 环境中传递。
+///
+/// # 设计考量（Trade-offs）
+/// - 并未细分“背压原因”字符串，避免恢复旧版 `BackpressureReason` 的复杂度；
+/// - 关闭相关信号仅携带元信息，不驱动真正的资源释放，调用方需结合具体接口（如
+///   [`Channel::close_graceful`](crate::pipeline::Channel::close_graceful)）执行动作。
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum BackpressureSignal {
+    /// 完全就绪，可继续推进下一步工作。
+    Ready,
+    /// 暂时繁忙，建议稍后重新尝试。
+    Busy,
+    /// 提供明确退避时长的重试建议。
+    RetryAfter { delay: Duration },
+    /// 预算耗尽，携带统一的预算快照。
+    BudgetExhausted { snapshot: BudgetSnapshot },
+    /// 正在执行优雅关闭。
+    ShutdownPending(ShutdownGraceful),
+    /// 已触发立即关闭。
+    ShutdownEnforced(ShutdownImmediate),
+}
+
+/// 立即关闭指令，强调“立刻终止，禁止等待排空”。
+///
+/// # 设计目标（Why）
+/// - 为跨层关闭流程提供统一载体，避免传输层与服务层自行约定 `bool` 或字符串标记；
+/// - 显式暴露关闭原因 [`CloseReason`]，便于日志与审计；
+/// - 同步携带“是否可补救”的语义（通过与 [`ShutdownGraceful`] 区分），指导上层策略选择。
+///
+/// # 契约说明（What）
+/// - **字段**：仅包含 `reason`，表达本次关闭的根因；
+/// - **前置条件**：构造时必须提供语义化的关闭码与描述，建议遵守 `domain.category` 命名；
+/// - **后置条件**：一旦进入立即关闭分支，调用方应终止 I/O、释放资源并向上报告。
+///
+/// # 风险提示（Trade-offs）
+/// - 不提供截止时间字段，避免误解为可延迟执行；
+/// - 若上层仍尝试优雅关闭，将与指令冲突，应在逻辑上显式判定并优先立即关闭。
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShutdownImmediate {
+    reason: CloseReason,
+}
+
+impl ShutdownImmediate {
+    /// 构造立即关闭指令。
+    pub fn new(reason: CloseReason) -> Self {
+        Self { reason }
+    }
+
+    /// 读取关闭原因，便于记录或转发给外部系统。
+    pub fn reason(&self) -> &CloseReason {
+        &self.reason
+    }
+}
+
+/// 优雅关闭计划，描述“排空 + 截止”式的慢速退出。
+///
+/// # 设计目标（Why）
+/// - 统一服务端（Listener）、客户端（Channel）与业务 Service 的排空语义，减少重复文档；
+/// - 携带 `reason` 与 `deadline`，为运维与自动化决策提供完整信息；
+/// - 支持“无截止时间”场景，以兼容需要等待后台任务完成的长尾操作。
+///
+/// # 契约说明（What）
+/// - `reason`：关闭原因，应指明触发方与影响范围；
+/// - `deadline`：可选的绝对截止时间 [`Deadline`]，若为 `None` 表示仅排空不强制超时；
+/// - `drain_timeout_hint`：可选的退避建议，供链路中间件调整监控或重试节奏。
+///
+/// # 风险提示（Trade-offs）
+/// - `deadline` 未自动触发取消，调用方需结合 [`Cancellation`] 自行落地；
+/// - 若 `drain_timeout_hint` 与 `deadline` 冲突（前者大于后者），以 `deadline` 为准。
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShutdownGraceful {
+    reason: CloseReason,
+    deadline: Option<Deadline>,
+    drain_timeout_hint: Option<Duration>,
+}
+
+impl ShutdownGraceful {
+    /// 创建优雅关闭计划。
+    pub fn new(
+        reason: CloseReason,
+        deadline: Option<Deadline>,
+        drain_timeout_hint: Option<Duration>,
+    ) -> Self {
+        Self {
+            reason,
+            deadline,
+            drain_timeout_hint,
+        }
+    }
+
+    /// 读取关闭原因。
+    pub fn reason(&self) -> &CloseReason {
+        &self.reason
+    }
+
+    /// 获取截止时间（若存在）。
+    pub fn deadline(&self) -> Option<&Deadline> {
+        self.deadline.as_ref()
+    }
+
+    /// 获取排空建议时长，用于调节退避策略。
+    pub fn drain_timeout_hint(&self) -> Option<Duration> {
+        self.drain_timeout_hint
+    }
+}
+
+/// 状态推进结果，配合 [`ContractStateMachine`] 描述状态转换效果。
+///
+/// # 设计目标（Why）
+/// - 让状态机实现者在返回值中明确指示“是否发生状态跃迁”，便于上层据此触发事件或指标；
+/// - 区分 `Noop` 与 `Transition`，避免上层重复记录或误判；
+/// - 泛型参数 `S` 支持任何实现 `Copy + Eq` 的状态类型。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StateAdvance<S>
+where
+    S: Copy + Eq,
+{
+    /// 状态未变化，通常表示收到重复信号或被动确认。
+    Noop { state: S },
+    /// 状态发生跃迁。
+    Transition { from: S, to: S },
+}
+
+/// 最小状态机接口，约束 Pipeline、Transport 等组件如何驱动内部状态。
+///
+/// # 设计目标（Why）
+/// - 提供跨子系统统一的“状态查询 + 信号驱动”模式，降低新模块接入门槛；
+/// - 结合 [`BackpressureSignal`] 与关闭指令，为自动化推理（模型检查、TCK）提供稳定契约；
+/// - 保持接口极简，避免强迫实现者暴露内部存储或引入多余同步原语。
+///
+/// # 契约说明（What）
+/// - `State`：状态枚举，必须可比较且可复制，便于在日志与指标中使用；
+/// - `Signal`：驱动状态的输入，可与 [`BackpressureSignal`]、协议事件等组合；
+/// - `state()`：读取当前状态，应为无副作用操作；
+/// - `on_signal(signal)`：根据输入信号推进状态，返回 [`StateAdvance`] 描述是否发生跃迁；
+/// - **并发约束**：接口本身不规定同步策略，调用方需根据实现文档决定是否需要外部锁。
+///
+/// # 风险提示（Trade-offs）
+/// - 若实现依赖外部锁或原子操作，应在文档中补充说明，以免上层误判线程安全；
+/// - 返回 `Noop` 时务必保持状态未变，否则会破坏日志与度量的一致性。
+pub trait ContractStateMachine {
+    /// 状态枚举类型。
+    type State: Copy + Eq;
+    /// 驱动状态的信号。
+    type Signal;
+
+    /// 读取当前状态。
+    fn state(&self) -> Self::State;
+
+    /// 根据输入信号推进状态，并返回跃迁结果。
+    fn on_signal(&mut self, signal: &Self::Signal) -> StateAdvance<Self::State>;
+}
+
 /// 安全上下文快照，承载调用者与对端的身份/策略元数据。
 ///
 /// # 设计背景（Why）

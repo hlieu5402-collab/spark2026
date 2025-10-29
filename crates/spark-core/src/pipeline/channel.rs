@@ -48,6 +48,8 @@ pub enum ChannelState {
 ///
 /// # 风险提示（Trade-offs）
 /// - 某些协议缺乏显式背压，需在实现内部以阈值模拟；调用方应尊重此信号以避免雪崩放大。
+/// - 每个变体均可映射到 [`BackpressureSignal`](crate::contract::BackpressureSignal)：`Accepted*`
+///   → `Ready`，`FlowControlApplied` → `Busy` 或 `RetryAfter`，便于跨层统一治理。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WriteSignal {
@@ -111,15 +113,38 @@ pub trait Channel: Send + Sync + 'static + Sealed {
     fn local_addr(&self) -> Option<TransportSocketAddr>;
 
     /// 触发优雅关闭，允许在截止前冲刷缓冲。
+    ///
+    /// - **语义映射**：调用后应向上游广播
+    ///   [`BackpressureSignal::ShutdownPending`](crate::contract::BackpressureSignal::ShutdownPending)，
+    ///   提醒状态机进入 `Draining`，并据
+    ///   [`ShutdownGraceful`](crate::contract::ShutdownGraceful) 的截止信息安排排空；
+    /// - **前置条件**：`reason` 必须来源于业务或调度策略，`deadline` 表示排空截止；
+    /// - **后置条件**：实现至少应推进内部状态至 [`ChannelState::Draining`]。
     fn close_graceful(&self, reason: CloseReason, deadline: Option<Deadline>);
 
     /// 立即终止连接。
+    ///
+    /// - **语义映射**：调用方应在外部产生
+    ///   [`BackpressureSignal::ShutdownEnforced`](crate::contract::BackpressureSignal::ShutdownEnforced)，
+    ///   并且实现必须立刻停止接收/发送；
+    /// - **风险提示**：应优先用于不可恢复错误，防止遗漏资源清理。
     fn close(&self);
 
     /// 等待连接完全关闭，用于满足“优雅关闭契约”。
+    ///
+    /// - **契约说明**：返回的 Future 完成表示底层状态机报告 [`ChannelState::Closed`]，
+    ///   若提前触发 [`ShutdownImmediate`](crate::contract::ShutdownImmediate) 也必须完成；
+    /// - **调用建议**：结合
+    ///   [`ContractStateMachine`](crate::contract::ContractStateMachine) 的状态观察，避免重复等待。
     fn closed(&self) -> BoxFuture<'static, crate::Result<(), SparkError>>;
 
     /// 向通道写入消息，返回背压信号。
+    ///
+    /// - **返回语义**：`WriteSignal` 应映射为
+    ///   [`BackpressureSignal`](crate::contract::BackpressureSignal)，使得上层可以统一处理背压；
+    /// - **预算协作**：若写入与 [`Budget`](crate::contract::Budget) 绑定，触发 `FlowControlApplied`
+    ///   时应同步返回
+    ///   `BudgetExhausted` 相关事件。
     fn write(&self, msg: PipelineMessage) -> crate::Result<WriteSignal, CoreError>;
 
     /// 刷新底层缓冲。
