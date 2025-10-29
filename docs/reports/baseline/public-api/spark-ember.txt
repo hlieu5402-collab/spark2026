@@ -1,0 +1,14 @@
+pub mod spark_ember
+pub struct spark_ember::EmberServer
+impl spark_ember::EmberServer
+pub fn spark_ember::EmberServer::new(services: spark_core::runtime::services::CoreServices, config: spark_core::transport::factory::ListenerConfig, transport_factory: alloc::sync::Arc<dyn spark_core::transport::traits::object::DynTransportFactory>) -> Self
+pub async fn spark_ember::EmberServer::run(&self, controller_factory: alloc::sync::Arc<dyn spark_ember::ControllerFactory>) -> spark_core::error::Result<()>
+pub fn spark_ember::EmberServer::services(&self) -> &spark_core::runtime::services::CoreServices
+impl !core::marker::Freeze for spark_ember::EmberServer
+impl core::marker::Send for spark_ember::EmberServer
+impl core::marker::Sync for spark_ember::EmberServer
+impl core::marker::Unpin for spark_ember::EmberServer
+impl !core::panic::unwind_safe::RefUnwindSafe for spark_ember::EmberServer
+impl !core::panic::unwind_safe::UnwindSafe for spark_ember::EmberServer
+pub trait spark_ember::ControllerFactory: spark_core::pipeline::traits::object::DynControllerFactory
+impl<T> spark_ember::ControllerFactory for T where T: spark_core::pipeline::traits::object::DynControllerFactory

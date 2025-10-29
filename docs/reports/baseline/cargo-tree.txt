@@ -1,0 +1,522 @@
+spark-buffer v0.1.0 (/workspace/spark2026/crates/spark-buffer)
+├── bytes v1.10.1
+├── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core)
+│   ├── async-trait v0.1.89 (proc-macro)
+│   │   ├── proc-macro2 v1.0.103
+│   │   │   └── unicode-ident v1.0.20
+│   │   ├── quote v1.0.41
+│   │   │   └── proc-macro2 v1.0.103 (*)
+│   │   └── syn v2.0.108
+│   │       ├── proc-macro2 v1.0.103 (*)
+│   │       ├── quote v1.0.41 (*)
+│   │       └── unicode-ident v1.0.20
+│   ├── libm v0.2.15
+│   ├── loom v0.7.2
+│   │   ├── cfg-if v1.0.4
+│   │   ├── generator v0.8.7
+│   │   │   ├── cfg-if v1.0.4
+│   │   │   ├── libc v0.2.177
+│   │   │   └── log v0.4.28
+│   │   │   [build-dependencies]
+│   │   │   ├── cc v1.2.43
+│   │   │   │   ├── find-msvc-tools v0.1.4
+│   │   │   │   ├── jobserver v0.1.34
+│   │   │   │   │   └── libc v0.2.177
+│   │   │   │   ├── libc v0.2.177
+│   │   │   │   └── shlex v1.3.0
+│   │   │   └── rustversion v1.0.22 (proc-macro)
+│   │   ├── scoped-tls v1.0.1
+│   │   ├── tracing v0.1.41
+│   │   │   ├── log v0.4.28
+│   │   │   ├── pin-project-lite v0.2.16
+│   │   │   ├── tracing-attributes v0.1.30 (proc-macro)
+│   │   │   │   ├── proc-macro2 v1.0.103 (*)
+│   │   │   │   ├── quote v1.0.41 (*)
+│   │   │   │   └── syn v2.0.108 (*)
+│   │   │   └── tracing-core v0.1.34
+│   │   │       └── once_cell v1.21.3
+│   │   └── tracing-subscriber v0.3.20
+│   │       ├── matchers v0.2.0
+│   │       │   └── regex-automata v0.4.13
+│   │       │       └── regex-syntax v0.8.8
+│   │       ├── nu-ansi-term v0.50.3
+│   │       ├── once_cell v1.21.3
+│   │       ├── regex-automata v0.4.13 (*)
+│   │       ├── sharded-slab v0.1.7
+│   │       │   └── lazy_static v1.5.0
+│   │       ├── smallvec v1.15.1
+│   │       ├── thread_local v1.1.9
+│   │       │   └── cfg-if v1.0.4
+│   │       ├── tracing v0.1.41 (*)
+│   │       ├── tracing-core v0.1.34 (*)
+│   │       └── tracing-log v0.2.0
+│   │           ├── log v0.4.28
+│   │           ├── once_cell v1.21.3
+│   │           └── tracing-core v0.1.34 (*)
+│   ├── serde v1.0.228
+│   │   ├── serde_core v1.0.228
+│   │   └── serde_derive v1.0.228 (proc-macro)
+│   │       ├── proc-macro2 v1.0.103 (*)
+│   │       ├── quote v1.0.41 (*)
+│   │       └── syn v2.0.108 (*)
+│   ├── serde_json v1.0.145
+│   │   ├── itoa v1.0.15
+│   │   ├── memchr v2.7.6
+│   │   ├── ryu v1.0.20
+│   │   └── serde_core v1.0.228
+│   ├── sha2 v0.10.9
+│   │   ├── cfg-if v1.0.4
+│   │   ├── cpufeatures v0.2.17
+│   │   └── digest v0.10.7
+│   │       ├── block-buffer v0.10.4
+│   │       │   └── generic-array v0.14.9
+│   │       │       └── typenum v1.19.0
+│   │       │       [build-dependencies]
+│   │       │       └── version_check v0.9.5
+│   │       └── crypto-common v0.1.6
+│   │           ├── generic-array v0.14.9 (*)
+│   │           └── typenum v1.19.0
+│   ├── spark-macros v0.1.0 (proc-macro) (/workspace/spark2026/crates/spark-macros)
+│   │   ├── proc-macro2 v1.0.103 (*)
+│   │   ├── quote v1.0.41 (*)
+│   │   └── syn v2.0.108 (*)
+│   ├── spark-transport v0.1.0 (/workspace/spark2026/crates/spark-transport)
+│   ├── spin v0.9.8
+│   └── toml v0.8.23
+│       ├── serde v1.0.228 (*)
+│       ├── serde_spanned v0.6.9
+│       │   └── serde v1.0.228 (*)
+│       ├── toml_datetime v0.6.11
+│       │   └── serde v1.0.228 (*)
+│       └── toml_edit v0.22.27
+│           ├── indexmap v2.12.0
+│           │   ├── equivalent v1.0.2
+│           │   └── hashbrown v0.16.0
+│           ├── serde v1.0.228 (*)
+│           ├── serde_spanned v0.6.9 (*)
+│           ├── toml_datetime v0.6.11 (*)
+│           ├── toml_write v0.1.2
+│           └── winnow v0.7.13
+│   [build-dependencies]
+│   ├── heck v0.4.1
+│   ├── serde v1.0.228
+│   │   ├── serde_core v1.0.228
+│   │   └── serde_derive v1.0.228 (proc-macro) (*)
+│   └── toml v0.8.23 (*)
+│   [dev-dependencies]
+│   ├── criterion v0.5.1
+│   │   ├── anes v0.1.6
+│   │   ├── cast v0.3.0
+│   │   ├── ciborium v0.2.2
+│   │   │   ├── ciborium-io v0.2.2
+│   │   │   ├── ciborium-ll v0.2.2
+│   │   │   │   ├── ciborium-io v0.2.2
+│   │   │   │   └── half v2.7.1
+│   │   │   │       ├── cfg-if v1.0.4
+│   │   │   │       └── zerocopy v0.8.27
+│   │   │   │           └── zerocopy-derive v0.8.27 (proc-macro)
+│   │   │   │               ├── proc-macro2 v1.0.103 (*)
+│   │   │   │               ├── quote v1.0.41 (*)
+│   │   │   │               └── syn v2.0.108 (*)
+│   │   │   └── serde v1.0.228 (*)
+│   │   ├── clap v4.5.50
+│   │   │   └── clap_builder v4.5.50
+│   │   │       ├── anstyle v1.0.13
+│   │   │       └── clap_lex v0.7.6
+│   │   ├── criterion-plot v0.5.0
+│   │   │   ├── cast v0.3.0
+│   │   │   └── itertools v0.10.5
+│   │   │       └── either v1.15.0
+│   │   ├── is-terminal v0.4.17
+│   │   │   └── libc v0.2.177
+│   │   ├── itertools v0.10.5 (*)
+│   │   ├── num-traits v0.2.19
+│   │   │   [build-dependencies]
+│   │   │   └── autocfg v1.5.0
+│   │   ├── once_cell v1.21.3
+│   │   ├── oorandom v11.1.5
+│   │   ├── plotters v0.3.7
+│   │   │   ├── num-traits v0.2.19 (*)
+│   │   │   ├── plotters-backend v0.3.7
+│   │   │   └── plotters-svg v0.3.7
+│   │   │       └── plotters-backend v0.3.7
+│   │   ├── rayon v1.11.0
+│   │   │   ├── either v1.15.0
+│   │   │   └── rayon-core v1.13.0
+│   │   │       ├── crossbeam-deque v0.8.6
+│   │   │       │   ├── crossbeam-epoch v0.9.18
+│   │   │       │   │   └── crossbeam-utils v0.8.21
+│   │   │       │   └── crossbeam-utils v0.8.21
+│   │   │       └── crossbeam-utils v0.8.21
+│   │   ├── regex v1.12.2
+│   │   │   ├── regex-automata v0.4.13 (*)
+│   │   │   └── regex-syntax v0.8.8
+│   │   ├── serde v1.0.228 (*)
+│   │   ├── serde_derive v1.0.228 (proc-macro) (*)
+│   │   ├── serde_json v1.0.145 (*)
+│   │   ├── tinytemplate v1.2.1
+│   │   │   ├── serde v1.0.228 (*)
+│   │   │   └── serde_json v1.0.145 (*)
+│   │   └── walkdir v2.5.0
+│   │       └── same-file v1.0.6
+│   ├── futures v0.3.31
+│   │   ├── futures-channel v0.3.31
+│   │   │   ├── futures-core v0.3.31
+│   │   │   └── futures-sink v0.3.31
+│   │   ├── futures-core v0.3.31
+│   │   ├── futures-executor v0.3.31
+│   │   │   ├── futures-core v0.3.31
+│   │   │   ├── futures-task v0.3.31
+│   │   │   └── futures-util v0.3.31
+│   │   │       ├── futures-channel v0.3.31 (*)
+│   │   │       ├── futures-core v0.3.31
+│   │   │       ├── futures-io v0.3.31
+│   │   │       ├── futures-macro v0.3.31 (proc-macro)
+│   │   │       │   ├── proc-macro2 v1.0.103 (*)
+│   │   │       │   ├── quote v1.0.41 (*)
+│   │   │       │   └── syn v2.0.108 (*)
+│   │   │       ├── futures-sink v0.3.31
+│   │   │       ├── futures-task v0.3.31
+│   │   │       ├── memchr v2.7.6
+│   │   │       ├── pin-project-lite v0.2.16
+│   │   │       ├── pin-utils v0.1.0
+│   │   │       └── slab v0.4.11
+│   │   ├── futures-io v0.3.31
+│   │   ├── futures-sink v0.3.31
+│   │   ├── futures-task v0.3.31
+│   │   └── futures-util v0.3.31 (*)
+│   ├── proptest v1.9.0
+│   │   ├── bit-set v0.8.0
+│   │   │   └── bit-vec v0.8.0
+│   │   ├── bit-vec v0.8.0
+│   │   ├── bitflags v2.10.0
+│   │   ├── num-traits v0.2.19 (*)
+│   │   ├── rand v0.9.2
+│   │   │   ├── rand_chacha v0.9.0
+│   │   │   │   ├── ppv-lite86 v0.2.21
+│   │   │   │   │   └── zerocopy v0.8.27 (*)
+│   │   │   │   └── rand_core v0.9.3
+│   │   │   │       └── getrandom v0.3.4
+│   │   │   │           ├── cfg-if v1.0.4
+│   │   │   │           └── libc v0.2.177
+│   │   │   └── rand_core v0.9.3 (*)
+│   │   ├── rand_chacha v0.9.0 (*)
+│   │   ├── rand_xorshift v0.4.0
+│   │   │   └── rand_core v0.9.3 (*)
+│   │   ├── regex-syntax v0.8.8
+│   │   ├── rusty-fork v0.3.1
+│   │   │   ├── fnv v1.0.7
+│   │   │   ├── quick-error v1.2.3
+│   │   │   ├── tempfile v3.23.0
+│   │   │   │   ├── fastrand v2.3.0
+│   │   │   │   ├── getrandom v0.3.4 (*)
+│   │   │   │   ├── once_cell v1.21.3
+│   │   │   │   └── rustix v1.1.2
+│   │   │   │       ├── bitflags v2.10.0
+│   │   │   │       └── linux-raw-sys v0.11.0
+│   │   │   └── wait-timeout v0.2.1
+│   │   │       └── libc v0.2.177
+│   │   ├── tempfile v3.23.0 (*)
+│   │   └── unarray v0.1.4
+│   ├── serde_json v1.0.145 (*)
+│   ├── spark-contract-tests v0.1.0 (/workspace/spark2026/crates/spark-contract-tests)
+│   │   ├── parking_lot v0.12.5
+│   │   │   ├── lock_api v0.4.14
+│   │   │   │   └── scopeguard v1.2.0
+│   │   │   └── parking_lot_core v0.9.12
+│   │   │       ├── cfg-if v1.0.4
+│   │   │       ├── libc v0.2.177
+│   │   │       └── smallvec v1.15.1
+│   │   ├── spark-codec-line v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-line)
+│   │   │   ├── spark-codecs v0.1.0 (/workspace/spark2026/crates/codecs/spark-codecs)
+│   │   │   │   └── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+│   │   │   └── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+│   │   ├── spark-contract-tests-macros v0.1.0 (proc-macro) (/workspace/spark2026/crates/spark-contract-tests-macros)
+│   │   │   ├── proc-macro2 v1.0.103 (*)
+│   │   │   ├── quote v1.0.41 (*)
+│   │   │   └── syn v2.0.108 (*)
+│   │   └── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+│   ├── spark-otel v0.1.0 (/workspace/spark2026/crates/spark-otel)
+│   │   ├── futures-util v0.3.31 (*)
+│   │   ├── opentelemetry v0.22.0
+│   │   │   ├── futures-core v0.3.31
+│   │   │   ├── futures-sink v0.3.31
+│   │   │   ├── once_cell v1.21.3
+│   │   │   ├── pin-project-lite v0.2.16
+│   │   │   ├── thiserror v1.0.69
+│   │   │   │   └── thiserror-impl v1.0.69 (proc-macro)
+│   │   │   │       ├── proc-macro2 v1.0.103 (*)
+│   │   │   │       ├── quote v1.0.41 (*)
+│   │   │   │       └── syn v2.0.108 (*)
+│   │   │   └── urlencoding v2.1.3
+│   │   ├── opentelemetry_sdk v0.22.1
+│   │   │   ├── async-trait v0.1.89 (proc-macro) (*)
+│   │   │   ├── crossbeam-channel v0.5.15
+│   │   │   │   └── crossbeam-utils v0.8.21
+│   │   │   ├── futures-channel v0.3.31 (*)
+│   │   │   ├── futures-executor v0.3.31 (*)
+│   │   │   ├── futures-util v0.3.31 (*)
+│   │   │   ├── glob v0.3.3
+│   │   │   ├── once_cell v1.21.3
+│   │   │   ├── opentelemetry v0.22.0 (*)
+│   │   │   ├── ordered-float v4.6.0
+│   │   │   │   └── num-traits v0.2.19 (*)
+│   │   │   ├── percent-encoding v2.3.2
+│   │   │   ├── rand v0.8.5
+│   │   │   │   ├── libc v0.2.177
+│   │   │   │   ├── rand_chacha v0.3.1
+│   │   │   │   │   ├── ppv-lite86 v0.2.21 (*)
+│   │   │   │   │   └── rand_core v0.6.4
+│   │   │   │   │       └── getrandom v0.2.16
+│   │   │   │   │           ├── cfg-if v1.0.4
+│   │   │   │   │           └── libc v0.2.177
+│   │   │   │   └── rand_core v0.6.4 (*)
+│   │   │   └── thiserror v1.0.69 (*)
+│   │   ├── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+│   │   ├── tracing v0.1.41 (*)
+│   │   ├── tracing-opentelemetry v0.23.0
+│   │   │   ├── once_cell v1.21.3
+│   │   │   ├── opentelemetry v0.22.0 (*)
+│   │   │   ├── opentelemetry_sdk v0.22.1 (*)
+│   │   │   ├── smallvec v1.15.1
+│   │   │   ├── tracing v0.1.41 (*)
+│   │   │   ├── tracing-core v0.1.34 (*)
+│   │   │   ├── tracing-log v0.2.0 (*)
+│   │   │   └── tracing-subscriber v0.3.20 (*)
+│   │   └── tracing-subscriber v0.3.20 (*)
+│   │   [dev-dependencies]
+│   │   └── tracing-test v0.2.5
+│   │       ├── tracing-core v0.1.34 (*)
+│   │       ├── tracing-subscriber v0.3.20 (*)
+│   │       └── tracing-test-macro v0.2.5 (proc-macro)
+│   │           ├── quote v1.0.41 (*)
+│   │           └── syn v2.0.108 (*)
+│   ├── thiserror v2.0.17
+│   │   └── thiserror-impl v2.0.17 (proc-macro)
+│   │       ├── proc-macro2 v1.0.103 (*)
+│   │       ├── quote v1.0.41 (*)
+│   │       └── syn v2.0.108 (*)
+│   └── toml v0.8.23 (*)
+└── spin v0.9.8
+
+spark-codec-line v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-line) (*)
+
+spark-codec-rtcp v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-rtcp)
+├── smallvec v1.15.1
+├── spark-codecs v0.1.0 (/workspace/spark2026/crates/codecs/spark-codecs) (*)
+└── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+
+spark-codec-rtp v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-rtp)
+├── spark-codecs v0.1.0 (/workspace/spark2026/crates/codecs/spark-codecs) (*)
+└── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+
+spark-codec-sdp v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-sdp)
+├── spark-codecs v0.1.0 (/workspace/spark2026/crates/codecs/spark-codecs) (*)
+└── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+
+spark-codec-sip v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-sip)
+├── spark-codecs v0.1.0 (/workspace/spark2026/crates/codecs/spark-codecs) (*)
+└── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+
+spark-codecs v0.1.0 (/workspace/spark2026/crates/codecs/spark-codecs) (*)
+
+spark-contract-tests v0.1.0 (/workspace/spark2026/crates/spark-contract-tests) (*)
+
+spark-contract-tests-macros v0.1.0 (proc-macro) (/workspace/spark2026/crates/spark-contract-tests-macros) (*)
+
+spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+
+spark-deprecation-lint v0.1.0 (/workspace/spark2026/crates/spark-deprecation-lint)
+
+spark-ember v0.1.0 (/workspace/spark2026/crates/spark-ember)
+├── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+└── spin v0.9.8
+
+spark-hosting v0.1.0 (/workspace/spark2026/crates/spark-hosting)
+└── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+[dev-dependencies]
+└── thiserror v2.0.17 (*)
+
+spark-impl-tck v0.1.0 (/workspace/spark2026/crates/spark-impl-tck)
+├── spark-codec-sip v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-sip) (*)
+└── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+[dev-dependencies]
+├── anyhow v1.0.100
+├── hex v0.4.3
+├── quinn v0.11.9
+│   ├── bytes v1.10.1
+│   ├── pin-project-lite v0.2.16
+│   ├── quinn-proto v0.11.13
+│   │   ├── bytes v1.10.1
+│   │   ├── fastbloom v0.14.0
+│   │   │   ├── getrandom v0.3.4 (*)
+│   │   │   ├── libm v0.2.15
+│   │   │   ├── rand v0.9.2 (*)
+│   │   │   └── siphasher v1.0.1
+│   │   ├── lru-slab v0.1.2
+│   │   ├── rand v0.9.2 (*)
+│   │   ├── ring v0.17.14
+│   │   │   ├── cfg-if v1.0.4
+│   │   │   ├── getrandom v0.2.16 (*)
+│   │   │   └── untrusted v0.9.0
+│   │   │   [build-dependencies]
+│   │   │   └── cc v1.2.43 (*)
+│   │   ├── rustc-hash v2.1.1
+│   │   ├── rustls v0.23.34
+│   │   │   ├── aws-lc-rs v1.14.1
+│   │   │   │   ├── aws-lc-sys v0.32.3
+│   │   │   │   │   [build-dependencies]
+│   │   │   │   │   ├── cc v1.2.43 (*)
+│   │   │   │   │   ├── cmake v0.1.54
+│   │   │   │   │   │   └── cc v1.2.43 (*)
+│   │   │   │   │   ├── dunce v1.0.5
+│   │   │   │   │   └── fs_extra v1.3.0
+│   │   │   │   └── zeroize v1.8.2
+│   │   │   ├── log v0.4.28
+│   │   │   ├── once_cell v1.21.3
+│   │   │   ├── ring v0.17.14 (*)
+│   │   │   ├── rustls-pki-types v1.13.0
+│   │   │   │   └── zeroize v1.8.2
+│   │   │   ├── rustls-webpki v0.103.7
+│   │   │   │   ├── aws-lc-rs v1.14.1 (*)
+│   │   │   │   ├── ring v0.17.14 (*)
+│   │   │   │   ├── rustls-pki-types v1.13.0 (*)
+│   │   │   │   └── untrusted v0.9.0
+│   │   │   ├── subtle v2.6.1
+│   │   │   └── zeroize v1.8.2
+│   │   ├── rustls-platform-verifier v0.6.2
+│   │   │   ├── log v0.4.28
+│   │   │   ├── rustls v0.23.34 (*)
+│   │   │   ├── rustls-native-certs v0.8.2
+│   │   │   │   ├── openssl-probe v0.1.6
+│   │   │   │   └── rustls-pki-types v1.13.0 (*)
+│   │   │   └── rustls-webpki v0.103.7 (*)
+│   │   ├── slab v0.4.11
+│   │   ├── thiserror v2.0.17 (*)
+│   │   ├── tinyvec v1.10.0
+│   │   │   └── tinyvec_macros v0.1.1
+│   │   └── tracing v0.1.41 (*)
+│   ├── quinn-udp v0.5.14
+│   │   ├── libc v0.2.177
+│   │   ├── socket2 v0.6.1
+│   │   │   └── libc v0.2.177
+│   │   └── tracing v0.1.41 (*)
+│   │   [build-dependencies]
+│   │   └── cfg_aliases v0.2.1
+│   ├── rustc-hash v2.1.1
+│   ├── rustls v0.23.34 (*)
+│   ├── socket2 v0.6.1 (*)
+│   ├── thiserror v2.0.17 (*)
+│   ├── tokio v1.48.0
+│   │   ├── bytes v1.10.1
+│   │   ├── libc v0.2.177
+│   │   ├── mio v1.1.0
+│   │   │   └── libc v0.2.177
+│   │   ├── pin-project-lite v0.2.16
+│   │   ├── socket2 v0.6.1 (*)
+│   │   └── tokio-macros v2.6.0 (proc-macro)
+│   │       ├── proc-macro2 v1.0.103 (*)
+│   │       ├── quote v1.0.41 (*)
+│   │       └── syn v2.0.108 (*)
+│   └── tracing v0.1.41 (*)
+│   [build-dependencies]
+│   └── cfg_aliases v0.2.1
+├── rcgen v0.13.2
+│   ├── pem v3.0.6
+│   │   └── base64 v0.22.1
+│   ├── ring v0.17.14 (*)
+│   ├── rustls-pki-types v1.13.0 (*)
+│   ├── time v0.3.44
+│   │   ├── deranged v0.5.5
+│   │   │   └── powerfmt v0.2.0
+│   │   ├── num-conv v0.1.0
+│   │   ├── powerfmt v0.2.0
+│   │   └── time-core v0.1.6
+│   └── yasna v0.5.2
+│       └── time v0.3.44 (*)
+├── rustls v0.23.34 (*)
+├── rustls-pki-types v1.13.0 (*)
+├── serde v1.0.228 (*)
+├── serde_json v1.0.145 (*)
+├── spark-codec-rtcp v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-rtcp) (*)
+├── spark-codec-rtp v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-rtp) (*)
+├── spark-codec-sdp v0.1.0 (/workspace/spark2026/crates/codecs/spark-codec-sdp) (*)
+├── spark-transport-quic v0.1.0 (/workspace/spark2026/crates/transport/spark-transport-quic)
+│   ├── futures v0.3.31 (*)
+│   ├── quinn v0.11.9 (*)
+│   ├── quinn-proto v0.11.13 (*)
+│   ├── socket2 v0.6.1 (*)
+│   ├── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+│   ├── spark-transport v0.1.0 (/workspace/spark2026/crates/spark-transport)
+│   ├── thiserror v2.0.17 (*)
+│   └── tokio v1.48.0 (*)
+│   [dev-dependencies]
+│   ├── rcgen v0.13.2 (*)
+│   └── rustls-pki-types v1.13.0 (*)
+├── spark-transport-tcp v0.1.0 (/workspace/spark2026/crates/transport/spark-transport-tcp)
+│   ├── socket2 v0.6.1 (*)
+│   ├── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+│   ├── spark-transport v0.1.0 (/workspace/spark2026/crates/spark-transport)
+│   ├── thiserror v2.0.17 (*)
+│   └── tokio v1.48.0 (*)
+├── spark-transport-tls v0.1.0 (/workspace/spark2026/crates/transport/spark-transport-tls)
+│   ├── arc-swap v1.7.1
+│   ├── rustls v0.23.34 (*)
+│   ├── socket2 v0.6.1 (*)
+│   ├── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+│   ├── spark-transport v0.1.0 (/workspace/spark2026/crates/spark-transport)
+│   ├── spark-transport-tcp v0.1.0 (/workspace/spark2026/crates/transport/spark-transport-tcp) (*)
+│   ├── thiserror v2.0.17 (*)
+│   ├── tokio v1.48.0 (*)
+│   └── tokio-rustls v0.26.4
+│       ├── rustls v0.23.34 (*)
+│       └── tokio v1.48.0 (*)
+├── spark-transport-udp v0.1.0 (/workspace/spark2026/crates/transport/spark-transport-udp)
+│   ├── nix v0.28.0
+│   │   ├── bitflags v2.10.0
+│   │   ├── cfg-if v1.0.4
+│   │   ├── libc v0.2.177
+│   │   └── memoffset v0.9.1
+│   │       [build-dependencies]
+│   │       └── autocfg v1.5.0
+│   │   [build-dependencies]
+│   │   └── cfg_aliases v0.1.1
+│   ├── socket2 v0.6.1 (*)
+│   ├── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+│   ├── spark-transport v0.1.0 (/workspace/spark2026/crates/spark-transport)
+│   ├── thiserror v2.0.17 (*)
+│   └── tokio v1.48.0 (*)
+├── tokio v1.48.0 (*)
+└── tokio-rustls v0.26.4 (*)
+
+spark-macros v0.1.0 (proc-macro) (/workspace/spark2026/crates/spark-macros) (*)
+
+spark-middleware v0.1.0 (/workspace/spark2026/crates/spark-middleware)
+└── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+
+spark-otel v0.1.0 (/workspace/spark2026/crates/spark-otel) (*)
+
+spark-pipeline v0.1.0 (/workspace/spark2026/crates/spark-pipeline)
+├── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+└── spark-router v0.1.0 (/workspace/spark2026/crates/spark-router)
+    ├── arc-swap v1.7.1
+    └── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+    [dev-dependencies]
+    └── futures v0.3.31 (*)
+
+spark-router v0.1.0 (/workspace/spark2026/crates/spark-router) (*)
+
+spark-transport v0.1.0 (/workspace/spark2026/crates/spark-transport)
+
+spark-transport-quic v0.1.0 (/workspace/spark2026/crates/transport/spark-transport-quic) (*)
+
+spark-transport-tcp v0.1.0 (/workspace/spark2026/crates/transport/spark-transport-tcp) (*)
+
+spark-transport-tls v0.1.0 (/workspace/spark2026/crates/transport/spark-transport-tls) (*)
+
+spark-transport-udp v0.1.0 (/workspace/spark2026/crates/transport/spark-transport-udp) (*)
+
+tck-mock-transport v0.1.0 (/workspace/spark2026/crates/3p/tck-mock-transport)
+└── spark-core v0.1.0 (/workspace/spark2026/crates/spark-core) (*)
+[dev-dependencies]
+└── spark-contract-tests v0.1.0 (/workspace/spark2026/crates/spark-contract-tests) (*)

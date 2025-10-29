@@ -1,0 +1,350 @@
+pub mod spark_codec_rtp
+pub mod spark_codec_rtp::dtmf
+pub enum spark_codec_rtp::dtmf::DtmfDecodeError
+pub spark_codec_rtp::dtmf::DtmfDecodeError::InconsistentEvent
+pub spark_codec_rtp::dtmf::DtmfDecodeError::InvalidPayloadType(u8)
+pub spark_codec_rtp::dtmf::DtmfDecodeError::MisalignedPayload
+pub spark_codec_rtp::dtmf::DtmfDecodeError::PayloadTooShort
+pub spark_codec_rtp::dtmf::DtmfDecodeError::ReservedBitSet
+impl core::clone::Clone for spark_codec_rtp::dtmf::DtmfDecodeError
+pub fn spark_codec_rtp::dtmf::DtmfDecodeError::clone(&self) -> spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::cmp::Eq for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::cmp::PartialEq for spark_codec_rtp::dtmf::DtmfDecodeError
+pub fn spark_codec_rtp::dtmf::DtmfDecodeError::eq(&self, other: &spark_codec_rtp::dtmf::DtmfDecodeError) -> bool
+impl core::fmt::Debug for spark_codec_rtp::dtmf::DtmfDecodeError
+pub fn spark_codec_rtp::dtmf::DtmfDecodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for spark_codec_rtp::dtmf::DtmfDecodeError
+pub fn spark_codec_rtp::dtmf::DtmfDecodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::StructuralPartialEq for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::Freeze for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::Send for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::Sync for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::Unpin for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::dtmf::DtmfDecodeError
+pub enum spark_codec_rtp::dtmf::DtmfEncodeError
+pub spark_codec_rtp::dtmf::DtmfEncodeError::BufferTooSmall
+pub spark_codec_rtp::dtmf::DtmfEncodeError::InvalidPayloadType(u8)
+pub spark_codec_rtp::dtmf::DtmfEncodeError::VolumeOutOfRange(u8)
+impl core::clone::Clone for spark_codec_rtp::dtmf::DtmfEncodeError
+pub fn spark_codec_rtp::dtmf::DtmfEncodeError::clone(&self) -> spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::cmp::Eq for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::cmp::PartialEq for spark_codec_rtp::dtmf::DtmfEncodeError
+pub fn spark_codec_rtp::dtmf::DtmfEncodeError::eq(&self, other: &spark_codec_rtp::dtmf::DtmfEncodeError) -> bool
+impl core::fmt::Debug for spark_codec_rtp::dtmf::DtmfEncodeError
+pub fn spark_codec_rtp::dtmf::DtmfEncodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for spark_codec_rtp::dtmf::DtmfEncodeError
+pub fn spark_codec_rtp::dtmf::DtmfEncodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::StructuralPartialEq for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::Freeze for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::Send for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::Sync for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::Unpin for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::dtmf::DtmfEncodeError
+pub struct spark_codec_rtp::dtmf::DtmfEvent
+pub spark_codec_rtp::dtmf::DtmfEvent::duration: u16
+pub spark_codec_rtp::dtmf::DtmfEvent::end: bool
+pub spark_codec_rtp::dtmf::DtmfEvent::event_code: u8
+pub spark_codec_rtp::dtmf::DtmfEvent::volume: u8
+impl spark_codec_rtp::dtmf::DtmfEvent
+pub const fn spark_codec_rtp::dtmf::DtmfEvent::new(event_code: u8, end: bool, volume: u8, duration: u16) -> Self
+impl core::clone::Clone for spark_codec_rtp::dtmf::DtmfEvent
+pub fn spark_codec_rtp::dtmf::DtmfEvent::clone(&self) -> spark_codec_rtp::dtmf::DtmfEvent
+impl core::cmp::Eq for spark_codec_rtp::dtmf::DtmfEvent
+impl core::cmp::PartialEq for spark_codec_rtp::dtmf::DtmfEvent
+pub fn spark_codec_rtp::dtmf::DtmfEvent::eq(&self, other: &spark_codec_rtp::dtmf::DtmfEvent) -> bool
+impl core::fmt::Debug for spark_codec_rtp::dtmf::DtmfEvent
+pub fn spark_codec_rtp::dtmf::DtmfEvent::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::StructuralPartialEq for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::Freeze for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::Send for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::Sync for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::Unpin for spark_codec_rtp::dtmf::DtmfEvent
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::dtmf::DtmfEvent
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::dtmf::DtmfEvent
+pub fn spark_codec_rtp::dtmf::decode_dtmf(payload_type: u8, payload: &[u8]) -> spark_core::error::Result<spark_codec_rtp::dtmf::DtmfEvent, spark_codec_rtp::dtmf::DtmfDecodeError>
+pub fn spark_codec_rtp::dtmf::encode_dtmf(payload_type: u8, event: &spark_codec_rtp::dtmf::DtmfEvent, output: &mut [u8]) -> spark_core::error::Result<usize, spark_codec_rtp::dtmf::DtmfEncodeError>
+pub enum spark_codec_rtp::DtmfDecodeError
+pub spark_codec_rtp::DtmfDecodeError::InconsistentEvent
+pub spark_codec_rtp::DtmfDecodeError::InvalidPayloadType(u8)
+pub spark_codec_rtp::DtmfDecodeError::MisalignedPayload
+pub spark_codec_rtp::DtmfDecodeError::PayloadTooShort
+pub spark_codec_rtp::DtmfDecodeError::ReservedBitSet
+impl core::clone::Clone for spark_codec_rtp::dtmf::DtmfDecodeError
+pub fn spark_codec_rtp::dtmf::DtmfDecodeError::clone(&self) -> spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::cmp::Eq for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::cmp::PartialEq for spark_codec_rtp::dtmf::DtmfDecodeError
+pub fn spark_codec_rtp::dtmf::DtmfDecodeError::eq(&self, other: &spark_codec_rtp::dtmf::DtmfDecodeError) -> bool
+impl core::fmt::Debug for spark_codec_rtp::dtmf::DtmfDecodeError
+pub fn spark_codec_rtp::dtmf::DtmfDecodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for spark_codec_rtp::dtmf::DtmfDecodeError
+pub fn spark_codec_rtp::dtmf::DtmfDecodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::StructuralPartialEq for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::Freeze for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::Send for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::Sync for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::marker::Unpin for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::dtmf::DtmfDecodeError
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::dtmf::DtmfDecodeError
+pub enum spark_codec_rtp::DtmfEncodeError
+pub spark_codec_rtp::DtmfEncodeError::BufferTooSmall
+pub spark_codec_rtp::DtmfEncodeError::InvalidPayloadType(u8)
+pub spark_codec_rtp::DtmfEncodeError::VolumeOutOfRange(u8)
+impl core::clone::Clone for spark_codec_rtp::dtmf::DtmfEncodeError
+pub fn spark_codec_rtp::dtmf::DtmfEncodeError::clone(&self) -> spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::cmp::Eq for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::cmp::PartialEq for spark_codec_rtp::dtmf::DtmfEncodeError
+pub fn spark_codec_rtp::dtmf::DtmfEncodeError::eq(&self, other: &spark_codec_rtp::dtmf::DtmfEncodeError) -> bool
+impl core::fmt::Debug for spark_codec_rtp::dtmf::DtmfEncodeError
+pub fn spark_codec_rtp::dtmf::DtmfEncodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for spark_codec_rtp::dtmf::DtmfEncodeError
+pub fn spark_codec_rtp::dtmf::DtmfEncodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::StructuralPartialEq for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::Freeze for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::Send for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::Sync for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::marker::Unpin for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::dtmf::DtmfEncodeError
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::dtmf::DtmfEncodeError
+pub enum spark_codec_rtp::RtpEncodeError
+pub spark_codec_rtp::RtpEncodeError::BufferTooSmall
+pub spark_codec_rtp::RtpEncodeError::HeaderMismatch(&'static str)
+pub spark_codec_rtp::RtpEncodeError::InvalidField(&'static str)
+impl core::clone::Clone for spark_codec_rtp::RtpEncodeError
+pub fn spark_codec_rtp::RtpEncodeError::clone(&self) -> spark_codec_rtp::RtpEncodeError
+impl core::cmp::Eq for spark_codec_rtp::RtpEncodeError
+impl core::cmp::PartialEq for spark_codec_rtp::RtpEncodeError
+pub fn spark_codec_rtp::RtpEncodeError::eq(&self, other: &spark_codec_rtp::RtpEncodeError) -> bool
+impl core::fmt::Debug for spark_codec_rtp::RtpEncodeError
+pub fn spark_codec_rtp::RtpEncodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for spark_codec_rtp::RtpEncodeError
+pub fn spark_codec_rtp::RtpEncodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtp::RtpEncodeError
+impl core::marker::Freeze for spark_codec_rtp::RtpEncodeError
+impl core::marker::Send for spark_codec_rtp::RtpEncodeError
+impl core::marker::Sync for spark_codec_rtp::RtpEncodeError
+impl core::marker::Unpin for spark_codec_rtp::RtpEncodeError
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpEncodeError
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpEncodeError
+pub enum spark_codec_rtp::RtpParseError
+pub spark_codec_rtp::RtpParseError::HeaderTooShort
+pub spark_codec_rtp::RtpParseError::InvalidCsrcLength
+pub spark_codec_rtp::RtpParseError::InvalidExtension
+pub spark_codec_rtp::RtpParseError::InvalidPadding
+pub spark_codec_rtp::RtpParseError::UnsupportedVersion(u8)
+impl core::clone::Clone for spark_codec_rtp::RtpParseError
+pub fn spark_codec_rtp::RtpParseError::clone(&self) -> spark_codec_rtp::RtpParseError
+impl core::cmp::Eq for spark_codec_rtp::RtpParseError
+impl core::cmp::PartialEq for spark_codec_rtp::RtpParseError
+pub fn spark_codec_rtp::RtpParseError::eq(&self, other: &spark_codec_rtp::RtpParseError) -> bool
+impl core::fmt::Debug for spark_codec_rtp::RtpParseError
+pub fn spark_codec_rtp::RtpParseError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for spark_codec_rtp::RtpParseError
+pub fn spark_codec_rtp::RtpParseError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtp::RtpParseError
+impl core::marker::Freeze for spark_codec_rtp::RtpParseError
+impl core::marker::Send for spark_codec_rtp::RtpParseError
+impl core::marker::Sync for spark_codec_rtp::RtpParseError
+impl core::marker::Unpin for spark_codec_rtp::RtpParseError
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpParseError
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpParseError
+pub struct spark_codec_rtp::ByteSpan
+impl spark_codec_rtp::ByteSpan
+pub const fn spark_codec_rtp::ByteSpan::is_empty(&self) -> bool
+pub const fn spark_codec_rtp::ByteSpan::len(&self) -> usize
+pub const fn spark_codec_rtp::ByteSpan::new(offset: usize, len: usize) -> Self
+impl core::clone::Clone for spark_codec_rtp::ByteSpan
+pub fn spark_codec_rtp::ByteSpan::clone(&self) -> spark_codec_rtp::ByteSpan
+impl core::cmp::Eq for spark_codec_rtp::ByteSpan
+impl core::cmp::PartialEq for spark_codec_rtp::ByteSpan
+pub fn spark_codec_rtp::ByteSpan::eq(&self, other: &spark_codec_rtp::ByteSpan) -> bool
+impl core::fmt::Debug for spark_codec_rtp::ByteSpan
+pub fn spark_codec_rtp::ByteSpan::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::ByteSpan
+impl core::marker::StructuralPartialEq for spark_codec_rtp::ByteSpan
+impl core::marker::Freeze for spark_codec_rtp::ByteSpan
+impl core::marker::Send for spark_codec_rtp::ByteSpan
+impl core::marker::Sync for spark_codec_rtp::ByteSpan
+impl core::marker::Unpin for spark_codec_rtp::ByteSpan
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::ByteSpan
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::ByteSpan
+pub struct spark_codec_rtp::DtmfEvent
+pub spark_codec_rtp::DtmfEvent::duration: u16
+pub spark_codec_rtp::DtmfEvent::end: bool
+pub spark_codec_rtp::DtmfEvent::event_code: u8
+pub spark_codec_rtp::DtmfEvent::volume: u8
+impl spark_codec_rtp::dtmf::DtmfEvent
+pub const fn spark_codec_rtp::dtmf::DtmfEvent::new(event_code: u8, end: bool, volume: u8, duration: u16) -> Self
+impl core::clone::Clone for spark_codec_rtp::dtmf::DtmfEvent
+pub fn spark_codec_rtp::dtmf::DtmfEvent::clone(&self) -> spark_codec_rtp::dtmf::DtmfEvent
+impl core::cmp::Eq for spark_codec_rtp::dtmf::DtmfEvent
+impl core::cmp::PartialEq for spark_codec_rtp::dtmf::DtmfEvent
+pub fn spark_codec_rtp::dtmf::DtmfEvent::eq(&self, other: &spark_codec_rtp::dtmf::DtmfEvent) -> bool
+impl core::fmt::Debug for spark_codec_rtp::dtmf::DtmfEvent
+pub fn spark_codec_rtp::dtmf::DtmfEvent::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::StructuralPartialEq for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::Freeze for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::Send for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::Sync for spark_codec_rtp::dtmf::DtmfEvent
+impl core::marker::Unpin for spark_codec_rtp::dtmf::DtmfEvent
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::dtmf::DtmfEvent
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::dtmf::DtmfEvent
+pub struct spark_codec_rtp::RtpByteSection<'a>
+impl<'a> spark_codec_rtp::RtpByteSection<'a>
+pub fn spark_codec_rtp::RtpByteSection<'a>::as_chunks(&self) -> spark_core::buffer::buf_view::Chunks<'a>
+pub fn spark_codec_rtp::RtpByteSection<'a>::is_empty(&self) -> bool
+pub fn spark_codec_rtp::RtpByteSection<'a>::len(&self) -> usize
+impl core::fmt::Debug for spark_codec_rtp::RtpByteSection<'_>
+pub fn spark_codec_rtp::RtpByteSection<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::clone::Clone for spark_codec_rtp::RtpByteSection<'a>
+pub fn spark_codec_rtp::RtpByteSection<'a>::clone(&self) -> spark_codec_rtp::RtpByteSection<'a>
+impl<'a> core::marker::Copy for spark_codec_rtp::RtpByteSection<'a>
+impl<'a> core::marker::Freeze for spark_codec_rtp::RtpByteSection<'a>
+impl<'a> core::marker::Send for spark_codec_rtp::RtpByteSection<'a>
+impl<'a> core::marker::Sync for spark_codec_rtp::RtpByteSection<'a>
+impl<'a> core::marker::Unpin for spark_codec_rtp::RtpByteSection<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpByteSection<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpByteSection<'a>
+pub struct spark_codec_rtp::RtpCodecScaffold
+impl spark_codec_rtp::RtpCodecScaffold
+pub const fn spark_codec_rtp::RtpCodecScaffold::new() -> Self
+impl core::clone::Clone for spark_codec_rtp::RtpCodecScaffold
+pub fn spark_codec_rtp::RtpCodecScaffold::clone(&self) -> spark_codec_rtp::RtpCodecScaffold
+impl core::default::Default for spark_codec_rtp::RtpCodecScaffold
+pub fn spark_codec_rtp::RtpCodecScaffold::default() -> spark_codec_rtp::RtpCodecScaffold
+impl core::fmt::Debug for spark_codec_rtp::RtpCodecScaffold
+pub fn spark_codec_rtp::RtpCodecScaffold::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::RtpCodecScaffold
+impl core::marker::Freeze for spark_codec_rtp::RtpCodecScaffold
+impl core::marker::Send for spark_codec_rtp::RtpCodecScaffold
+impl core::marker::Sync for spark_codec_rtp::RtpCodecScaffold
+impl core::marker::Unpin for spark_codec_rtp::RtpCodecScaffold
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpCodecScaffold
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpCodecScaffold
+pub struct spark_codec_rtp::RtpHeader
+pub spark_codec_rtp::RtpHeader::csrc_count: u8
+pub spark_codec_rtp::RtpHeader::extension: bool
+pub spark_codec_rtp::RtpHeader::marker: bool
+pub spark_codec_rtp::RtpHeader::padding: bool
+pub spark_codec_rtp::RtpHeader::payload_type: u8
+pub spark_codec_rtp::RtpHeader::sequence_number: u16
+pub spark_codec_rtp::RtpHeader::ssrc: u32
+pub spark_codec_rtp::RtpHeader::timestamp: u32
+pub spark_codec_rtp::RtpHeader::version: u8
+impl spark_codec_rtp::RtpHeader
+pub fn spark_codec_rtp::RtpHeader::csrcs(&self) -> &[u32]
+pub fn spark_codec_rtp::RtpHeader::set_csrcs(&mut self, csrcs: &[u32]) -> spark_core::error::Result<(), spark_codec_rtp::RtpEncodeError>
+impl core::clone::Clone for spark_codec_rtp::RtpHeader
+pub fn spark_codec_rtp::RtpHeader::clone(&self) -> spark_codec_rtp::RtpHeader
+impl core::cmp::Eq for spark_codec_rtp::RtpHeader
+impl core::cmp::PartialEq for spark_codec_rtp::RtpHeader
+pub fn spark_codec_rtp::RtpHeader::eq(&self, other: &spark_codec_rtp::RtpHeader) -> bool
+impl core::default::Default for spark_codec_rtp::RtpHeader
+pub fn spark_codec_rtp::RtpHeader::default() -> Self
+impl core::fmt::Debug for spark_codec_rtp::RtpHeader
+pub fn spark_codec_rtp::RtpHeader::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtp::RtpHeader
+impl core::marker::Freeze for spark_codec_rtp::RtpHeader
+impl core::marker::Send for spark_codec_rtp::RtpHeader
+impl core::marker::Sync for spark_codec_rtp::RtpHeader
+impl core::marker::Unpin for spark_codec_rtp::RtpHeader
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpHeader
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpHeader
+pub struct spark_codec_rtp::RtpHeaderExtension
+pub spark_codec_rtp::RtpHeaderExtension::profile: u16
+impl spark_codec_rtp::RtpHeaderExtension
+pub const fn spark_codec_rtp::RtpHeaderExtension::span(&self) -> spark_codec_rtp::ByteSpan
+impl core::clone::Clone for spark_codec_rtp::RtpHeaderExtension
+pub fn spark_codec_rtp::RtpHeaderExtension::clone(&self) -> spark_codec_rtp::RtpHeaderExtension
+impl core::cmp::Eq for spark_codec_rtp::RtpHeaderExtension
+impl core::cmp::PartialEq for spark_codec_rtp::RtpHeaderExtension
+pub fn spark_codec_rtp::RtpHeaderExtension::eq(&self, other: &spark_codec_rtp::RtpHeaderExtension) -> bool
+impl core::fmt::Debug for spark_codec_rtp::RtpHeaderExtension
+pub fn spark_codec_rtp::RtpHeaderExtension::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::RtpHeaderExtension
+impl core::marker::StructuralPartialEq for spark_codec_rtp::RtpHeaderExtension
+impl core::marker::Freeze for spark_codec_rtp::RtpHeaderExtension
+impl core::marker::Send for spark_codec_rtp::RtpHeaderExtension
+impl core::marker::Sync for spark_codec_rtp::RtpHeaderExtension
+impl core::marker::Unpin for spark_codec_rtp::RtpHeaderExtension
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpHeaderExtension
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpHeaderExtension
+pub struct spark_codec_rtp::RtpHeaderExtensionView<'a>
+pub spark_codec_rtp::RtpHeaderExtensionView::data: spark_codec_rtp::RtpByteSection<'a>
+pub spark_codec_rtp::RtpHeaderExtensionView::profile: u16
+impl<'a> core::clone::Clone for spark_codec_rtp::RtpHeaderExtensionView<'a>
+pub fn spark_codec_rtp::RtpHeaderExtensionView<'a>::clone(&self) -> spark_codec_rtp::RtpHeaderExtensionView<'a>
+impl<'a> core::fmt::Debug for spark_codec_rtp::RtpHeaderExtensionView<'a>
+pub fn spark_codec_rtp::RtpHeaderExtensionView<'a>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for spark_codec_rtp::RtpHeaderExtensionView<'a>
+impl<'a> core::marker::Freeze for spark_codec_rtp::RtpHeaderExtensionView<'a>
+impl<'a> core::marker::Send for spark_codec_rtp::RtpHeaderExtensionView<'a>
+impl<'a> core::marker::Sync for spark_codec_rtp::RtpHeaderExtensionView<'a>
+impl<'a> core::marker::Unpin for spark_codec_rtp::RtpHeaderExtensionView<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpHeaderExtensionView<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpHeaderExtensionView<'a>
+pub struct spark_codec_rtp::RtpJitterState
+impl spark_codec_rtp::RtpJitterState
+pub const fn spark_codec_rtp::RtpJitterState::jitter(&self) -> f64
+pub const fn spark_codec_rtp::RtpJitterState::last_transit(&self) -> core::option::Option<f64>
+pub const fn spark_codec_rtp::RtpJitterState::new() -> Self
+pub fn spark_codec_rtp::RtpJitterState::reset(&mut self)
+impl core::clone::Clone for spark_codec_rtp::RtpJitterState
+pub fn spark_codec_rtp::RtpJitterState::clone(&self) -> spark_codec_rtp::RtpJitterState
+impl core::default::Default for spark_codec_rtp::RtpJitterState
+pub fn spark_codec_rtp::RtpJitterState::default() -> Self
+impl core::fmt::Debug for spark_codec_rtp::RtpJitterState
+pub fn spark_codec_rtp::RtpJitterState::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtp::RtpJitterState
+impl core::marker::Freeze for spark_codec_rtp::RtpJitterState
+impl core::marker::Send for spark_codec_rtp::RtpJitterState
+impl core::marker::Sync for spark_codec_rtp::RtpJitterState
+impl core::marker::Unpin for spark_codec_rtp::RtpJitterState
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpJitterState
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpJitterState
+pub struct spark_codec_rtp::RtpPacket<'a>
+impl<'a> spark_codec_rtp::RtpPacket<'a>
+pub fn spark_codec_rtp::RtpPacket<'a>::extension(&self) -> core::option::Option<spark_codec_rtp::RtpHeaderExtensionView<'a>>
+pub fn spark_codec_rtp::RtpPacket<'a>::header(&self) -> &spark_codec_rtp::RtpHeader
+pub fn spark_codec_rtp::RtpPacket<'a>::padding_len(&self) -> u8
+pub fn spark_codec_rtp::RtpPacket<'a>::payload(&self) -> spark_codec_rtp::RtpByteSection<'a>
+impl core::fmt::Debug for spark_codec_rtp::RtpPacket<'_>
+pub fn spark_codec_rtp::RtpPacket<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::clone::Clone for spark_codec_rtp::RtpPacket<'a>
+pub fn spark_codec_rtp::RtpPacket<'a>::clone(&self) -> spark_codec_rtp::RtpPacket<'a>
+impl<'a> core::marker::Freeze for spark_codec_rtp::RtpPacket<'a>
+impl<'a> core::marker::Send for spark_codec_rtp::RtpPacket<'a>
+impl<'a> core::marker::Sync for spark_codec_rtp::RtpPacket<'a>
+impl<'a> core::marker::Unpin for spark_codec_rtp::RtpPacket<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpPacket<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpPacket<'a>
+pub struct spark_codec_rtp::RtpPacketBuilder<'a>
+impl<'a> spark_codec_rtp::RtpPacketBuilder<'a>
+pub fn spark_codec_rtp::RtpPacketBuilder<'a>::encode_into(self, dst: &mut [u8]) -> spark_core::error::Result<usize, spark_codec_rtp::RtpEncodeError>
+pub fn spark_codec_rtp::RtpPacketBuilder<'a>::extension_bytes(self, profile: u16, data: &'a [u8]) -> spark_core::error::Result<Self, spark_codec_rtp::RtpEncodeError>
+pub fn spark_codec_rtp::RtpPacketBuilder<'a>::new(header: spark_codec_rtp::RtpHeader) -> Self
+pub fn spark_codec_rtp::RtpPacketBuilder<'a>::padding(self, padding_len: u8) -> Self
+pub fn spark_codec_rtp::RtpPacketBuilder<'a>::payload_view(self, payload: &'a dyn spark_core::buffer::buf_view::BufView) -> Self
+impl<'a> core::clone::Clone for spark_codec_rtp::RtpPacketBuilder<'a>
+pub fn spark_codec_rtp::RtpPacketBuilder<'a>::clone(&self) -> spark_codec_rtp::RtpPacketBuilder<'a>
+impl<'a> core::marker::Freeze for spark_codec_rtp::RtpPacketBuilder<'a>
+impl<'a> core::marker::Send for spark_codec_rtp::RtpPacketBuilder<'a>
+impl<'a> core::marker::Sync for spark_codec_rtp::RtpPacketBuilder<'a>
+impl<'a> core::marker::Unpin for spark_codec_rtp::RtpPacketBuilder<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtp::RtpPacketBuilder<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for spark_codec_rtp::RtpPacketBuilder<'a>
+pub const spark_codec_rtp::MAX_CSRC_COUNT: usize
+pub const spark_codec_rtp::RTP_HEADER_MIN_LEN: usize
+pub const spark_codec_rtp::RTP_VERSION: u8
+pub fn spark_codec_rtp::decode_dtmf(payload_type: u8, payload: &[u8]) -> spark_core::error::Result<spark_codec_rtp::dtmf::DtmfEvent, spark_codec_rtp::dtmf::DtmfDecodeError>
+pub fn spark_codec_rtp::encode_dtmf(payload_type: u8, event: &spark_codec_rtp::dtmf::DtmfEvent, output: &mut [u8]) -> spark_core::error::Result<usize, spark_codec_rtp::dtmf::DtmfEncodeError>
+pub fn spark_codec_rtp::parse_rtp<'a>(buffer: &'a dyn spark_core::buffer::buf_view::BufView) -> spark_core::error::Result<spark_codec_rtp::RtpPacket<'a>, spark_codec_rtp::RtpParseError>
+pub fn spark_codec_rtp::seq_less(a: u16, b: u16) -> bool
+pub fn spark_codec_rtp::update_jitter(state: &mut spark_codec_rtp::RtpJitterState, arrival_ts: core::time::Duration, rtp_ts: u32, clock_rate: u32)
