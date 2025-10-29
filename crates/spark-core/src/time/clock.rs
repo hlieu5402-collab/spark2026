@@ -1,5 +1,14 @@
-#![cfg(feature = "std")]
-
+// 教案级说明：本模块仅在启用 `std` Feature 后编译。
+//
+// - **意图 (Why)**：`Clock` 抽象的默认实现需要 `std::time::Instant`、线程调度与 `Waker`
+//   机制支撑睡眠 Future；在 `no_std + alloc` 环境中无法提供这些原语，因此通过上层的
+//   `#[cfg(feature = "std")] mod clock;` 控制构建。
+// - **契约 (What)**：当启用 `std` Feature 时导出 [`Clock`]/[`SystemClock`]/[`MockClock`] 等具备
+//   线程睡眠与原子唤醒能力的实现；关闭 `std` 时模块整体不参与编译，调用方需改用
+//   [`crate::runtime::TimeDriver`] 提供的最小单调计时接口。
+// - **实现提示 (How)**：父模块在 `time/mod.rs` 中使用 `#[cfg(feature = "std")]` 限定该子模
+//   块；这里不再重复属性以避免 clippy 对重复属性的警告，仅在文件顶部记录约束，方便
+//   阅读者理解构建条件。
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
