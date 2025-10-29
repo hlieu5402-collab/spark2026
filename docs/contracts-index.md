@@ -83,6 +83,13 @@
 | 示例 | [`RetryAdvice`](../crates/spark-core/src/status/retry.rs#L15-L140) |
 | TCK | [`backpressure::channel_queue_exhaustion_emits_busy_then_retry_after`](../crates/spark-contract-tests/src/backpressure.rs#L60-L198) |
 
+## Backpressure·Budget·Shutdown（统一信号骨架）
+| 维度 | 链接 |
+| --- | --- |
+| Rustdoc | [`spark_core::contract::BackpressureSignal`](https://docs.rs/spark-core/latest/spark_core/contract/enum.BackpressureSignal.html) |
+| 示例 | _占位：待 P0-15 案例补充_ |
+| TCK | _占位：待 spark-contract-tests::backpressure-shell 覆盖_ |
+
 <!-- contracts-index:start -->
 ```toml
 [[contract]]
@@ -510,6 +517,25 @@ covers = [
   "spark_core::status::ready::RetryAfterThrottle",
   "spark_core::status::ready::RetryRhythm",
   "spark_core::status::ready::SubscriptionBudget",
+]
+
+[[contract]]
+term = "BackpressureBudgetShutdown"
+rustdoc = [
+  { name = "spark_core::contract::BackpressureSignal", url = "https://docs.rs/spark-core/latest/spark_core/contract/enum.BackpressureSignal.html" },
+]
+examples = [
+  { name = "TODO", path = "(pending)" },
+]
+tck = [
+  { name = "TODO", path = "(pending)" },
+]
+covers = [
+  "spark_core::contract::BackpressureSignal",
+  "spark_core::contract::ShutdownGraceful",
+  "spark_core::contract::ShutdownImmediate",
+  "spark_core::contract::StateAdvance",
+  "spark_core::contract::ContractStateMachine",
 ]
 
 ```

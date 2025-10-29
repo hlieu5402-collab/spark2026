@@ -38,7 +38,9 @@ pub trait Service<Request>: Send + Sync + 'static + Sealed {
     /// 检查服务是否准备好接收下一次调用。
     ///
     /// - **输入参数**：`ctx` 为轻量视图，承载取消/截止/预算；`cx` 为运行时调度使用的 waker 上下文；
-    /// - **输出语义**：返回 [`PollReady<Self::Error>`]，统一表达就绪、背压、预算耗尽等状态；
+    /// - **输出语义**：返回 [`PollReady<Self::Error>`]，其内部状态应映射为
+    ///   [`BackpressureSignal`](crate::contract::BackpressureSignal) 的子集，统一表达就绪、背压、
+    ///   预算耗尽与关闭意图；
     /// - **边界条件**：若返回 `Poll::Pending`，实现必须在状态改变时唤醒 `cx.waker()`。
     fn poll_ready(&mut self, ctx: &Context<'_>, cx: &mut TaskContext<'_>)
     -> PollReady<Self::Error>;

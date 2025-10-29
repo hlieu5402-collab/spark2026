@@ -63,15 +63,20 @@ pub trait ServerTransport: Send + Sync + 'static + Sealed {
     /// # 教案级注释
     ///
     /// ## 意图（Why）
-    /// - 在优雅关闭流程中继承调用方的取消、截止时间与预算约束，确保传输层遵守统一的控制语义。
+    /// - 在优雅关闭流程中继承调用方的取消、截止时间与预算约束，确保传输层遵守统一的控制语义；
+    /// - 将 [`ShutdownGraceful`](crate::contract::ShutdownGraceful) 转换为监听器可执行的计划，使
+    ///   上层的状态机信号与底层操作保持一致。
     ///
     /// ## 逻辑（How）
     /// - 实现者应在 Future 内部监听 `ctx` 的取消信号或剩余预算，必要时提前终止关闭流程并返回错误。
     ///
     /// ## 契约（What）
     /// - `ctx`: [`Context`] 视图，携带调用方的取消、截止与预算；生命周期需覆盖整个 Future。
-    /// - `plan`: [`ListenerShutdown`]，定义关闭策略。
-    /// - 返回：满足执行约束的 Future，完成即表示关闭完成或失败。
+    /// - `plan`: [`ListenerShutdown`]，定义关闭策略；通常由
+    ///   [`ShutdownGraceful`](crate::contract::ShutdownGraceful) 派生而来；
+    /// - 返回：满足执行约束的 Future，完成即表示关闭完成或失败；执行成功后应向上层发出
+    ///   [`BackpressureSignal::ShutdownPending`](crate::contract::BackpressureSignal::ShutdownPending)
+    ///   → `ShutdownEnforced` 的状态流。
     ///
     /// ## 考量（Trade-offs）
     /// - 若 `ctx` 中的截止时间过短，Future 可尽早失败，以避免阻塞更高层的恢复逻辑。

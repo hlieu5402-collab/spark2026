@@ -36,7 +36,7 @@ fn main() {
 
 fn run() -> spark_core::Result<(), String> {
     let mut raw_args: Vec<String> = env::args().skip(1).collect();
-    raw_args.retain(|arg| arg != "--quick");
+    raw_args.retain(|arg| arg.trim_start_matches('-') != "quick");
     let mut args = raw_args.into_iter();
 
     let log_path = args
@@ -68,6 +68,8 @@ fn run() -> spark_core::Result<(), String> {
                     .ok_or_else(|| usage("--gap-report 之后必须提供文件路径"))?;
                 gap_report_path = Some(PathBuf::from(value));
             }
+            "quick" => continue,
+            flag if flag.trim_start_matches('-') == "quick" => continue,
             unknown => {
                 return Err(usage(&format!("未知参数: {unknown}")));
             }

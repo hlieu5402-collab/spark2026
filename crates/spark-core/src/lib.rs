@@ -140,8 +140,9 @@ pub use context::Context;
 #[allow(deprecated)]
 pub use context::ExecutionContext;
 pub use contract::{
-    CallContext, CallContextBuilder, Cancellation, DEFAULT_OBSERVABILITY_CONTRACT, Deadline,
-    ObservabilityContract, SecurityContextSnapshot,
+    BackpressureSignal, CallContext, CallContextBuilder, Cancellation, ContractStateMachine,
+    DEFAULT_OBSERVABILITY_CONTRACT, Deadline, ObservabilityContract, SecurityContextSnapshot,
+    ShutdownGraceful, ShutdownImmediate, StateAdvance,
 };
 pub use error::{
     CoreError, DomainError, DomainErrorKind, ErrorCategory, ErrorCause, ImplError, ImplErrorKind,
