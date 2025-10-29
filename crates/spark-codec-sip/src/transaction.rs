@@ -11,7 +11,7 @@ use crate::error::SipTransactionError;
 ///   Terminated 四阶段。为了在实现与测试中复用该语义，本结构使用枚举显式记录状态，
 ///   并在取消（CANCEL）竞态场景下提供可预测的过渡行为。
 /// - **体系位置 (Where)**：该状态机位于 `spark-codec-sip`，作为编解码层与上层事务处理之间
-///   的桥梁；`spark-impl-tck` 的 CANCEL 竞态测试会直接驱动本状态机验证分支正确性。
+///   的桥梁；`spark-tck` 的 CANCEL 竞态测试会直接驱动本状态机验证分支正确性。
 /// - **契约 (What)**：状态从 `Trying` 起步；收到临时响应进入 `Proceeding`；产生最终响应后
 ///   进入 `Completed`；资源释放后进入 `Terminated`。在终态之外的任何状态都必须保持幂等的
 ///   CANCEL 处理能力。

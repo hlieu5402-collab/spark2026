@@ -1,0 +1,14 @@
+pub mod spark_examples
+pub struct spark_examples::ExamplesServer
+impl spark_examples::ExamplesServer
+pub fn spark_examples::ExamplesServer::new(services: spark_core::runtime::services::CoreServices, config: spark_core::transport::factory::ListenerConfig, transport_factory: alloc::sync::Arc<dyn spark_core::transport::traits::object::DynTransportFactory>) -> Self
+pub async fn spark_examples::ExamplesServer::run(&self, controller_factory: alloc::sync::Arc<dyn spark_examples::ControllerFactory>) -> spark_core::error::Result<()>
+pub fn spark_examples::ExamplesServer::services(&self) -> &spark_core::runtime::services::CoreServices
+impl !core::marker::Freeze for spark_examples::ExamplesServer
+impl core::marker::Send for spark_examples::ExamplesServer
+impl core::marker::Sync for spark_examples::ExamplesServer
+impl core::marker::Unpin for spark_examples::ExamplesServer
+impl !core::panic::unwind_safe::RefUnwindSafe for spark_examples::ExamplesServer
+impl !core::panic::unwind_safe::UnwindSafe for spark_examples::ExamplesServer
+pub trait spark_examples::ControllerFactory: spark_core::pipeline::traits::object::DynControllerFactory
+impl<T> spark_examples::ControllerFactory for T where T: spark_core::pipeline::traits::object::DynControllerFactory

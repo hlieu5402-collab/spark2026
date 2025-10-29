@@ -1,5 +1,5 @@
 [package]
-name = "spark-impl-tck"
+name = "spark-tck"
 version = "0.1.0"
 edition.workspace = true
 publish = false
@@ -12,7 +12,7 @@ rtp-tests = []
 
 [lib]
 # `cargo bench -- --quick` 会向所有基于 `libtest` 的单元测试传递额外参数，
-# `spark-impl-tck` 不提供基准测试入口，因此禁用基准运行以避免参数解析失败。
+# `spark-tck` 不提供基准测试入口，因此禁用基准运行以避免参数解析失败。
 bench = false
 
 [dependencies]

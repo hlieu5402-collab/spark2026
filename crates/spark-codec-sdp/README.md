@@ -3,7 +3,7 @@
 ## 职责边界
 - 提供 Session Description Protocol (SDP) 的最小解析与生成骨架，连接 SIP 信令与 RTP/RTCP 数据面。
 - 通过零拷贝结构与 `CallContext` 生命周期对齐，为未来的媒体属性、ICE/DTLS 参数扩展预留空间。
-- 配合 `spark-core` 的编解码契约，为 `spark-impl-tck` 与媒体相关的契约测试提供类型占位与能力声明。
+- 配合 `spark-core` 的编解码契约，为 `spark-tck` 与媒体相关的契约测试提供类型占位与能力声明。
 
 ## 公共接口入口
 - [`src/lib.rs`](./src/lib.rs)：导出 `parse_sdp`/`format_sdp` 以及 `SessionDesc`、`MediaDesc`、`SdpCodecScaffold` 等数据结构。
@@ -16,7 +16,7 @@
 
 ## 关联契约与测试
 - 与 [`crates/spark-contract-tests`](../../spark-contract-tests) 的 configuration 与 graceful_shutdown 主题协作，验证配置热更新、重协商流程。
-- `offer_answer` 的能力枚举会被 [`crates/spark-impl-tck`](../../spark-impl-tck) 引用，用于端到端互操作测试。
+- `offer_answer` 的能力枚举会被 [`crates/spark-tck`](../../spark-tck) 引用，用于端到端互操作测试。
 - 若扩展实际的 SDP 行，请同步在 [`docs/transport-handshake-negotiation.md`](../../../docs/transport-handshake-negotiation.md) 中登记字段含义。
 
 ## 集成注意事项

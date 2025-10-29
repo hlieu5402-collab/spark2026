@@ -17,7 +17,7 @@
 
 ## 关联契约与测试
 - 结合 [`crates/spark-contract-tests`](../../spark-contract-tests) 的 backpressure 与 security 套件，验证截断、退避与鉴权场景。
-- 与 [`crates/spark-impl-tck`](../../spark-impl-tck) 的 QUIC/TLS 套件配合，模拟 0-RTT 与密钥轮换下的控制面交互。
+- 与 [`crates/spark-tck`](../../spark-tck) 的 QUIC/TLS 套件配合，模拟 0-RTT 与密钥轮换下的控制面交互。
 - 若扩展新的 RTCP 字段或事件，请同步更新 [`docs/observability/dashboards`](../../../docs/observability/dashboards) 中的可视化配置。
 
 ## 集成注意事项

@@ -12,11 +12,11 @@ members = [
     "crates/spark-examples",
     "crates/spark-buffer",
     "crates/spark-hosting",
-    "crates/spark-ember",
+    "crates/spark-examples",
     "crates/spark-middleware",
     "crates/spark-router",
     "crates/spark-pipeline",
-    "crates/spark-impl-tck",
+    "crates/spark-tck",
     "crates/spark-macros",
     "crates/spark-otel", "crates/spark-transport",
     "crates/spark-transport-quic",
@@ -75,7 +75,7 @@ spark-codec-rtcp = { path = "crates/spark-codec-rtcp" }
 spark-codec-rtp = { path = "crates/spark-codec-rtp" }
 spark-codec-sdp = { path = "crates/spark-codec-sdp" }
 spark-codec-sip = { path = "crates/spark-codec-sip" }
-spark-impl-tck = { path = "crates/spark-impl-tck" }
+spark-tck = { path = "crates/spark-tck" }
 spark-router = { path = "crates/spark-router", default-features = false }
 spark-transport = { path = "crates/spark-transport", default-features = false }
 spark-transport-quic = { path = "crates/spark-transport-quic" }

@@ -1,7 +1,7 @@
 //! RTCP 复合报文解析逻辑。
 //!
 //! # 教案定位（Why）
-//! - 将零拷贝视图 (`BufView`) 转换为结构化的 [`RtcpPacket`](crate::packet::RtcpPacket) 列表，支撑 `spark-impl-tck` 的协议契约测试。
+//! - 将零拷贝视图 (`BufView`) 转换为结构化的 [`RtcpPacket`](crate::packet::RtcpPacket) 列表，支撑 `spark-tck` 的协议契约测试。
 //! - 解析流程在遇到异常时返回 [`RtcpError`](crate::error::RtcpError)，帮助实现者快速定位协议字段问题。
 //!
 //! # 契约说明（What）
@@ -36,7 +36,7 @@ pub const DEFAULT_COMPOUND_CAPACITY: usize = 4;
 ///
 /// # 设计动机（Why）
 /// - RTCP 复合报文常同时携带 SR/RR、SDES、BYE 等信息。将其解析为结构化枚举，便于上层逻辑在一次 IO 中获取所有控制状态。
-/// - `spark-impl-tck` 的契约测试需要验证解析对齐、字段含义与错误处理，因此该函数提供了详尽的校验与错误分类。
+/// - `spark-tck` 的契约测试需要验证解析对齐、字段含义与错误处理，因此该函数提供了详尽的校验与错误分类。
 ///
 /// # 调用契约（What）
 /// - **输入参数**：任何实现了 [`BufView`] 的只读缓冲视图。要求该视图生命周期至少覆盖解析过程，且 `len()` 为实际字节数。
