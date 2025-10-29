@@ -7,6 +7,7 @@ ci-lints:
 	./tools/ci/public_api_diff_budget.sh
 	./tools/ci/check_public_trait_budget.sh
 	./tools/ci/check_observability_keys.sh
+	./tools/ci/check_contracts_index.sh
 
 ci-zc-asm:
 	cargo build --workspace
