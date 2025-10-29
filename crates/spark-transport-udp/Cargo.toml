@@ -30,3 +30,6 @@ version = "0.28"
 optional = true
 default-features = false
 features = ["socket", "net", "uio"]
+
+[dev-dependencies]
+spark-tck = { workspace = true }

@@ -18,22 +18,22 @@ bench = false
 [dependencies]
 spark-core = { workspace = true, features = ["std"] }
 spark-codec-sip = { workspace = true }
+spark-codec-sdp = { workspace = true }
+spark-transport-udp = { workspace = true, features = ["batch-udp-unix"] }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"] }
 
 [dev-dependencies]
 spark-transport-tcp = { workspace = true }
-spark-transport-udp = { workspace = true, features = ["batch-udp-unix"] }
 spark-transport-tls = { workspace = true }
 spark-transport-quic = { workspace = true }
-anyhow = { workspace = true }
 quinn = { workspace = true }
 rustls-pki-types = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"] }
 tokio-rustls = { workspace = true }
 rcgen = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 spark-codec-rtp = { workspace = true }
-spark-codec-sdp = { workspace = true }
 rustls = { workspace = true, default-features = false, features = ["std"] }
 hex = { workspace = true }
 spark-codec-rtcp = { workspace = true }
