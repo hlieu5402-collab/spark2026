@@ -62,6 +62,11 @@ jobs:
         with:
           tool: cargo-deny
 
+      - name: Install cargo-vet
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-vet
+
       - name: Install cargo-udeps
         uses: taiki-e/install-action@v2
         with:
@@ -127,11 +132,27 @@ jobs:
           set -eo pipefail
           CI_ARTIFACT_DIR="${{ github.workspace }}/ci-artifacts" tools/ci/grep_unwrap.sh
 
+      - name: 核心与公共 crate 编译警告守门
+        if: matrix.name == 'default'
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          set -eo pipefail
+          echo "::group::cargo check --workspace --all-targets (warnings as errors)"
+          cargo check --workspace --all-targets 2>&1 | tee ci-artifacts/cargo-check-warnings.log
+          echo "::endgroup::"
+
       - name: Cargo deny
         if: matrix.name == 'default'
         run: |
           set -eo pipefail
           cargo deny check bans licenses advisories sources 2>&1 | tee ci-artifacts/cargo-deny.log
+
+      - name: Cargo vet
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          cargo vet check --locked 2>&1 | tee ci-artifacts/cargo-vet.log
 
       - name: Cargo udeps
         if: matrix.name == 'default'
