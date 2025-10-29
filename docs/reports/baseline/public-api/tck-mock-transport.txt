@@ -1,0 +1,18 @@
+pub mod tck_mock_transport
+pub struct tck_mock_transport::MockTransport
+impl tck_mock_transport::MockTransport
+pub fn tck_mock_transport::MockTransport::drain<S>(&self, service: &S) -> alloc::vec::Vec<spark_core::buffer::message::PipelineMessage> where S: tck_mock_transport::MockService
+pub fn tck_mock_transport::MockTransport::send(&self, message: spark_core::buffer::message::PipelineMessage)
+impl core::clone::Clone for tck_mock_transport::MockTransport
+pub fn tck_mock_transport::MockTransport::clone(&self) -> tck_mock_transport::MockTransport
+impl core::default::Default for tck_mock_transport::MockTransport
+pub fn tck_mock_transport::MockTransport::default() -> tck_mock_transport::MockTransport
+impl core::marker::Freeze for tck_mock_transport::MockTransport
+impl core::marker::Send for tck_mock_transport::MockTransport
+impl core::marker::Sync for tck_mock_transport::MockTransport
+impl core::marker::Unpin for tck_mock_transport::MockTransport
+impl core::panic::unwind_safe::RefUnwindSafe for tck_mock_transport::MockTransport
+impl core::panic::unwind_safe::UnwindSafe for tck_mock_transport::MockTransport
+pub trait tck_mock_transport::MockService: core::marker::Send + core::marker::Sync + 'static
+pub fn tck_mock_transport::MockService::handle(&self, request: spark_core::buffer::message::PipelineMessage) -> spark_core::buffer::message::PipelineMessage
+pub fn tck_mock_transport::run_roundtrip<S, I>(transport: &tck_mock_transport::MockTransport, service: &S, requests: I) -> usize where S: tck_mock_transport::MockService, I: core::iter::traits::collect::IntoIterator<Item = spark_core::buffer::message::PipelineMessage>

@@ -1,0 +1,23 @@
+pub mod spark_codec_line
+pub struct spark_codec_line::LineDelimitedCodec
+impl spark_codec_line::LineDelimitedCodec
+pub fn spark_codec_line::LineDelimitedCodec::descriptor(&self) -> &spark_core::codec::metadata::CodecDescriptor
+pub fn spark_codec_line::LineDelimitedCodec::new() -> Self
+impl core::clone::Clone for spark_codec_line::LineDelimitedCodec
+pub fn spark_codec_line::LineDelimitedCodec::clone(&self) -> spark_codec_line::LineDelimitedCodec
+impl core::default::Default for spark_codec_line::LineDelimitedCodec
+pub fn spark_codec_line::LineDelimitedCodec::default() -> Self
+impl core::fmt::Debug for spark_codec_line::LineDelimitedCodec
+pub fn spark_codec_line::LineDelimitedCodec::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl spark_core::codec::traits::generic::Codec for spark_codec_line::LineDelimitedCodec
+pub type spark_codec_line::LineDelimitedCodec::Incoming = alloc::string::String
+pub type spark_codec_line::LineDelimitedCodec::Outgoing = alloc::string::String
+pub fn spark_codec_line::LineDelimitedCodec::decode(&self, src: &mut spark_core::buffer::ErasedSparkBuf, ctx: &mut spark_core::codec::decoder::DecodeContext<'_>) -> spark_core::error::Result<spark_core::codec::decoder::DecodeOutcome<Self::Incoming>, spark_core::error::CoreError>
+pub fn spark_codec_line::LineDelimitedCodec::descriptor(&self) -> &spark_core::codec::metadata::CodecDescriptor
+pub fn spark_codec_line::LineDelimitedCodec::encode(&self, item: &Self::Outgoing, ctx: &mut spark_core::codec::encoder::EncodeContext<'_>) -> spark_core::error::Result<spark_core::codec::encoder::EncodedPayload, spark_core::error::CoreError>
+impl core::marker::Freeze for spark_codec_line::LineDelimitedCodec
+impl core::marker::Send for spark_codec_line::LineDelimitedCodec
+impl core::marker::Sync for spark_codec_line::LineDelimitedCodec
+impl core::marker::Unpin for spark_codec_line::LineDelimitedCodec
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_line::LineDelimitedCodec
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_line::LineDelimitedCodec

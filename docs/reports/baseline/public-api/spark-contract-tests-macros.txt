@@ -1,0 +1,2 @@
+pub mod spark_contract_tests_macros
+pub proc macro spark_contract_tests_macros::#[spark_tck]

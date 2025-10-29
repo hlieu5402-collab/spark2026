@@ -1,0 +1,429 @@
+pub mod spark_codec_rtcp
+pub enum spark_codec_rtcp::BuildError
+pub spark_codec_rtcp::BuildError::ClockWentBackwards
+pub spark_codec_rtcp::BuildError::CumulativeLostOutOfRange
+pub spark_codec_rtcp::BuildError::CumulativeLostOutOfRange::value: i32
+pub spark_codec_rtcp::BuildError::MisalignedProfileExtension
+pub spark_codec_rtcp::BuildError::MisalignedProfileExtension::len: usize
+pub spark_codec_rtcp::BuildError::SystemTimeBeforeNtpEpoch
+pub spark_codec_rtcp::BuildError::TooManyReports
+pub spark_codec_rtcp::BuildError::TooManyReports::count: usize
+impl core::clone::Clone for spark_codec_rtcp::BuildError
+pub fn spark_codec_rtcp::BuildError::clone(&self) -> spark_codec_rtcp::BuildError
+impl core::cmp::Eq for spark_codec_rtcp::BuildError
+impl core::cmp::PartialEq for spark_codec_rtcp::BuildError
+pub fn spark_codec_rtcp::BuildError::eq(&self, other: &spark_codec_rtcp::BuildError) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::BuildError
+pub fn spark_codec_rtcp::BuildError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::BuildError
+impl core::marker::Freeze for spark_codec_rtcp::BuildError
+impl core::marker::Send for spark_codec_rtcp::BuildError
+impl core::marker::Sync for spark_codec_rtcp::BuildError
+impl core::marker::Unpin for spark_codec_rtcp::BuildError
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::BuildError
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::BuildError
+pub enum spark_codec_rtcp::RtcpError
+pub spark_codec_rtcp::RtcpError::ByeReasonTruncated
+pub spark_codec_rtcp::RtcpError::ByeReasonTruncated::available: usize
+pub spark_codec_rtcp::RtcpError::ByeReasonTruncated::declared: usize
+pub spark_codec_rtcp::RtcpError::ByeSourcesTruncated
+pub spark_codec_rtcp::RtcpError::ByeSourcesTruncated::available_bytes: usize
+pub spark_codec_rtcp::RtcpError::ByeSourcesTruncated::expected_sources: usize
+pub spark_codec_rtcp::RtcpError::EmptyCompound
+pub spark_codec_rtcp::RtcpError::FirstPacketNotReport
+pub spark_codec_rtcp::RtcpError::FirstPacketNotReport::packet_type: u8
+pub spark_codec_rtcp::RtcpError::InvalidLengthField
+pub spark_codec_rtcp::RtcpError::InvalidLengthField::available_bytes: usize
+pub spark_codec_rtcp::RtcpError::InvalidLengthField::declared_words: usize
+pub spark_codec_rtcp::RtcpError::InvalidPadding
+pub spark_codec_rtcp::RtcpError::InvalidPadding::padding: u8
+pub spark_codec_rtcp::RtcpError::InvalidPadding::payload_len: usize
+pub spark_codec_rtcp::RtcpError::InvalidVersion
+pub spark_codec_rtcp::RtcpError::InvalidVersion::version: u8
+pub spark_codec_rtcp::RtcpError::PacketTooShort
+pub spark_codec_rtcp::RtcpError::PacketTooShort::remaining: usize
+pub spark_codec_rtcp::RtcpError::ProfileExtensionMisaligned
+pub spark_codec_rtcp::RtcpError::ProfileExtensionMisaligned::remaining_bytes: usize
+pub spark_codec_rtcp::RtcpError::ReceptionReportTruncated
+pub spark_codec_rtcp::RtcpError::ReceptionReportTruncated::available_bytes: usize
+pub spark_codec_rtcp::RtcpError::ReceptionReportTruncated::expected_blocks: usize
+pub spark_codec_rtcp::RtcpError::SdesChunkTruncated
+pub spark_codec_rtcp::RtcpError::SdesChunkTruncated::chunk_index: usize
+pub spark_codec_rtcp::RtcpError::SdesChunkTruncated::reason: &'static str
+pub spark_codec_rtcp::RtcpError::SdesPaddingCorrupted
+pub spark_codec_rtcp::RtcpError::SdesPaddingCorrupted::chunk_index: usize
+pub spark_codec_rtcp::RtcpError::TrailingNonZeroPadding
+pub spark_codec_rtcp::RtcpError::TrailingNonZeroPadding::packet_type: u8
+pub spark_codec_rtcp::RtcpError::UnsupportedPacketType
+pub spark_codec_rtcp::RtcpError::UnsupportedPacketType::packet_type: u8
+impl core::clone::Clone for spark_codec_rtcp::RtcpError
+pub fn spark_codec_rtcp::RtcpError::clone(&self) -> spark_codec_rtcp::RtcpError
+impl core::cmp::Eq for spark_codec_rtcp::RtcpError
+impl core::cmp::PartialEq for spark_codec_rtcp::RtcpError
+pub fn spark_codec_rtcp::RtcpError::eq(&self, other: &spark_codec_rtcp::RtcpError) -> bool
+impl core::error::Error for spark_codec_rtcp::RtcpError
+impl core::fmt::Debug for spark_codec_rtcp::RtcpError
+pub fn spark_codec_rtcp::RtcpError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for spark_codec_rtcp::RtcpError
+pub fn spark_codec_rtcp::RtcpError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::RtcpError
+impl core::marker::Freeze for spark_codec_rtcp::RtcpError
+impl core::marker::Send for spark_codec_rtcp::RtcpError
+impl core::marker::Sync for spark_codec_rtcp::RtcpError
+impl core::marker::Unpin for spark_codec_rtcp::RtcpError
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::RtcpError
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::RtcpError
+pub enum spark_codec_rtcp::RtcpPacket
+pub spark_codec_rtcp::RtcpPacket::Goodbye(spark_codec_rtcp::Goodbye)
+pub spark_codec_rtcp::RtcpPacket::ReceiverReport(spark_codec_rtcp::ReceiverReport)
+pub spark_codec_rtcp::RtcpPacket::SenderReport(spark_codec_rtcp::SenderReport)
+pub spark_codec_rtcp::RtcpPacket::SourceDescription(spark_codec_rtcp::SourceDescription)
+impl core::clone::Clone for spark_codec_rtcp::RtcpPacket
+pub fn spark_codec_rtcp::RtcpPacket::clone(&self) -> spark_codec_rtcp::RtcpPacket
+impl core::cmp::Eq for spark_codec_rtcp::RtcpPacket
+impl core::cmp::PartialEq for spark_codec_rtcp::RtcpPacket
+pub fn spark_codec_rtcp::RtcpPacket::eq(&self, other: &spark_codec_rtcp::RtcpPacket) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::RtcpPacket
+pub fn spark_codec_rtcp::RtcpPacket::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::RtcpPacket
+impl core::marker::Freeze for spark_codec_rtcp::RtcpPacket
+impl core::marker::Send for spark_codec_rtcp::RtcpPacket
+impl core::marker::Sync for spark_codec_rtcp::RtcpPacket
+impl core::marker::Unpin for spark_codec_rtcp::RtcpPacket
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::RtcpPacket
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::RtcpPacket
+pub struct spark_codec_rtcp::Goodbye
+pub spark_codec_rtcp::Goodbye::reason: core::option::Option<alloc::string::String>
+pub spark_codec_rtcp::Goodbye::sources: alloc::vec::Vec<u32>
+impl core::clone::Clone for spark_codec_rtcp::Goodbye
+pub fn spark_codec_rtcp::Goodbye::clone(&self) -> spark_codec_rtcp::Goodbye
+impl core::cmp::Eq for spark_codec_rtcp::Goodbye
+impl core::cmp::PartialEq for spark_codec_rtcp::Goodbye
+pub fn spark_codec_rtcp::Goodbye::eq(&self, other: &spark_codec_rtcp::Goodbye) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::Goodbye
+pub fn spark_codec_rtcp::Goodbye::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::Goodbye
+impl core::marker::Freeze for spark_codec_rtcp::Goodbye
+impl core::marker::Send for spark_codec_rtcp::Goodbye
+impl core::marker::Sync for spark_codec_rtcp::Goodbye
+impl core::marker::Unpin for spark_codec_rtcp::Goodbye
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::Goodbye
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::Goodbye
+pub struct spark_codec_rtcp::NtpTime
+impl spark_codec_rtcp::NtpTime
+pub const fn spark_codec_rtcp::NtpTime::as_u64(&self) -> u64
+pub const fn spark_codec_rtcp::NtpTime::fraction(&self) -> u32
+pub const fn spark_codec_rtcp::NtpTime::from_parts(seconds: u32, fraction: u32) -> Self
+pub const fn spark_codec_rtcp::NtpTime::lsr(&self) -> u32
+pub const fn spark_codec_rtcp::NtpTime::seconds(&self) -> u32
+impl core::clone::Clone for spark_codec_rtcp::NtpTime
+pub fn spark_codec_rtcp::NtpTime::clone(&self) -> spark_codec_rtcp::NtpTime
+impl core::cmp::Eq for spark_codec_rtcp::NtpTime
+impl core::cmp::PartialEq for spark_codec_rtcp::NtpTime
+pub fn spark_codec_rtcp::NtpTime::eq(&self, other: &spark_codec_rtcp::NtpTime) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::NtpTime
+pub fn spark_codec_rtcp::NtpTime::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtcp::NtpTime
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::NtpTime
+impl core::marker::Freeze for spark_codec_rtcp::NtpTime
+impl core::marker::Send for spark_codec_rtcp::NtpTime
+impl core::marker::Sync for spark_codec_rtcp::NtpTime
+impl core::marker::Unpin for spark_codec_rtcp::NtpTime
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::NtpTime
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::NtpTime
+pub struct spark_codec_rtcp::ReceiverReport
+pub spark_codec_rtcp::ReceiverReport::profile_extensions: alloc::vec::Vec<u8>
+pub spark_codec_rtcp::ReceiverReport::reporter_ssrc: u32
+pub spark_codec_rtcp::ReceiverReport::reports: alloc::vec::Vec<spark_codec_rtcp::ReceptionReport>
+impl core::clone::Clone for spark_codec_rtcp::ReceiverReport
+pub fn spark_codec_rtcp::ReceiverReport::clone(&self) -> spark_codec_rtcp::ReceiverReport
+impl core::cmp::Eq for spark_codec_rtcp::ReceiverReport
+impl core::cmp::PartialEq for spark_codec_rtcp::ReceiverReport
+pub fn spark_codec_rtcp::ReceiverReport::eq(&self, other: &spark_codec_rtcp::ReceiverReport) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::ReceiverReport
+pub fn spark_codec_rtcp::ReceiverReport::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::ReceiverReport
+impl core::marker::Freeze for spark_codec_rtcp::ReceiverReport
+impl core::marker::Send for spark_codec_rtcp::ReceiverReport
+impl core::marker::Sync for spark_codec_rtcp::ReceiverReport
+impl core::marker::Unpin for spark_codec_rtcp::ReceiverReport
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::ReceiverReport
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::ReceiverReport
+pub struct spark_codec_rtcp::ReceiverStat<'a>
+pub spark_codec_rtcp::ReceiverStat::profile_extensions: &'a [u8]
+pub spark_codec_rtcp::ReceiverStat::reporter_ssrc: u32
+pub spark_codec_rtcp::ReceiverStat::reports: &'a [spark_codec_rtcp::ReceptionStat]
+impl<'a> core::clone::Clone for spark_codec_rtcp::ReceiverStat<'a>
+pub fn spark_codec_rtcp::ReceiverStat<'a>::clone(&self) -> spark_codec_rtcp::ReceiverStat<'a>
+impl<'a> core::cmp::Eq for spark_codec_rtcp::ReceiverStat<'a>
+impl<'a> core::cmp::PartialEq for spark_codec_rtcp::ReceiverStat<'a>
+pub fn spark_codec_rtcp::ReceiverStat<'a>::eq(&self, other: &spark_codec_rtcp::ReceiverStat<'a>) -> bool
+impl<'a> core::fmt::Debug for spark_codec_rtcp::ReceiverStat<'a>
+pub fn spark_codec_rtcp::ReceiverStat<'a>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for spark_codec_rtcp::ReceiverStat<'a>
+impl<'a> core::marker::Freeze for spark_codec_rtcp::ReceiverStat<'a>
+impl<'a> core::marker::Send for spark_codec_rtcp::ReceiverStat<'a>
+impl<'a> core::marker::Sync for spark_codec_rtcp::ReceiverStat<'a>
+impl<'a> core::marker::Unpin for spark_codec_rtcp::ReceiverStat<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::ReceiverStat<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::ReceiverStat<'a>
+pub struct spark_codec_rtcp::ReceiverStatistics<'a>
+pub spark_codec_rtcp::ReceiverStatistics::profile_extensions: &'a [u8]
+pub spark_codec_rtcp::ReceiverStatistics::reporter_ssrc: u32
+pub spark_codec_rtcp::ReceiverStatistics::reports: &'a [spark_codec_rtcp::ReceptionStatistics]
+impl<'a> core::clone::Clone for spark_codec_rtcp::ReceiverStatistics<'a>
+pub fn spark_codec_rtcp::ReceiverStatistics<'a>::clone(&self) -> spark_codec_rtcp::ReceiverStatistics<'a>
+impl<'a> core::cmp::Eq for spark_codec_rtcp::ReceiverStatistics<'a>
+impl<'a> core::cmp::PartialEq for spark_codec_rtcp::ReceiverStatistics<'a>
+pub fn spark_codec_rtcp::ReceiverStatistics<'a>::eq(&self, other: &spark_codec_rtcp::ReceiverStatistics<'a>) -> bool
+impl<'a> core::fmt::Debug for spark_codec_rtcp::ReceiverStatistics<'a>
+pub fn spark_codec_rtcp::ReceiverStatistics<'a>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for spark_codec_rtcp::ReceiverStatistics<'a>
+impl<'a> core::marker::Freeze for spark_codec_rtcp::ReceiverStatistics<'a>
+impl<'a> core::marker::Send for spark_codec_rtcp::ReceiverStatistics<'a>
+impl<'a> core::marker::Sync for spark_codec_rtcp::ReceiverStatistics<'a>
+impl<'a> core::marker::Unpin for spark_codec_rtcp::ReceiverStatistics<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::ReceiverStatistics<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::ReceiverStatistics<'a>
+pub struct spark_codec_rtcp::ReceptionReport
+pub spark_codec_rtcp::ReceptionReport::cumulative_lost: i32
+pub spark_codec_rtcp::ReceptionReport::delay_since_last_sr: u32
+pub spark_codec_rtcp::ReceptionReport::extended_highest_sequence: u32
+pub spark_codec_rtcp::ReceptionReport::fraction_lost: u8
+pub spark_codec_rtcp::ReceptionReport::interarrival_jitter: u32
+pub spark_codec_rtcp::ReceptionReport::last_sr_timestamp: u32
+pub spark_codec_rtcp::ReceptionReport::source_ssrc: u32
+impl core::clone::Clone for spark_codec_rtcp::ReceptionReport
+pub fn spark_codec_rtcp::ReceptionReport::clone(&self) -> spark_codec_rtcp::ReceptionReport
+impl core::cmp::Eq for spark_codec_rtcp::ReceptionReport
+impl core::cmp::PartialEq for spark_codec_rtcp::ReceptionReport
+pub fn spark_codec_rtcp::ReceptionReport::eq(&self, other: &spark_codec_rtcp::ReceptionReport) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::ReceptionReport
+pub fn spark_codec_rtcp::ReceptionReport::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::ReceptionReport
+impl core::marker::Freeze for spark_codec_rtcp::ReceptionReport
+impl core::marker::Send for spark_codec_rtcp::ReceptionReport
+impl core::marker::Sync for spark_codec_rtcp::ReceptionReport
+impl core::marker::Unpin for spark_codec_rtcp::ReceptionReport
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::ReceptionReport
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::ReceptionReport
+pub struct spark_codec_rtcp::ReceptionStat
+pub spark_codec_rtcp::ReceptionStat::cumulative_lost: i32
+pub spark_codec_rtcp::ReceptionStat::delay_since_last_sr: u32
+pub spark_codec_rtcp::ReceptionStat::extended_highest_sequence: u32
+pub spark_codec_rtcp::ReceptionStat::fraction_lost: u8
+pub spark_codec_rtcp::ReceptionStat::interarrival_jitter: u32
+pub spark_codec_rtcp::ReceptionStat::last_sr_timestamp: u32
+pub spark_codec_rtcp::ReceptionStat::source_ssrc: u32
+impl core::clone::Clone for spark_codec_rtcp::ReceptionStat
+pub fn spark_codec_rtcp::ReceptionStat::clone(&self) -> spark_codec_rtcp::ReceptionStat
+impl core::cmp::Eq for spark_codec_rtcp::ReceptionStat
+impl core::cmp::PartialEq for spark_codec_rtcp::ReceptionStat
+pub fn spark_codec_rtcp::ReceptionStat::eq(&self, other: &spark_codec_rtcp::ReceptionStat) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::ReceptionStat
+pub fn spark_codec_rtcp::ReceptionStat::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::ReceptionStat
+impl core::marker::Freeze for spark_codec_rtcp::ReceptionStat
+impl core::marker::Send for spark_codec_rtcp::ReceptionStat
+impl core::marker::Sync for spark_codec_rtcp::ReceptionStat
+impl core::marker::Unpin for spark_codec_rtcp::ReceptionStat
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::ReceptionStat
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::ReceptionStat
+pub struct spark_codec_rtcp::ReceptionStatistics
+pub spark_codec_rtcp::ReceptionStatistics::cumulative_lost: i32
+pub spark_codec_rtcp::ReceptionStatistics::delay_since_last_sr: core::option::Option<core::time::Duration>
+pub spark_codec_rtcp::ReceptionStatistics::extended_highest_sequence: u32
+pub spark_codec_rtcp::ReceptionStatistics::fraction_lost: u8
+pub spark_codec_rtcp::ReceptionStatistics::interarrival_jitter: u32
+pub spark_codec_rtcp::ReceptionStatistics::last_sr: core::option::Option<spark_codec_rtcp::NtpTime>
+pub spark_codec_rtcp::ReceptionStatistics::source_ssrc: u32
+impl core::clone::Clone for spark_codec_rtcp::ReceptionStatistics
+pub fn spark_codec_rtcp::ReceptionStatistics::clone(&self) -> spark_codec_rtcp::ReceptionStatistics
+impl core::cmp::Eq for spark_codec_rtcp::ReceptionStatistics
+impl core::cmp::PartialEq for spark_codec_rtcp::ReceptionStatistics
+pub fn spark_codec_rtcp::ReceptionStatistics::eq(&self, other: &spark_codec_rtcp::ReceptionStatistics) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::ReceptionStatistics
+pub fn spark_codec_rtcp::ReceptionStatistics::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::ReceptionStatistics
+impl core::marker::Freeze for spark_codec_rtcp::ReceptionStatistics
+impl core::marker::Send for spark_codec_rtcp::ReceptionStatistics
+impl core::marker::Sync for spark_codec_rtcp::ReceptionStatistics
+impl core::marker::Unpin for spark_codec_rtcp::ReceptionStatistics
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::ReceptionStatistics
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::ReceptionStatistics
+pub struct spark_codec_rtcp::RtcpCodecScaffold
+impl spark_codec_rtcp::RtcpCodecScaffold
+pub const fn spark_codec_rtcp::RtcpCodecScaffold::new() -> Self
+impl core::clone::Clone for spark_codec_rtcp::RtcpCodecScaffold
+pub fn spark_codec_rtcp::RtcpCodecScaffold::clone(&self) -> spark_codec_rtcp::RtcpCodecScaffold
+impl core::default::Default for spark_codec_rtcp::RtcpCodecScaffold
+pub fn spark_codec_rtcp::RtcpCodecScaffold::default() -> spark_codec_rtcp::RtcpCodecScaffold
+impl core::fmt::Debug for spark_codec_rtcp::RtcpCodecScaffold
+pub fn spark_codec_rtcp::RtcpCodecScaffold::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_codec_rtcp::RtcpCodecScaffold
+impl core::marker::Freeze for spark_codec_rtcp::RtcpCodecScaffold
+impl core::marker::Send for spark_codec_rtcp::RtcpCodecScaffold
+impl core::marker::Sync for spark_codec_rtcp::RtcpCodecScaffold
+impl core::marker::Unpin for spark_codec_rtcp::RtcpCodecScaffold
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::RtcpCodecScaffold
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::RtcpCodecScaffold
+pub struct spark_codec_rtcp::RtpClockMapper
+impl spark_codec_rtcp::RtpClockMapper
+pub const fn spark_codec_rtcp::RtpClockMapper::clock_rate(&self) -> u32
+pub const fn spark_codec_rtcp::RtpClockMapper::new(origin_time: std::time::SystemTime, origin_rtp: u32, clock_rate: u32) -> Self
+pub fn spark_codec_rtcp::RtpClockMapper::snapshot(&self, capture_time: std::time::SystemTime) -> spark_core::error::Result<(u64, u32), spark_codec_rtcp::BuildError>
+impl core::clone::Clone for spark_codec_rtcp::RtpClockMapper
+pub fn spark_codec_rtcp::RtpClockMapper::clone(&self) -> spark_codec_rtcp::RtpClockMapper
+impl core::cmp::Eq for spark_codec_rtcp::RtpClockMapper
+impl core::cmp::PartialEq for spark_codec_rtcp::RtpClockMapper
+pub fn spark_codec_rtcp::RtpClockMapper::eq(&self, other: &spark_codec_rtcp::RtpClockMapper) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::RtpClockMapper
+pub fn spark_codec_rtcp::RtpClockMapper::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::RtpClockMapper
+impl core::marker::Freeze for spark_codec_rtcp::RtpClockMapper
+impl core::marker::Send for spark_codec_rtcp::RtpClockMapper
+impl core::marker::Sync for spark_codec_rtcp::RtpClockMapper
+impl core::marker::Unpin for spark_codec_rtcp::RtpClockMapper
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::RtpClockMapper
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::RtpClockMapper
+pub struct spark_codec_rtcp::SdesChunk
+pub spark_codec_rtcp::SdesChunk::items: alloc::vec::Vec<spark_codec_rtcp::SdesItem>
+pub spark_codec_rtcp::SdesChunk::source: u32
+impl core::clone::Clone for spark_codec_rtcp::SdesChunk
+pub fn spark_codec_rtcp::SdesChunk::clone(&self) -> spark_codec_rtcp::SdesChunk
+impl core::cmp::Eq for spark_codec_rtcp::SdesChunk
+impl core::cmp::PartialEq for spark_codec_rtcp::SdesChunk
+pub fn spark_codec_rtcp::SdesChunk::eq(&self, other: &spark_codec_rtcp::SdesChunk) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::SdesChunk
+pub fn spark_codec_rtcp::SdesChunk::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::SdesChunk
+impl core::marker::Freeze for spark_codec_rtcp::SdesChunk
+impl core::marker::Send for spark_codec_rtcp::SdesChunk
+impl core::marker::Sync for spark_codec_rtcp::SdesChunk
+impl core::marker::Unpin for spark_codec_rtcp::SdesChunk
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::SdesChunk
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::SdesChunk
+pub struct spark_codec_rtcp::SdesItem
+pub spark_codec_rtcp::SdesItem::item_type: u8
+pub spark_codec_rtcp::SdesItem::value: alloc::vec::Vec<u8>
+impl core::clone::Clone for spark_codec_rtcp::SdesItem
+pub fn spark_codec_rtcp::SdesItem::clone(&self) -> spark_codec_rtcp::SdesItem
+impl core::cmp::Eq for spark_codec_rtcp::SdesItem
+impl core::cmp::PartialEq for spark_codec_rtcp::SdesItem
+pub fn spark_codec_rtcp::SdesItem::eq(&self, other: &spark_codec_rtcp::SdesItem) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::SdesItem
+pub fn spark_codec_rtcp::SdesItem::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::SdesItem
+impl core::marker::Freeze for spark_codec_rtcp::SdesItem
+impl core::marker::Send for spark_codec_rtcp::SdesItem
+impl core::marker::Sync for spark_codec_rtcp::SdesItem
+impl core::marker::Unpin for spark_codec_rtcp::SdesItem
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::SdesItem
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::SdesItem
+pub struct spark_codec_rtcp::SenderInfo
+pub spark_codec_rtcp::SenderInfo::ntp_timestamp: u64
+pub spark_codec_rtcp::SenderInfo::rtp_timestamp: u32
+pub spark_codec_rtcp::SenderInfo::sender_octet_count: u32
+pub spark_codec_rtcp::SenderInfo::sender_packet_count: u32
+impl core::clone::Clone for spark_codec_rtcp::SenderInfo
+pub fn spark_codec_rtcp::SenderInfo::clone(&self) -> spark_codec_rtcp::SenderInfo
+impl core::cmp::Eq for spark_codec_rtcp::SenderInfo
+impl core::cmp::PartialEq for spark_codec_rtcp::SenderInfo
+pub fn spark_codec_rtcp::SenderInfo::eq(&self, other: &spark_codec_rtcp::SenderInfo) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::SenderInfo
+pub fn spark_codec_rtcp::SenderInfo::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::SenderInfo
+impl core::marker::Freeze for spark_codec_rtcp::SenderInfo
+impl core::marker::Send for spark_codec_rtcp::SenderInfo
+impl core::marker::Sync for spark_codec_rtcp::SenderInfo
+impl core::marker::Unpin for spark_codec_rtcp::SenderInfo
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::SenderInfo
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::SenderInfo
+pub struct spark_codec_rtcp::SenderReport
+pub spark_codec_rtcp::SenderReport::profile_extensions: alloc::vec::Vec<u8>
+pub spark_codec_rtcp::SenderReport::reports: alloc::vec::Vec<spark_codec_rtcp::ReceptionReport>
+pub spark_codec_rtcp::SenderReport::sender_info: spark_codec_rtcp::SenderInfo
+pub spark_codec_rtcp::SenderReport::sender_ssrc: u32
+impl core::clone::Clone for spark_codec_rtcp::SenderReport
+pub fn spark_codec_rtcp::SenderReport::clone(&self) -> spark_codec_rtcp::SenderReport
+impl core::cmp::Eq for spark_codec_rtcp::SenderReport
+impl core::cmp::PartialEq for spark_codec_rtcp::SenderReport
+pub fn spark_codec_rtcp::SenderReport::eq(&self, other: &spark_codec_rtcp::SenderReport) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::SenderReport
+pub fn spark_codec_rtcp::SenderReport::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::SenderReport
+impl core::marker::Freeze for spark_codec_rtcp::SenderReport
+impl core::marker::Send for spark_codec_rtcp::SenderReport
+impl core::marker::Sync for spark_codec_rtcp::SenderReport
+impl core::marker::Unpin for spark_codec_rtcp::SenderReport
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::SenderReport
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::SenderReport
+pub struct spark_codec_rtcp::SenderStat<'a>
+pub spark_codec_rtcp::SenderStat::capture_time: std::time::SystemTime
+pub spark_codec_rtcp::SenderStat::profile_extensions: &'a [u8]
+pub spark_codec_rtcp::SenderStat::reports: &'a [spark_codec_rtcp::ReceptionStat]
+pub spark_codec_rtcp::SenderStat::sender_octet_count: u32
+pub spark_codec_rtcp::SenderStat::sender_packet_count: u32
+pub spark_codec_rtcp::SenderStat::sender_ssrc: u32
+impl<'a> core::clone::Clone for spark_codec_rtcp::SenderStat<'a>
+pub fn spark_codec_rtcp::SenderStat<'a>::clone(&self) -> spark_codec_rtcp::SenderStat<'a>
+impl<'a> core::cmp::Eq for spark_codec_rtcp::SenderStat<'a>
+impl<'a> core::cmp::PartialEq for spark_codec_rtcp::SenderStat<'a>
+pub fn spark_codec_rtcp::SenderStat<'a>::eq(&self, other: &spark_codec_rtcp::SenderStat<'a>) -> bool
+impl<'a> core::fmt::Debug for spark_codec_rtcp::SenderStat<'a>
+pub fn spark_codec_rtcp::SenderStat<'a>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for spark_codec_rtcp::SenderStat<'a>
+impl<'a> core::marker::Freeze for spark_codec_rtcp::SenderStat<'a>
+impl<'a> core::marker::Send for spark_codec_rtcp::SenderStat<'a>
+impl<'a> core::marker::Sync for spark_codec_rtcp::SenderStat<'a>
+impl<'a> core::marker::Unpin for spark_codec_rtcp::SenderStat<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::SenderStat<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::SenderStat<'a>
+pub struct spark_codec_rtcp::SenderStatistics<'a>
+pub spark_codec_rtcp::SenderStatistics::capture_ntp: spark_codec_rtcp::NtpTime
+pub spark_codec_rtcp::SenderStatistics::profile_extensions: &'a [u8]
+pub spark_codec_rtcp::SenderStatistics::reports: &'a [spark_codec_rtcp::ReceptionStatistics]
+pub spark_codec_rtcp::SenderStatistics::rtp_timestamp_override: core::option::Option<u32>
+pub spark_codec_rtcp::SenderStatistics::sender_octet_count: u32
+pub spark_codec_rtcp::SenderStatistics::sender_packet_count: u32
+pub spark_codec_rtcp::SenderStatistics::sender_ssrc: u32
+impl<'a> core::clone::Clone for spark_codec_rtcp::SenderStatistics<'a>
+pub fn spark_codec_rtcp::SenderStatistics<'a>::clone(&self) -> spark_codec_rtcp::SenderStatistics<'a>
+impl<'a> core::cmp::Eq for spark_codec_rtcp::SenderStatistics<'a>
+impl<'a> core::cmp::PartialEq for spark_codec_rtcp::SenderStatistics<'a>
+pub fn spark_codec_rtcp::SenderStatistics<'a>::eq(&self, other: &spark_codec_rtcp::SenderStatistics<'a>) -> bool
+impl<'a> core::fmt::Debug for spark_codec_rtcp::SenderStatistics<'a>
+pub fn spark_codec_rtcp::SenderStatistics<'a>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for spark_codec_rtcp::SenderStatistics<'a>
+impl<'a> core::marker::Freeze for spark_codec_rtcp::SenderStatistics<'a>
+impl<'a> core::marker::Send for spark_codec_rtcp::SenderStatistics<'a>
+impl<'a> core::marker::Sync for spark_codec_rtcp::SenderStatistics<'a>
+impl<'a> core::marker::Unpin for spark_codec_rtcp::SenderStatistics<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::SenderStatistics<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::SenderStatistics<'a>
+pub struct spark_codec_rtcp::SourceDescription
+pub spark_codec_rtcp::SourceDescription::chunks: alloc::vec::Vec<spark_codec_rtcp::SdesChunk>
+impl core::clone::Clone for spark_codec_rtcp::SourceDescription
+pub fn spark_codec_rtcp::SourceDescription::clone(&self) -> spark_codec_rtcp::SourceDescription
+impl core::cmp::Eq for spark_codec_rtcp::SourceDescription
+impl core::cmp::PartialEq for spark_codec_rtcp::SourceDescription
+pub fn spark_codec_rtcp::SourceDescription::eq(&self, other: &spark_codec_rtcp::SourceDescription) -> bool
+impl core::fmt::Debug for spark_codec_rtcp::SourceDescription
+pub fn spark_codec_rtcp::SourceDescription::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for spark_codec_rtcp::SourceDescription
+impl core::marker::Freeze for spark_codec_rtcp::SourceDescription
+impl core::marker::Send for spark_codec_rtcp::SourceDescription
+impl core::marker::Sync for spark_codec_rtcp::SourceDescription
+impl core::marker::Unpin for spark_codec_rtcp::SourceDescription
+impl core::panic::unwind_safe::RefUnwindSafe for spark_codec_rtcp::SourceDescription
+impl core::panic::unwind_safe::UnwindSafe for spark_codec_rtcp::SourceDescription
+pub const spark_codec_rtcp::DEFAULT_COMPOUND_CAPACITY: usize
+pub trait spark_codec_rtcp::RtpClock
+pub fn spark_codec_rtcp::RtpClock::to_rtp_timestamp(&self, ntp: &spark_codec_rtcp::NtpTime) -> u32
+pub fn spark_codec_rtcp::build_rr(stats: &spark_codec_rtcp::ReceiverStatistics<'_>, out: &mut spark_codec_rtcp::RtcpPacketVec)
+pub fn spark_codec_rtcp::build_rr_raw(recv_stat: &spark_codec_rtcp::ReceiverStat<'_>, out: &mut alloc::vec::Vec<u8>) -> spark_core::error::Result<(), spark_codec_rtcp::BuildError>
+pub fn spark_codec_rtcp::build_sr<C>(clock: &C, stats: &spark_codec_rtcp::SenderStatistics<'_>, out: &mut spark_codec_rtcp::RtcpPacketVec) where C: spark_codec_rtcp::RtpClock
+pub fn spark_codec_rtcp::build_sr_raw(clock: &spark_codec_rtcp::RtpClockMapper, sender_stat: &spark_codec_rtcp::SenderStat<'_>, out: &mut alloc::vec::Vec<u8>) -> spark_core::error::Result<(), spark_codec_rtcp::BuildError>
+pub fn spark_codec_rtcp::new_packet_vec() -> spark_codec_rtcp::RtcpPacketVec
+pub fn spark_codec_rtcp::parse_rtcp(view: &impl spark_core::buffer::buf_view::BufView + ?core::marker::Sized) -> spark_core::error::Result<spark_codec_rtcp::RtcpPacketVec, spark_codec_rtcp::RtcpError>
+pub type spark_codec_rtcp::RtcpPacketVec = smallvec::SmallVec<[spark_codec_rtcp::RtcpPacket; 4]>

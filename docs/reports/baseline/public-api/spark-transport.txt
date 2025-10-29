@@ -1,0 +1,312 @@
+pub mod spark_transport
+pub mod spark_transport::addr
+#[non_exhaustive] pub enum spark_transport::addr::TransportSocketAddr
+pub spark_transport::addr::TransportSocketAddr::V4
+pub spark_transport::addr::TransportSocketAddr::V4::addr: [u8; 4]
+pub spark_transport::addr::TransportSocketAddr::V4::port: u16
+pub spark_transport::addr::TransportSocketAddr::V6
+pub spark_transport::addr::TransportSocketAddr::V6::addr: [u16; 8]
+pub spark_transport::addr::TransportSocketAddr::V6::port: u16
+impl spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::as_ipv6_addr(&self) -> core::option::Option<core::net::ip_addr::Ipv6Addr>
+impl core::clone::Clone for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::clone(&self) -> spark_transport::addr::TransportSocketAddr
+impl core::cmp::Eq for spark_transport::addr::TransportSocketAddr
+impl core::cmp::Ord for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::cmp(&self, other: &spark_transport::addr::TransportSocketAddr) -> core::cmp::Ordering
+impl core::cmp::PartialEq for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::eq(&self, other: &spark_transport::addr::TransportSocketAddr) -> bool
+impl core::cmp::PartialOrd for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::partial_cmp(&self, other: &spark_transport::addr::TransportSocketAddr) -> core::option::Option<core::cmp::Ordering>
+impl core::convert::From<core::net::socket_addr::SocketAddr> for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::from(addr: core::net::socket_addr::SocketAddr) -> Self
+impl core::convert::From<spark_transport::addr::TransportSocketAddr> for core::net::socket_addr::SocketAddr
+pub fn core::net::socket_addr::SocketAddr::from(addr: spark_transport::addr::TransportSocketAddr) -> Self
+impl core::fmt::Debug for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+impl core::marker::Copy for spark_transport::addr::TransportSocketAddr
+impl core::marker::StructuralPartialEq for spark_transport::addr::TransportSocketAddr
+impl core::marker::Freeze for spark_transport::addr::TransportSocketAddr
+impl core::marker::Send for spark_transport::addr::TransportSocketAddr
+impl core::marker::Sync for spark_transport::addr::TransportSocketAddr
+impl core::marker::Unpin for spark_transport::addr::TransportSocketAddr
+impl core::panic::unwind_safe::RefUnwindSafe for spark_transport::addr::TransportSocketAddr
+impl core::panic::unwind_safe::UnwindSafe for spark_transport::addr::TransportSocketAddr
+pub mod spark_transport::backpressure
+#[non_exhaustive] pub enum spark_transport::backpressure::BackpressureDecision
+pub spark_transport::backpressure::BackpressureDecision::BudgetExhausted
+pub spark_transport::backpressure::BackpressureDecision::Busy
+pub spark_transport::backpressure::BackpressureDecision::Ready
+pub spark_transport::backpressure::BackpressureDecision::Rejected
+pub spark_transport::backpressure::BackpressureDecision::RetryAfter
+pub spark_transport::backpressure::BackpressureDecision::RetryAfter::delay: core::time::Duration
+impl spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::backpressure::BackpressureDecision::is_ready(self) -> bool
+impl core::clone::Clone for spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::backpressure::BackpressureDecision::clone(&self) -> spark_transport::backpressure::BackpressureDecision
+impl core::cmp::PartialEq for spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::backpressure::BackpressureDecision::eq(&self, other: &spark_transport::backpressure::BackpressureDecision) -> bool
+impl core::fmt::Debug for spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::backpressure::BackpressureDecision::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_transport::backpressure::BackpressureDecision
+impl core::marker::StructuralPartialEq for spark_transport::backpressure::BackpressureDecision
+impl core::marker::Freeze for spark_transport::backpressure::BackpressureDecision
+impl core::marker::Send for spark_transport::backpressure::BackpressureDecision
+impl core::marker::Sync for spark_transport::backpressure::BackpressureDecision
+impl core::marker::Unpin for spark_transport::backpressure::BackpressureDecision
+impl core::panic::unwind_safe::RefUnwindSafe for spark_transport::backpressure::BackpressureDecision
+impl core::panic::unwind_safe::UnwindSafe for spark_transport::backpressure::BackpressureDecision
+pub struct spark_transport::backpressure::BackpressureMetrics
+pub spark_transport::backpressure::BackpressureMetrics::consecutive_would_block: u32
+pub spark_transport::backpressure::BackpressureMetrics::elapsed_since_flush: core::option::Option<core::time::Duration>
+pub spark_transport::backpressure::BackpressureMetrics::in_flight_ops: u32
+pub spark_transport::backpressure::BackpressureMetrics::pending_bytes: u64
+impl core::clone::Clone for spark_transport::backpressure::BackpressureMetrics
+pub fn spark_transport::backpressure::BackpressureMetrics::clone(&self) -> spark_transport::backpressure::BackpressureMetrics
+impl core::cmp::PartialEq for spark_transport::backpressure::BackpressureMetrics
+pub fn spark_transport::backpressure::BackpressureMetrics::eq(&self, other: &spark_transport::backpressure::BackpressureMetrics) -> bool
+impl core::default::Default for spark_transport::backpressure::BackpressureMetrics
+pub fn spark_transport::backpressure::BackpressureMetrics::default() -> spark_transport::backpressure::BackpressureMetrics
+impl core::fmt::Debug for spark_transport::backpressure::BackpressureMetrics
+pub fn spark_transport::backpressure::BackpressureMetrics::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::StructuralPartialEq for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::Freeze for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::Send for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::Sync for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::Unpin for spark_transport::backpressure::BackpressureMetrics
+impl core::panic::unwind_safe::RefUnwindSafe for spark_transport::backpressure::BackpressureMetrics
+impl core::panic::unwind_safe::UnwindSafe for spark_transport::backpressure::BackpressureMetrics
+pub trait spark_transport::backpressure::BackpressureClassifier: core::marker::Send + core::marker::Sync
+pub fn spark_transport::backpressure::BackpressureClassifier::classify(&self, metrics: &spark_transport::backpressure::BackpressureMetrics) -> spark_transport::backpressure::BackpressureDecision
+pub mod spark_transport::connection
+pub trait spark_transport::connection::DatagramEndpoint: core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::connection::DatagramEndpoint::CallCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::connection::DatagramEndpoint::Error: core::fmt::Debug + core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::connection::DatagramEndpoint::InboundMeta
+pub type spark_transport::connection::DatagramEndpoint::OutboundMeta: ?core::marker::Sized
+pub type spark_transport::connection::DatagramEndpoint::RecvFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(usize, Self::InboundMeta), Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::connection::DatagramEndpoint::SendFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<usize, Self::Error>> + core::marker::Send + 'ctx
+pub fn spark_transport::connection::DatagramEndpoint::local_addr(&self) -> spark_transport::Result<spark_transport::addr::TransportSocketAddr, Self::Error>
+pub fn spark_transport::connection::DatagramEndpoint::recv<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, buf: &'ctx mut [u8]) -> Self::RecvFuture
+pub fn spark_transport::connection::DatagramEndpoint::send<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, payload: &'ctx [u8], meta: &'ctx Self::OutboundMeta) -> Self::SendFuture
+pub trait spark_transport::connection::TransportConnection: core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::connection::TransportConnection::CallCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::connection::TransportConnection::Error: core::fmt::Debug + core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::connection::TransportConnection::FlushFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(), Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::connection::TransportConnection::ReadFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<usize, Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::connection::TransportConnection::ReadyCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::connection::TransportConnection::ShutdownFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(), Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::connection::TransportConnection::WriteFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<usize, Self::Error>> + core::marker::Send + 'ctx
+pub fn spark_transport::connection::TransportConnection::classify_backpressure(&self, ctx: &Self::ReadyCtx, metrics: &spark_transport::backpressure::BackpressureMetrics) -> spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::connection::TransportConnection::flush<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx) -> Self::FlushFuture
+pub fn spark_transport::connection::TransportConnection::id(&self) -> alloc::borrow::Cow<'_, str>
+pub fn spark_transport::connection::TransportConnection::local_addr(&self) -> core::option::Option<spark_transport::addr::TransportSocketAddr>
+pub fn spark_transport::connection::TransportConnection::peer_addr(&self) -> core::option::Option<spark_transport::addr::TransportSocketAddr>
+pub fn spark_transport::connection::TransportConnection::read<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, buf: &'ctx mut [u8]) -> Self::ReadFuture
+pub fn spark_transport::connection::TransportConnection::shutdown<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, direction: spark_transport::shutdown::ShutdownDirection) -> Self::ShutdownFuture
+pub fn spark_transport::connection::TransportConnection::write<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, buf: &'ctx [u8]) -> Self::WriteFuture
+pub mod spark_transport::listener
+pub trait spark_transport::listener::TransportListener: core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::listener::TransportListener::AcceptCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::listener::TransportListener::AcceptFuture<'ctx> where Self: 'ctx, Self::AcceptCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(Self::Connection, spark_transport::addr::TransportSocketAddr), Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::listener::TransportListener::Connection: spark_transport::connection::TransportConnection<Error = Self::Error>
+pub type spark_transport::listener::TransportListener::Error: core::fmt::Debug + core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::listener::TransportListener::ShutdownCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::listener::TransportListener::ShutdownFuture<'ctx> where Self: 'ctx, Self::ShutdownCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(), Self::Error>> + core::marker::Send + 'ctx
+pub fn spark_transport::listener::TransportListener::accept<'ctx>(&'ctx self, ctx: &'ctx Self::AcceptCtx) -> Self::AcceptFuture
+pub fn spark_transport::listener::TransportListener::local_addr(&self) -> spark_transport::Result<spark_transport::addr::TransportSocketAddr, Self::Error>
+pub fn spark_transport::listener::TransportListener::scheme(&self) -> &'static str
+pub fn spark_transport::listener::TransportListener::shutdown<'ctx>(&'ctx self, ctx: &'ctx Self::ShutdownCtx, direction: spark_transport::shutdown::ShutdownDirection) -> Self::ShutdownFuture
+pub mod spark_transport::rate
+pub struct spark_transport::rate::RatePermit<'a>
+impl<'a> spark_transport::rate::RatePermit<'a>
+pub fn spark_transport::rate::RatePermit<'a>::new<F>(release: F, retry_after: core::option::Option<core::time::Duration>) -> Self where F: core::ops::function::FnOnce() + core::marker::Send + 'a
+pub fn spark_transport::rate::RatePermit<'a>::recommended_retry_after(&self) -> core::option::Option<core::time::Duration>
+impl core::ops::drop::Drop for spark_transport::rate::RatePermit<'_>
+pub fn spark_transport::rate::RatePermit<'_>::drop(&mut self)
+impl<'a> core::marker::Freeze for spark_transport::rate::RatePermit<'a>
+impl<'a> core::marker::Send for spark_transport::rate::RatePermit<'a>
+impl<'a> !core::marker::Sync for spark_transport::rate::RatePermit<'a>
+impl<'a> core::marker::Unpin for spark_transport::rate::RatePermit<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for spark_transport::rate::RatePermit<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for spark_transport::rate::RatePermit<'a>
+pub trait spark_transport::rate::RateLimiter: core::marker::Send + core::marker::Sync
+pub fn spark_transport::rate::RateLimiter::try_acquire<'a>(&'a self, demand: u32) -> spark_transport::Result<spark_transport::rate::RatePermit<'a>, &'static str>
+pub mod spark_transport::shutdown
+pub enum spark_transport::shutdown::ShutdownDirection
+pub spark_transport::shutdown::ShutdownDirection::Both
+pub spark_transport::shutdown::ShutdownDirection::Read
+pub spark_transport::shutdown::ShutdownDirection::Write
+impl core::clone::Clone for spark_transport::shutdown::ShutdownDirection
+pub fn spark_transport::shutdown::ShutdownDirection::clone(&self) -> spark_transport::shutdown::ShutdownDirection
+impl core::cmp::Eq for spark_transport::shutdown::ShutdownDirection
+impl core::cmp::PartialEq for spark_transport::shutdown::ShutdownDirection
+pub fn spark_transport::shutdown::ShutdownDirection::eq(&self, other: &spark_transport::shutdown::ShutdownDirection) -> bool
+impl core::fmt::Debug for spark_transport::shutdown::ShutdownDirection
+pub fn spark_transport::shutdown::ShutdownDirection::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_transport::shutdown::ShutdownDirection
+impl core::marker::StructuralPartialEq for spark_transport::shutdown::ShutdownDirection
+impl core::marker::Freeze for spark_transport::shutdown::ShutdownDirection
+impl core::marker::Send for spark_transport::shutdown::ShutdownDirection
+impl core::marker::Sync for spark_transport::shutdown::ShutdownDirection
+impl core::marker::Unpin for spark_transport::shutdown::ShutdownDirection
+impl core::panic::unwind_safe::RefUnwindSafe for spark_transport::shutdown::ShutdownDirection
+impl core::panic::unwind_safe::UnwindSafe for spark_transport::shutdown::ShutdownDirection
+#[non_exhaustive] pub enum spark_transport::BackpressureDecision
+pub spark_transport::BackpressureDecision::BudgetExhausted
+pub spark_transport::BackpressureDecision::Busy
+pub spark_transport::BackpressureDecision::Ready
+pub spark_transport::BackpressureDecision::Rejected
+pub spark_transport::BackpressureDecision::RetryAfter
+pub spark_transport::BackpressureDecision::RetryAfter::delay: core::time::Duration
+impl spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::backpressure::BackpressureDecision::is_ready(self) -> bool
+impl core::clone::Clone for spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::backpressure::BackpressureDecision::clone(&self) -> spark_transport::backpressure::BackpressureDecision
+impl core::cmp::PartialEq for spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::backpressure::BackpressureDecision::eq(&self, other: &spark_transport::backpressure::BackpressureDecision) -> bool
+impl core::fmt::Debug for spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::backpressure::BackpressureDecision::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_transport::backpressure::BackpressureDecision
+impl core::marker::StructuralPartialEq for spark_transport::backpressure::BackpressureDecision
+impl core::marker::Freeze for spark_transport::backpressure::BackpressureDecision
+impl core::marker::Send for spark_transport::backpressure::BackpressureDecision
+impl core::marker::Sync for spark_transport::backpressure::BackpressureDecision
+impl core::marker::Unpin for spark_transport::backpressure::BackpressureDecision
+impl core::panic::unwind_safe::RefUnwindSafe for spark_transport::backpressure::BackpressureDecision
+impl core::panic::unwind_safe::UnwindSafe for spark_transport::backpressure::BackpressureDecision
+pub enum spark_transport::ShutdownDirection
+pub spark_transport::ShutdownDirection::Both
+pub spark_transport::ShutdownDirection::Read
+pub spark_transport::ShutdownDirection::Write
+impl core::clone::Clone for spark_transport::shutdown::ShutdownDirection
+pub fn spark_transport::shutdown::ShutdownDirection::clone(&self) -> spark_transport::shutdown::ShutdownDirection
+impl core::cmp::Eq for spark_transport::shutdown::ShutdownDirection
+impl core::cmp::PartialEq for spark_transport::shutdown::ShutdownDirection
+pub fn spark_transport::shutdown::ShutdownDirection::eq(&self, other: &spark_transport::shutdown::ShutdownDirection) -> bool
+impl core::fmt::Debug for spark_transport::shutdown::ShutdownDirection
+pub fn spark_transport::shutdown::ShutdownDirection::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_transport::shutdown::ShutdownDirection
+impl core::marker::StructuralPartialEq for spark_transport::shutdown::ShutdownDirection
+impl core::marker::Freeze for spark_transport::shutdown::ShutdownDirection
+impl core::marker::Send for spark_transport::shutdown::ShutdownDirection
+impl core::marker::Sync for spark_transport::shutdown::ShutdownDirection
+impl core::marker::Unpin for spark_transport::shutdown::ShutdownDirection
+impl core::panic::unwind_safe::RefUnwindSafe for spark_transport::shutdown::ShutdownDirection
+impl core::panic::unwind_safe::UnwindSafe for spark_transport::shutdown::ShutdownDirection
+#[non_exhaustive] pub enum spark_transport::TransportSocketAddr
+pub spark_transport::TransportSocketAddr::V4
+pub spark_transport::TransportSocketAddr::V4::addr: [u8; 4]
+pub spark_transport::TransportSocketAddr::V4::port: u16
+pub spark_transport::TransportSocketAddr::V6
+pub spark_transport::TransportSocketAddr::V6::addr: [u16; 8]
+pub spark_transport::TransportSocketAddr::V6::port: u16
+impl spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::as_ipv6_addr(&self) -> core::option::Option<core::net::ip_addr::Ipv6Addr>
+impl core::clone::Clone for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::clone(&self) -> spark_transport::addr::TransportSocketAddr
+impl core::cmp::Eq for spark_transport::addr::TransportSocketAddr
+impl core::cmp::Ord for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::cmp(&self, other: &spark_transport::addr::TransportSocketAddr) -> core::cmp::Ordering
+impl core::cmp::PartialEq for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::eq(&self, other: &spark_transport::addr::TransportSocketAddr) -> bool
+impl core::cmp::PartialOrd for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::partial_cmp(&self, other: &spark_transport::addr::TransportSocketAddr) -> core::option::Option<core::cmp::Ordering>
+impl core::convert::From<core::net::socket_addr::SocketAddr> for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::from(addr: core::net::socket_addr::SocketAddr) -> Self
+impl core::convert::From<spark_transport::addr::TransportSocketAddr> for core::net::socket_addr::SocketAddr
+pub fn core::net::socket_addr::SocketAddr::from(addr: spark_transport::addr::TransportSocketAddr) -> Self
+impl core::fmt::Debug for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for spark_transport::addr::TransportSocketAddr
+pub fn spark_transport::addr::TransportSocketAddr::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+impl core::marker::Copy for spark_transport::addr::TransportSocketAddr
+impl core::marker::StructuralPartialEq for spark_transport::addr::TransportSocketAddr
+impl core::marker::Freeze for spark_transport::addr::TransportSocketAddr
+impl core::marker::Send for spark_transport::addr::TransportSocketAddr
+impl core::marker::Sync for spark_transport::addr::TransportSocketAddr
+impl core::marker::Unpin for spark_transport::addr::TransportSocketAddr
+impl core::panic::unwind_safe::RefUnwindSafe for spark_transport::addr::TransportSocketAddr
+impl core::panic::unwind_safe::UnwindSafe for spark_transport::addr::TransportSocketAddr
+pub struct spark_transport::BackpressureMetrics
+pub spark_transport::BackpressureMetrics::consecutive_would_block: u32
+pub spark_transport::BackpressureMetrics::elapsed_since_flush: core::option::Option<core::time::Duration>
+pub spark_transport::BackpressureMetrics::in_flight_ops: u32
+pub spark_transport::BackpressureMetrics::pending_bytes: u64
+impl core::clone::Clone for spark_transport::backpressure::BackpressureMetrics
+pub fn spark_transport::backpressure::BackpressureMetrics::clone(&self) -> spark_transport::backpressure::BackpressureMetrics
+impl core::cmp::PartialEq for spark_transport::backpressure::BackpressureMetrics
+pub fn spark_transport::backpressure::BackpressureMetrics::eq(&self, other: &spark_transport::backpressure::BackpressureMetrics) -> bool
+impl core::default::Default for spark_transport::backpressure::BackpressureMetrics
+pub fn spark_transport::backpressure::BackpressureMetrics::default() -> spark_transport::backpressure::BackpressureMetrics
+impl core::fmt::Debug for spark_transport::backpressure::BackpressureMetrics
+pub fn spark_transport::backpressure::BackpressureMetrics::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::StructuralPartialEq for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::Freeze for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::Send for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::Sync for spark_transport::backpressure::BackpressureMetrics
+impl core::marker::Unpin for spark_transport::backpressure::BackpressureMetrics
+impl core::panic::unwind_safe::RefUnwindSafe for spark_transport::backpressure::BackpressureMetrics
+impl core::panic::unwind_safe::UnwindSafe for spark_transport::backpressure::BackpressureMetrics
+pub struct spark_transport::RatePermit<'a>
+impl<'a> spark_transport::rate::RatePermit<'a>
+pub fn spark_transport::rate::RatePermit<'a>::new<F>(release: F, retry_after: core::option::Option<core::time::Duration>) -> Self where F: core::ops::function::FnOnce() + core::marker::Send + 'a
+pub fn spark_transport::rate::RatePermit<'a>::recommended_retry_after(&self) -> core::option::Option<core::time::Duration>
+impl core::ops::drop::Drop for spark_transport::rate::RatePermit<'_>
+pub fn spark_transport::rate::RatePermit<'_>::drop(&mut self)
+impl<'a> core::marker::Freeze for spark_transport::rate::RatePermit<'a>
+impl<'a> core::marker::Send for spark_transport::rate::RatePermit<'a>
+impl<'a> !core::marker::Sync for spark_transport::rate::RatePermit<'a>
+impl<'a> core::marker::Unpin for spark_transport::rate::RatePermit<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for spark_transport::rate::RatePermit<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for spark_transport::rate::RatePermit<'a>
+pub trait spark_transport::BackpressureClassifier: core::marker::Send + core::marker::Sync
+pub fn spark_transport::BackpressureClassifier::classify(&self, metrics: &spark_transport::backpressure::BackpressureMetrics) -> spark_transport::backpressure::BackpressureDecision
+pub trait spark_transport::DatagramEndpoint: core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::DatagramEndpoint::CallCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::DatagramEndpoint::Error: core::fmt::Debug + core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::DatagramEndpoint::InboundMeta
+pub type spark_transport::DatagramEndpoint::OutboundMeta: ?core::marker::Sized
+pub type spark_transport::DatagramEndpoint::RecvFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(usize, Self::InboundMeta), Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::DatagramEndpoint::SendFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<usize, Self::Error>> + core::marker::Send + 'ctx
+pub fn spark_transport::DatagramEndpoint::local_addr(&self) -> spark_transport::Result<spark_transport::addr::TransportSocketAddr, Self::Error>
+pub fn spark_transport::DatagramEndpoint::recv<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, buf: &'ctx mut [u8]) -> Self::RecvFuture
+pub fn spark_transport::DatagramEndpoint::send<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, payload: &'ctx [u8], meta: &'ctx Self::OutboundMeta) -> Self::SendFuture
+pub trait spark_transport::RateLimiter: core::marker::Send + core::marker::Sync
+pub fn spark_transport::RateLimiter::try_acquire<'a>(&'a self, demand: u32) -> spark_transport::Result<spark_transport::rate::RatePermit<'a>, &'static str>
+pub trait spark_transport::TransportConnection: core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::TransportConnection::CallCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::TransportConnection::Error: core::fmt::Debug + core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::TransportConnection::FlushFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(), Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::TransportConnection::ReadFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<usize, Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::TransportConnection::ReadyCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::TransportConnection::ShutdownFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(), Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::TransportConnection::WriteFuture<'ctx> where Self: 'ctx, Self::CallCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<usize, Self::Error>> + core::marker::Send + 'ctx
+pub fn spark_transport::TransportConnection::classify_backpressure(&self, ctx: &Self::ReadyCtx, metrics: &spark_transport::backpressure::BackpressureMetrics) -> spark_transport::backpressure::BackpressureDecision
+pub fn spark_transport::TransportConnection::flush<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx) -> Self::FlushFuture
+pub fn spark_transport::TransportConnection::id(&self) -> alloc::borrow::Cow<'_, str>
+pub fn spark_transport::TransportConnection::local_addr(&self) -> core::option::Option<spark_transport::addr::TransportSocketAddr>
+pub fn spark_transport::TransportConnection::peer_addr(&self) -> core::option::Option<spark_transport::addr::TransportSocketAddr>
+pub fn spark_transport::TransportConnection::read<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, buf: &'ctx mut [u8]) -> Self::ReadFuture
+pub fn spark_transport::TransportConnection::shutdown<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, direction: spark_transport::shutdown::ShutdownDirection) -> Self::ShutdownFuture
+pub fn spark_transport::TransportConnection::write<'ctx>(&'ctx self, ctx: &'ctx Self::CallCtx, buf: &'ctx [u8]) -> Self::WriteFuture
+pub trait spark_transport::TransportListener: core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::TransportListener::AcceptCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::TransportListener::AcceptFuture<'ctx> where Self: 'ctx, Self::AcceptCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(Self::Connection, spark_transport::addr::TransportSocketAddr), Self::Error>> + core::marker::Send + 'ctx
+pub type spark_transport::TransportListener::Connection: spark_transport::connection::TransportConnection<Error = Self::Error>
+pub type spark_transport::TransportListener::Error: core::fmt::Debug + core::marker::Send + core::marker::Sync + 'static
+pub type spark_transport::TransportListener::ShutdownCtx<'ctx>: ?core::marker::Sized
+pub type spark_transport::TransportListener::ShutdownFuture<'ctx> where Self: 'ctx, Self::ShutdownCtx: 'ctx: core::future::future::Future<Output = spark_transport::Result<(), Self::Error>> + core::marker::Send + 'ctx
+pub fn spark_transport::TransportListener::accept<'ctx>(&'ctx self, ctx: &'ctx Self::AcceptCtx) -> Self::AcceptFuture
+pub fn spark_transport::TransportListener::local_addr(&self) -> spark_transport::Result<spark_transport::addr::TransportSocketAddr, Self::Error>
+pub fn spark_transport::TransportListener::scheme(&self) -> &'static str
+pub fn spark_transport::TransportListener::shutdown<'ctx>(&'ctx self, ctx: &'ctx Self::ShutdownCtx, direction: spark_transport::shutdown::ShutdownDirection) -> Self::ShutdownFuture
+pub type spark_transport::Result<T, E> = core::result::Result<T, E>

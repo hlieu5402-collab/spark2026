@@ -1,0 +1,213 @@
+pub mod spark_router
+pub mod spark_router::pipeline
+pub struct spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::clone::Clone for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::clone(&self) -> spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::default::Default for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::default() -> spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::fmt::Debug for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl spark_router::pipeline::RoutingContextBuilder for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::build(&self, ctx: &dyn spark_core::pipeline::context::Context, _msg: &spark_core::buffer::message::PipelineMessage, _snapshot: spark_core::router::context::RoutingSnapshot<'_>) -> spark_core::error::Result<spark_router::pipeline::RoutingContextParts, spark_core::error::SparkError>
+impl core::marker::Freeze for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::marker::Send for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::marker::Sync for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::marker::Unpin for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub struct spark_router::pipeline::RouterContextSnapshot
+pub spark_router::pipeline::RouterContextSnapshot::connection: core::option::Option<spark_core::transport::intent::ConnectionIntent>
+pub spark_router::pipeline::RouterContextSnapshot::dynamic_metadata: spark_core::router::metadata::RouteMetadata
+pub spark_router::pipeline::RouterContextSnapshot::intent: spark_core::router::context::RoutingIntent
+impl core::clone::Clone for spark_router::pipeline::RouterContextSnapshot
+pub fn spark_router::pipeline::RouterContextSnapshot::clone(&self) -> spark_router::pipeline::RouterContextSnapshot
+impl core::fmt::Debug for spark_router::pipeline::RouterContextSnapshot
+pub fn spark_router::pipeline::RouterContextSnapshot::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for spark_router::pipeline::RouterContextSnapshot
+impl core::marker::Send for spark_router::pipeline::RouterContextSnapshot
+impl core::marker::Sync for spark_router::pipeline::RouterContextSnapshot
+impl core::marker::Unpin for spark_router::pipeline::RouterContextSnapshot
+impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RouterContextSnapshot
+impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RouterContextSnapshot
+pub struct spark_router::pipeline::RouterContextState
+impl spark_router::pipeline::RouterContextState
+pub fn spark_router::pipeline::RouterContextState::connection(&self) -> core::option::Option<&spark_core::transport::intent::ConnectionIntent>
+pub fn spark_router::pipeline::RouterContextState::dynamic_metadata(&self) -> &spark_core::router::metadata::RouteMetadata
+pub fn spark_router::pipeline::RouterContextState::dynamic_metadata_mut(&mut self) -> &mut spark_core::router::metadata::RouteMetadata
+pub fn spark_router::pipeline::RouterContextState::intent(&self) -> &spark_core::router::context::RoutingIntent
+pub fn spark_router::pipeline::RouterContextState::new(intent: spark_core::router::context::RoutingIntent) -> Self
+pub fn spark_router::pipeline::RouterContextState::snapshot(&self) -> spark_router::pipeline::RouterContextSnapshot
+pub fn spark_router::pipeline::RouterContextState::with_connection(self, connection: spark_core::transport::intent::ConnectionIntent) -> Self
+impl core::clone::Clone for spark_router::pipeline::RouterContextState
+pub fn spark_router::pipeline::RouterContextState::clone(&self) -> spark_router::pipeline::RouterContextState
+impl core::fmt::Debug for spark_router::pipeline::RouterContextState
+pub fn spark_router::pipeline::RouterContextState::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for spark_router::pipeline::RouterContextState
+impl core::marker::Send for spark_router::pipeline::RouterContextState
+impl core::marker::Sync for spark_router::pipeline::RouterContextState
+impl core::marker::Unpin for spark_router::pipeline::RouterContextState
+impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RouterContextState
+impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RouterContextState
+pub struct spark_router::pipeline::RouterHandler
+impl spark_router::pipeline::RouterHandler
+pub fn spark_router::pipeline::RouterHandler::new(router: alloc::sync::Arc<dyn spark_core::router::traits::object::DynRouter>, context_builder: alloc::sync::Arc<dyn spark_router::pipeline::RoutingContextBuilder>, descriptor: spark_core::pipeline::middleware::MiddlewareDescriptor) -> Self
+impl spark_core::pipeline::handler::InboundHandler for spark_router::pipeline::RouterHandler
+pub fn spark_router::pipeline::RouterHandler::describe(&self) -> spark_core::pipeline::middleware::MiddlewareDescriptor
+pub fn spark_router::pipeline::RouterHandler::on_channel_active(&self, _ctx: &dyn spark_core::pipeline::context::Context)
+pub fn spark_router::pipeline::RouterHandler::on_channel_inactive(&self, _ctx: &dyn spark_core::pipeline::context::Context)
+pub fn spark_router::pipeline::RouterHandler::on_exception_caught(&self, _ctx: &dyn spark_core::pipeline::context::Context, _error: spark_core::error::CoreError)
+pub fn spark_router::pipeline::RouterHandler::on_read(&self, ctx: &dyn spark_core::pipeline::context::Context, msg: spark_core::buffer::message::PipelineMessage)
+pub fn spark_router::pipeline::RouterHandler::on_read_complete(&self, _ctx: &dyn spark_core::pipeline::context::Context)
+pub fn spark_router::pipeline::RouterHandler::on_user_event(&self, _ctx: &dyn spark_core::pipeline::context::Context, _event: spark_core::observability::events::CoreUserEvent)
+pub fn spark_router::pipeline::RouterHandler::on_writability_changed(&self, _ctx: &dyn spark_core::pipeline::context::Context, _is_writable: bool)
+impl core::marker::Freeze for spark_router::pipeline::RouterHandler
+impl core::marker::Send for spark_router::pipeline::RouterHandler
+impl core::marker::Sync for spark_router::pipeline::RouterHandler
+impl core::marker::Unpin for spark_router::pipeline::RouterHandler
+impl !core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RouterHandler
+impl !core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RouterHandler
+pub struct spark_router::pipeline::RoutingContextParts
+pub spark_router::pipeline::RoutingContextParts::connection: core::option::Option<spark_core::transport::intent::ConnectionIntent>
+pub spark_router::pipeline::RoutingContextParts::dynamic_metadata: spark_core::router::metadata::RouteMetadata
+pub spark_router::pipeline::RoutingContextParts::intent: spark_core::router::context::RoutingIntent
+impl spark_router::pipeline::RoutingContextParts
+pub fn spark_router::pipeline::RoutingContextParts::new(intent: spark_core::router::context::RoutingIntent, connection: core::option::Option<spark_core::transport::intent::ConnectionIntent>, dynamic_metadata: spark_core::router::metadata::RouteMetadata) -> Self
+impl core::clone::Clone for spark_router::pipeline::RoutingContextParts
+pub fn spark_router::pipeline::RoutingContextParts::clone(&self) -> spark_router::pipeline::RoutingContextParts
+impl core::fmt::Debug for spark_router::pipeline::RoutingContextParts
+pub fn spark_router::pipeline::RoutingContextParts::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for spark_router::pipeline::RoutingContextParts
+impl core::marker::Send for spark_router::pipeline::RoutingContextParts
+impl core::marker::Sync for spark_router::pipeline::RoutingContextParts
+impl core::marker::Unpin for spark_router::pipeline::RoutingContextParts
+impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RoutingContextParts
+impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RoutingContextParts
+pub trait spark_router::pipeline::RoutingContextBuilder: core::marker::Send + core::marker::Sync + 'static
+pub fn spark_router::pipeline::RoutingContextBuilder::build(&self, ctx: &dyn spark_core::pipeline::context::Context, msg: &spark_core::buffer::message::PipelineMessage, snapshot: spark_core::router::context::RoutingSnapshot<'_>) -> spark_core::error::Result<spark_router::pipeline::RoutingContextParts, spark_core::error::SparkError>
+impl spark_router::pipeline::RoutingContextBuilder for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::build(&self, ctx: &dyn spark_core::pipeline::context::Context, _msg: &spark_core::buffer::message::PipelineMessage, _snapshot: spark_core::router::context::RoutingSnapshot<'_>) -> spark_core::error::Result<spark_router::pipeline::RoutingContextParts, spark_core::error::SparkError>
+pub fn spark_router::pipeline::load_router_context(extensions: &dyn spark_core::pipeline::extensions::ExtensionsMap) -> core::option::Option<alloc::sync::Arc<spark_router::pipeline::RouterContextState>>
+pub fn spark_router::pipeline::store_router_context(extensions: &dyn spark_core::pipeline::extensions::ExtensionsMap, state: spark_router::pipeline::RouterContextState)
+pub struct spark_router::DefaultRouter
+impl spark_router::DefaultRouter
+pub fn spark_router::DefaultRouter::add_route(&self, pattern: spark_core::router::route::RoutePattern, factory: alloc::sync::Arc<dyn spark_router::ServiceFactory>)
+pub fn spark_router::DefaultRouter::new() -> Self
+pub fn spark_router::DefaultRouter::remove_route(&self, pattern: &spark_core::router::route::RoutePattern) -> bool
+pub fn spark_router::DefaultRouter::update<I>(&self, revision: u64, entries: I) where I: core::iter::traits::collect::IntoIterator<Item = spark_router::RouteRegistration>
+impl core::default::Default for spark_router::DefaultRouter
+pub fn spark_router::DefaultRouter::default() -> Self
+impl spark_core::router::traits::object::DynRouter for spark_router::DefaultRouter
+pub fn spark_router::DefaultRouter::route_dyn(&self, context: spark_core::router::context::RoutingContext<'_, spark_core::buffer::message::PipelineMessage>) -> spark_core::error::Result<spark_core::router::traits::object::RouteDecisionObject, spark_core::router::traits::generic::RouteError<spark_core::error::SparkError>>
+pub fn spark_router::DefaultRouter::snapshot(&self) -> spark_core::router::context::RoutingSnapshot<'_>
+pub fn spark_router::DefaultRouter::validate(&self, _descriptor: &spark_core::router::catalog::RouteDescriptor) -> spark_core::router::binding::RouteValidation
+impl !core::marker::Freeze for spark_router::DefaultRouter
+impl core::marker::Send for spark_router::DefaultRouter
+impl core::marker::Sync for spark_router::DefaultRouter
+impl core::marker::Unpin for spark_router::DefaultRouter
+impl !core::panic::unwind_safe::RefUnwindSafe for spark_router::DefaultRouter
+impl !core::panic::unwind_safe::UnwindSafe for spark_router::DefaultRouter
+pub struct spark_router::ExtensionsRoutingContextBuilder
+impl core::clone::Clone for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::clone(&self) -> spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::default::Default for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::default() -> spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::fmt::Debug for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl spark_router::pipeline::RoutingContextBuilder for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::build(&self, ctx: &dyn spark_core::pipeline::context::Context, _msg: &spark_core::buffer::message::PipelineMessage, _snapshot: spark_core::router::context::RoutingSnapshot<'_>) -> spark_core::error::Result<spark_router::pipeline::RoutingContextParts, spark_core::error::SparkError>
+impl core::marker::Freeze for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::marker::Send for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::marker::Sync for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::marker::Unpin for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::ExtensionsRoutingContextBuilder
+impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub struct spark_router::RouteRegistration
+pub spark_router::RouteRegistration::factory: alloc::sync::Arc<dyn spark_router::ServiceFactory>
+pub spark_router::RouteRegistration::id: spark_core::router::route::RouteId
+pub spark_router::RouteRegistration::metadata: spark_core::router::metadata::RouteMetadata
+pub spark_router::RouteRegistration::pattern: spark_core::router::route::RoutePattern
+impl core::clone::Clone for spark_router::RouteRegistration
+pub fn spark_router::RouteRegistration::clone(&self) -> spark_router::RouteRegistration
+impl core::fmt::Debug for spark_router::RouteRegistration
+pub fn spark_router::RouteRegistration::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for spark_router::RouteRegistration
+impl core::marker::Send for spark_router::RouteRegistration
+impl core::marker::Sync for spark_router::RouteRegistration
+impl core::marker::Unpin for spark_router::RouteRegistration
+impl !core::panic::unwind_safe::RefUnwindSafe for spark_router::RouteRegistration
+impl !core::panic::unwind_safe::UnwindSafe for spark_router::RouteRegistration
+pub struct spark_router::RouterContextSnapshot
+pub spark_router::RouterContextSnapshot::connection: core::option::Option<spark_core::transport::intent::ConnectionIntent>
+pub spark_router::RouterContextSnapshot::dynamic_metadata: spark_core::router::metadata::RouteMetadata
+pub spark_router::RouterContextSnapshot::intent: spark_core::router::context::RoutingIntent
+impl core::clone::Clone for spark_router::pipeline::RouterContextSnapshot
+pub fn spark_router::pipeline::RouterContextSnapshot::clone(&self) -> spark_router::pipeline::RouterContextSnapshot
+impl core::fmt::Debug for spark_router::pipeline::RouterContextSnapshot
+pub fn spark_router::pipeline::RouterContextSnapshot::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for spark_router::pipeline::RouterContextSnapshot
+impl core::marker::Send for spark_router::pipeline::RouterContextSnapshot
+impl core::marker::Sync for spark_router::pipeline::RouterContextSnapshot
+impl core::marker::Unpin for spark_router::pipeline::RouterContextSnapshot
+impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RouterContextSnapshot
+impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RouterContextSnapshot
+pub struct spark_router::RouterContextState
+impl spark_router::pipeline::RouterContextState
+pub fn spark_router::pipeline::RouterContextState::connection(&self) -> core::option::Option<&spark_core::transport::intent::ConnectionIntent>
+pub fn spark_router::pipeline::RouterContextState::dynamic_metadata(&self) -> &spark_core::router::metadata::RouteMetadata
+pub fn spark_router::pipeline::RouterContextState::dynamic_metadata_mut(&mut self) -> &mut spark_core::router::metadata::RouteMetadata
+pub fn spark_router::pipeline::RouterContextState::intent(&self) -> &spark_core::router::context::RoutingIntent
+pub fn spark_router::pipeline::RouterContextState::new(intent: spark_core::router::context::RoutingIntent) -> Self
+pub fn spark_router::pipeline::RouterContextState::snapshot(&self) -> spark_router::pipeline::RouterContextSnapshot
+pub fn spark_router::pipeline::RouterContextState::with_connection(self, connection: spark_core::transport::intent::ConnectionIntent) -> Self
+impl core::clone::Clone for spark_router::pipeline::RouterContextState
+pub fn spark_router::pipeline::RouterContextState::clone(&self) -> spark_router::pipeline::RouterContextState
+impl core::fmt::Debug for spark_router::pipeline::RouterContextState
+pub fn spark_router::pipeline::RouterContextState::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for spark_router::pipeline::RouterContextState
+impl core::marker::Send for spark_router::pipeline::RouterContextState
+impl core::marker::Sync for spark_router::pipeline::RouterContextState
+impl core::marker::Unpin for spark_router::pipeline::RouterContextState
+impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RouterContextState
+impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RouterContextState
+pub struct spark_router::RouterHandler
+impl spark_router::pipeline::RouterHandler
+pub fn spark_router::pipeline::RouterHandler::new(router: alloc::sync::Arc<dyn spark_core::router::traits::object::DynRouter>, context_builder: alloc::sync::Arc<dyn spark_router::pipeline::RoutingContextBuilder>, descriptor: spark_core::pipeline::middleware::MiddlewareDescriptor) -> Self
+impl spark_core::pipeline::handler::InboundHandler for spark_router::pipeline::RouterHandler
+pub fn spark_router::pipeline::RouterHandler::describe(&self) -> spark_core::pipeline::middleware::MiddlewareDescriptor
+pub fn spark_router::pipeline::RouterHandler::on_channel_active(&self, _ctx: &dyn spark_core::pipeline::context::Context)
+pub fn spark_router::pipeline::RouterHandler::on_channel_inactive(&self, _ctx: &dyn spark_core::pipeline::context::Context)
+pub fn spark_router::pipeline::RouterHandler::on_exception_caught(&self, _ctx: &dyn spark_core::pipeline::context::Context, _error: spark_core::error::CoreError)
+pub fn spark_router::pipeline::RouterHandler::on_read(&self, ctx: &dyn spark_core::pipeline::context::Context, msg: spark_core::buffer::message::PipelineMessage)
+pub fn spark_router::pipeline::RouterHandler::on_read_complete(&self, _ctx: &dyn spark_core::pipeline::context::Context)
+pub fn spark_router::pipeline::RouterHandler::on_user_event(&self, _ctx: &dyn spark_core::pipeline::context::Context, _event: spark_core::observability::events::CoreUserEvent)
+pub fn spark_router::pipeline::RouterHandler::on_writability_changed(&self, _ctx: &dyn spark_core::pipeline::context::Context, _is_writable: bool)
+impl core::marker::Freeze for spark_router::pipeline::RouterHandler
+impl core::marker::Send for spark_router::pipeline::RouterHandler
+impl core::marker::Sync for spark_router::pipeline::RouterHandler
+impl core::marker::Unpin for spark_router::pipeline::RouterHandler
+impl !core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RouterHandler
+impl !core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RouterHandler
+pub struct spark_router::RoutingContextParts
+pub spark_router::RoutingContextParts::connection: core::option::Option<spark_core::transport::intent::ConnectionIntent>
+pub spark_router::RoutingContextParts::dynamic_metadata: spark_core::router::metadata::RouteMetadata
+pub spark_router::RoutingContextParts::intent: spark_core::router::context::RoutingIntent
+impl spark_router::pipeline::RoutingContextParts
+pub fn spark_router::pipeline::RoutingContextParts::new(intent: spark_core::router::context::RoutingIntent, connection: core::option::Option<spark_core::transport::intent::ConnectionIntent>, dynamic_metadata: spark_core::router::metadata::RouteMetadata) -> Self
+impl core::clone::Clone for spark_router::pipeline::RoutingContextParts
+pub fn spark_router::pipeline::RoutingContextParts::clone(&self) -> spark_router::pipeline::RoutingContextParts
+impl core::fmt::Debug for spark_router::pipeline::RoutingContextParts
+pub fn spark_router::pipeline::RoutingContextParts::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for spark_router::pipeline::RoutingContextParts
+impl core::marker::Send for spark_router::pipeline::RoutingContextParts
+impl core::marker::Sync for spark_router::pipeline::RoutingContextParts
+impl core::marker::Unpin for spark_router::pipeline::RoutingContextParts
+impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RoutingContextParts
+impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RoutingContextParts
+pub trait spark_router::RoutingContextBuilder: core::marker::Send + core::marker::Sync + 'static
+pub fn spark_router::RoutingContextBuilder::build(&self, ctx: &dyn spark_core::pipeline::context::Context, msg: &spark_core::buffer::message::PipelineMessage, snapshot: spark_core::router::context::RoutingSnapshot<'_>) -> spark_core::error::Result<spark_router::pipeline::RoutingContextParts, spark_core::error::SparkError>
+impl spark_router::pipeline::RoutingContextBuilder for spark_router::pipeline::ExtensionsRoutingContextBuilder
+pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::build(&self, ctx: &dyn spark_core::pipeline::context::Context, _msg: &spark_core::buffer::message::PipelineMessage, _snapshot: spark_core::router::context::RoutingSnapshot<'_>) -> spark_core::error::Result<spark_router::pipeline::RoutingContextParts, spark_core::error::SparkError>
+pub trait spark_router::ServiceFactory: core::marker::Send + core::marker::Sync + 'static
+pub fn spark_router::ServiceFactory::create(&self) -> spark_core::error::Result<spark_core::service::traits::object::BoxService, spark_core::error::SparkError>
+pub fn spark_router::load_router_context(extensions: &dyn spark_core::pipeline::extensions::ExtensionsMap) -> core::option::Option<alloc::sync::Arc<spark_router::pipeline::RouterContextState>>
+pub fn spark_router::store_router_context(extensions: &dyn spark_core::pipeline::extensions::ExtensionsMap, state: spark_router::pipeline::RouterContextState)
