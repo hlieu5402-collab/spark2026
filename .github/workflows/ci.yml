@@ -180,8 +180,8 @@ jobs:
           name: guardrails-${{ matrix.name }}
           path: ci-artifacts
 
-  boot2-prewarm:
-    name: BOOT-2 预热守护
+  boot2-guard:
+    name: BOOT-2 阻断守护
     needs: guardrails
     runs-on: ubuntu-latest
     steps:
@@ -203,7 +203,7 @@ jobs:
       - name: 准备工件目录
         run: mkdir -p ci-artifacts
 
-      - name: 命名 lint（预热）
+      - name: 命名 lint
         id: naming
         run: |
           set +e
@@ -214,7 +214,7 @@ jobs:
           echo "status=${status}" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: spark-core 纯度（预热）
+      - name: spark-core 纯度
         id: core_purity
         run: |
           set +e
@@ -225,7 +225,7 @@ jobs:
           echo "status=${status}" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: 文档密度检查（预热）
+      - name: 文档密度检查
         id: doc_density
         run: |
           set +e
@@ -237,7 +237,7 @@ jobs:
           echo "status=${status}" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: 公共 API 预算（预热）
+      - name: 公共 API 预算
         id: public_api
         run: |
           set +e
@@ -249,7 +249,7 @@ jobs:
           echo "status=${status}" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: 汇总 BOOT-2 预热结果
+      - name: 汇总 BOOT-2 守护结果
         run: |
           python3 tools/ci/boot2_summary.py \
             --report naming=ci-artifacts/boot2-naming.json \
@@ -258,14 +258,14 @@ jobs:
             --report public-api=ci-artifacts/boot2-public-api.json \
             --markdown ci-artifacts/boot2-summary.md
 
-      - name: 上传 BOOT-2 预热工件
+      - name: 上传 BOOT-2 守护工件
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: boot2-prewarm
+          name: boot2-guard
           path: ci-artifacts
 
-      - name: 发布 PR 注释（预热报告）
+      - name: 发布 PR 注释（守护报告）
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
@@ -273,7 +273,7 @@ jobs:
             const fs = require('fs');
             const core = require('@actions/core');
             const path = 'ci-artifacts/boot2-summary.md';
-            const marker = '<!-- boot2-prewarm -->';
+            const marker = '<!-- boot2-guard -->';
             if (!fs.existsSync(path)) {
               core.warning('未找到 BOOT-2 摘要文件，跳过评论。');
               return;
@@ -304,9 +304,36 @@ jobs:
               });
             }
 
+      - name: 验证 BOOT-2 阶段结果（阻断）
+        if: always()
+        run: |
+          set -euo pipefail
+          declare -A CHECK_STATUS=(
+            ["命名 lint"]='${{ steps.naming.outputs.status }}'
+            ["spark-core 纯度"]='${{ steps.core_purity.outputs.status }}'
+            ["文档密度检查"]='${{ steps.doc_density.outputs.status }}'
+            ["公共 API 预算"]='${{ steps.public_api.outputs.status }}'
+          )
+          failure=0
+          for check in "${!CHECK_STATUS[@]}"; do
+            status="${CHECK_STATUS[$check]}"
+            if [ -z "$status" ]; then
+              echo "::error::检查 ${check} 未上报状态，视为失败。"
+              failure=1
+            elif [ "$status" != "0" ]; then
+              echo "::error::检查 ${check} 未通过（退出码 ${status}）。"
+              failure=1
+            else
+              echo "检查 ${check} 已通过。"
+            fi
+          done
+          if [ "$failure" -ne 0 ]; then
+            exit 1
+          fi
+
   boot3-core-no-std:
     name: BOOT-3 spark-core no_std 预检 (${{ matrix.cargo_cmd }})
-    needs: boot2-prewarm
+    needs: boot2-guard
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
