@@ -32,10 +32,16 @@ pub mod batch;
 mod runtime_impl {
     use std::{
         borrow::Cow,
+        io,
         net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
         pin::Pin,
+        time::Duration,
     };
 
+    use spark_core::{
+        CoreError, context::ExecutionContext, error::ErrorCategory, status::RetryAdvice,
+        transport::TransportBuilder,
+    };
     use spark_transport::{DatagramEndpoint, TransportSocketAddr};
     use thiserror::Error;
     use tokio::net::UdpSocket;
@@ -95,6 +101,55 @@ mod runtime_impl {
         }
     }
 
+    /// UDP 套接字的可选参数集合。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 将 `SO_BROADCAST`、`SO_REUSEADDR` 等介质特有配置显式建模，避免宿主层散布字符串参数；
+    /// - 为 Builder 模式提供可组合的数据结构，便于未来继续扩展更多 UDP 选项。
+    ///
+    /// ## 契约（What）
+    /// - `broadcast`：是否允许广播；
+    /// - `multicast_loop_v4`：是否开启 IPv4 组播回环；
+    /// - `apply`：在绑定后将配置应用到 `UdpSocket`。
+    #[derive(Clone, Debug, Default)]
+    pub struct UdpSocketOptions {
+        broadcast: bool,
+        multicast_loop_v4: bool,
+    }
+
+    impl UdpSocketOptions {
+        /// 启用或关闭广播。
+        pub fn with_broadcast(mut self, enabled: bool) -> Self {
+            self.broadcast = enabled;
+            self
+        }
+
+        /// 控制 IPv4 组播回环。
+        pub fn with_multicast_loop_v4(mut self, enabled: bool) -> Self {
+            self.multicast_loop_v4 = enabled;
+            self
+        }
+
+        /// 当前是否启用广播。
+        pub fn broadcast(&self) -> bool {
+            self.broadcast
+        }
+
+        /// 当前是否开启 IPv4 组播回环。
+        pub fn multicast_loop_v4(&self) -> bool {
+            self.multicast_loop_v4
+        }
+
+        /// 将配置应用到实际套接字。
+        fn apply(&self, sock: &UdpSocket) -> io::Result<()> {
+            sock.set_broadcast(self.broadcast)?;
+            sock.set_multicast_loop_v4(self.multicast_loop_v4)?;
+            Ok(())
+        }
+    }
+
     /// `UdpEndpoint` 封装了 Tokio `UdpSocket`，提供教案级注释的收发逻辑。
     ///
     /// # Why
@@ -110,6 +165,7 @@ mod runtime_impl {
     /// - `send_to`：按需改写 `rport` 后发送报文。
     pub struct UdpEndpoint {
         sock: UdpSocket,
+        options: UdpSocketOptions,
     }
 
     impl UdpEndpoint {
@@ -127,15 +183,27 @@ mod runtime_impl {
         /// # 错误处理
         /// - 将底层 `std::io::Error` 封装为 [`UdpError::Bind`]，并包含原始地址字符串，便于排障。
         pub async fn bind(addr: TransportSocketAddr) -> spark_core::Result<Self, UdpError> {
+            Self::bind_with_options(addr, UdpSocketOptions::default()).await
+        }
+
+        /// 带可选参数的绑定入口。
+        pub async fn bind_with_options(
+            addr: TransportSocketAddr,
+            options: UdpSocketOptions,
+        ) -> spark_core::Result<Self, UdpError> {
             let display = addr.to_string();
             let std_addr = transport_to_std(addr);
             let sock = UdpSocket::bind(std_addr)
                 .await
                 .map_err(|source| UdpError::Bind {
-                    addr: display,
+                    addr: display.clone(),
                     source,
                 })?;
-            Ok(Self { sock })
+            options.apply(&sock).map_err(|source| UdpError::Bind {
+                addr: display,
+                source,
+            })?;
+            Ok(Self { sock, options })
         }
 
         /// 查询监听地址。
@@ -149,6 +217,11 @@ mod runtime_impl {
         pub fn local_addr(&self) -> spark_core::Result<TransportSocketAddr, UdpError> {
             let addr = self.sock.local_addr().map_err(UdpError::LocalAddr)?;
             Ok(addr.into())
+        }
+
+        /// 返回绑定时使用的套接字选项，便于测试与运维核对。
+        pub fn options(&self) -> &UdpSocketOptions {
+            &self.options
         }
 
         /// 接收 UDP 报文并返回解析结果。
@@ -219,6 +292,95 @@ mod runtime_impl {
                 .send_to(&to_send, route.target())
                 .await
                 .map_err(UdpError::Send)
+        }
+    }
+
+    /// `UdpEndpoint` 的建造器，负责下沉介质选项。
+    #[derive(Clone, Debug)]
+    pub struct UdpEndpointBuilder {
+        addr: TransportSocketAddr,
+        options: UdpSocketOptions,
+    }
+
+    impl UdpEndpointBuilder {
+        /// 基于绑定地址创建 Builder。
+        pub fn new(addr: TransportSocketAddr) -> Self {
+            Self {
+                addr,
+                options: UdpSocketOptions::default(),
+            }
+        }
+
+        /// 覆盖完整的套接字配置。
+        pub fn with_options(mut self, options: UdpSocketOptions) -> Self {
+            self.options = options;
+            self
+        }
+
+        /// 启用或关闭广播。
+        pub fn with_broadcast(mut self, enabled: bool) -> Self {
+            self.options = self.options.clone().with_broadcast(enabled);
+            self
+        }
+
+        /// 配置 IPv4 组播回环。
+        pub fn with_multicast_loop_v4(mut self, enabled: bool) -> Self {
+            self.options = self.options.clone().with_multicast_loop_v4(enabled);
+            self
+        }
+    }
+
+    impl TransportBuilder for UdpEndpointBuilder {
+        type Output = UdpEndpoint;
+
+        type BuildFuture<'ctx>
+            =
+            Pin<Box<dyn Future<Output = spark_core::Result<Self::Output, CoreError>> + Send + 'ctx>>
+        where
+            Self: 'ctx;
+
+        fn scheme(&self) -> &'static str {
+            "udp"
+        }
+
+        fn build<'ctx>(self, ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+            let cancelled = ctx.cancellation().is_cancelled();
+            let addr = self.addr;
+            let options = self.options;
+            Box::pin(async move {
+                if cancelled {
+                    return Err(udp_cancelled_error());
+                }
+                match UdpEndpoint::bind_with_options(addr, options).await {
+                    Ok(endpoint) => Ok(endpoint),
+                    Err(err) => Err(map_udp_bind_error(err)),
+                }
+            })
+        }
+    }
+
+    fn udp_cancelled_error() -> CoreError {
+        CoreError::new(
+            "spark.transport.udp.cancelled",
+            "udp bind cancelled by caller",
+        )
+        .with_category(ErrorCategory::Cancelled)
+    }
+
+    fn map_udp_bind_error(error: UdpError) -> CoreError {
+        match error {
+            UdpError::Bind { addr, source } => CoreError::new(
+                "spark.transport.udp.bind_failed",
+                format!("udp bind {addr}: {source}"),
+            )
+            .with_category(ErrorCategory::Retryable(RetryAdvice::after(
+                Duration::from_millis(50),
+            ))),
+            other => CoreError::new(
+                "spark.transport.udp.bind_failed",
+                format!("udp bind error: {other}"),
+            )
+            .with_category(ErrorCategory::NonRetryable),
         }
     }
 
@@ -510,7 +672,10 @@ mod runtime_stub {
     use core::future::Future;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-    use spark_core::prelude::Result;
+    use spark_core::{
+        CoreError, context::ExecutionContext, error::ErrorCategory, prelude::Result,
+        transport::TransportBuilder,
+    };
     use spark_transport::{DatagramEndpoint, TransportSocketAddr};
     use thiserror::Error;
 
@@ -573,15 +738,49 @@ mod runtime_stub {
         }
     }
 
-    pub struct UdpEndpoint;
+    #[derive(Clone, Debug, Default)]
+    pub struct UdpSocketOptions;
+
+    impl UdpSocketOptions {
+        pub fn with_broadcast(self, _enabled: bool) -> Self {
+            self
+        }
+
+        pub fn with_multicast_loop_v4(self, _enabled: bool) -> Self {
+            self
+        }
+
+        pub fn broadcast(&self) -> bool {
+            false
+        }
+
+        pub fn multicast_loop_v4(&self) -> bool {
+            false
+        }
+    }
+
+    pub struct UdpEndpoint {
+        _options: UdpSocketOptions,
+    }
 
     impl UdpEndpoint {
         pub async fn bind(_addr: TransportSocketAddr) -> Result<Self, UdpError> {
             Err(UdpError::RuntimeDisabled)
         }
 
+        pub async fn bind_with_options(
+            _addr: TransportSocketAddr,
+            _options: UdpSocketOptions,
+        ) -> Result<Self, UdpError> {
+            Err(UdpError::RuntimeDisabled)
+        }
+
         pub fn local_addr(&self) -> Result<TransportSocketAddr, UdpError> {
             Err(UdpError::RuntimeDisabled)
+        }
+
+        pub fn options(&self) -> &UdpSocketOptions {
+            &self._options
         }
 
         pub async fn recv_from(&self, _buffer: &mut [u8]) -> Result<UdpIncoming, UdpError> {
@@ -595,6 +794,62 @@ mod runtime_stub {
         ) -> Result<usize, UdpError> {
             Err(UdpError::RuntimeDisabled)
         }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct UdpEndpointBuilder {
+        addr: TransportSocketAddr,
+        options: UdpSocketOptions,
+    }
+
+    impl UdpEndpointBuilder {
+        pub fn new(addr: TransportSocketAddr) -> Self {
+            Self {
+                addr,
+                options: UdpSocketOptions::default(),
+            }
+        }
+
+        pub fn with_options(mut self, options: UdpSocketOptions) -> Self {
+            self.options = options;
+            self
+        }
+
+        pub fn with_broadcast(mut self, enabled: bool) -> Self {
+            self.options = self.options.with_broadcast(enabled);
+            self
+        }
+
+        pub fn with_multicast_loop_v4(mut self, enabled: bool) -> Self {
+            self.options = self.options.with_multicast_loop_v4(enabled);
+            self
+        }
+    }
+
+    impl TransportBuilder for UdpEndpointBuilder {
+        type Output = UdpEndpoint;
+
+        type BuildFuture<'ctx>
+            =
+            core::pin::Pin<Box<dyn Future<Output = Result<Self::Output, CoreError>> + Send + 'ctx>>
+        where
+            Self: 'ctx;
+
+        fn scheme(&self) -> &'static str {
+            "udp"
+        }
+
+        fn build<'ctx>(self, _ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+            Box::pin(async { Err(runtime_disabled_error()) })
+        }
+    }
+
+    fn runtime_disabled_error() -> CoreError {
+        CoreError::new(
+            "spark.transport.udp.runtime_disabled",
+            "udp runtime feature `runtime-tokio` is disabled",
+        )
+        .with_category(ErrorCategory::NonRetryable)
     }
 
     impl DatagramEndpoint for UdpEndpoint {
@@ -646,3 +901,26 @@ mod runtime_stub {
 
 #[cfg(not(feature = "runtime-tokio"))]
 pub use runtime_stub::*;
+
+#[cfg(all(test, feature = "runtime-tokio"))]
+mod tests {
+    use super::*;
+    use spark_core::{contract::CallContext, transport::TransportBuilder};
+    use spark_transport::TransportSocketAddr;
+    use std::net::SocketAddr;
+
+    /// 验证 `UdpEndpointBuilder` 可以将选项写入监听器。
+    #[tokio::test(flavor = "multi_thread")]
+    async fn builder_applies_socket_options() {
+        let addr: SocketAddr = "127.0.0.1:0".parse().expect("parse addr");
+        let endpoint = UdpEndpointBuilder::new(TransportSocketAddr::from(addr))
+            .with_broadcast(true)
+            .with_multicast_loop_v4(true)
+            .build(&CallContext::builder().build().execution())
+            .await
+            .expect("bind endpoint");
+
+        assert!(endpoint.options().broadcast());
+        assert!(endpoint.options().multicast_loop_v4());
+    }
+}

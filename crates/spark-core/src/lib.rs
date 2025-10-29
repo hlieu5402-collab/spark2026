@@ -211,8 +211,9 @@ pub use transport::{
     DynServerTransport, DynTransportFactory, Endpoint, EndpointKind, HandshakeError,
     HandshakeErrorKind, HandshakeOffer, HandshakeOutcome, ListenerConfig, ListenerShutdown,
     NegotiationAuditContext, QualityOfService, SecurityMode, ServerTransport,
-    ServerTransportObject, SessionLifecycle, TransportFactory, TransportFactoryObject,
-    TransportParams, TransportSocketAddr, Version, describe_shutdown_target, negotiate,
+    ServerTransportObject, SessionLifecycle, TransportBuilder, TransportFactory,
+    TransportFactoryObject, TransportParams, TransportSocketAddr, Version,
+    describe_shutdown_target, negotiate,
 };
 
 use alloc::boxed::Box;

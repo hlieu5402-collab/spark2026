@@ -1,6 +1,9 @@
 use crate::{channel::QuicChannel, error, util::to_socket_addr};
 use quinn::{ClientConfig, Connection, Endpoint, ServerConfig};
-use spark_core::prelude::{CoreError, TransportSocketAddr};
+use spark_core::{
+    CoreError, context::ExecutionContext, prelude::TransportSocketAddr, transport::TransportBuilder,
+};
+use std::{future::Future, pin::Pin};
 
 /// QUIC Endpoint 封装：统一监听与建连入口。
 ///
@@ -131,6 +134,56 @@ impl QuicEndpoint {
     }
 }
 
+/// `QuicEndpoint` 的建造器，封装服务器模式下的配置组合。
+pub struct QuicEndpointBuilder {
+    addr: TransportSocketAddr,
+    server_config: ServerConfig,
+    client_config: Option<ClientConfig>,
+}
+
+impl QuicEndpointBuilder {
+    /// 使用监听地址与必需的 `ServerConfig` 构造 Builder。
+    pub fn new(addr: TransportSocketAddr, server_config: ServerConfig) -> Self {
+        Self {
+            addr,
+            server_config,
+            client_config: None,
+        }
+    }
+
+    /// 指定默认的客户端配置，以支持自连或 0-RTT 预热。
+    pub fn with_client_config(mut self, client_config: ClientConfig) -> Self {
+        self.client_config = Some(client_config);
+        self
+    }
+}
+
+impl TransportBuilder for QuicEndpointBuilder {
+    type Output = QuicEndpoint;
+
+    type BuildFuture<'ctx>
+        = Pin<Box<dyn Future<Output = spark_core::Result<Self::Output, CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx;
+
+    fn scheme(&self) -> &'static str {
+        "quic"
+    }
+
+    fn build<'ctx>(self, ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+        let cancelled = ctx.cancellation().is_cancelled();
+        let addr = self.addr;
+        let server_config = self.server_config;
+        let client_config = self.client_config;
+        Box::pin(async move {
+            if cancelled {
+                return Err(error::cancelled_error(error::BIND));
+            }
+            QuicEndpoint::bind_server(addr, server_config, client_config).await
+        })
+    }
+}
+
 impl QuicConnection {
     fn new(connection: Connection, local_addr: TransportSocketAddr) -> Self {
         Self {
@@ -174,5 +227,39 @@ impl QuicConnection {
             | Err(quinn::ConnectionError::ApplicationClosed(_)) => Ok(None),
             Err(err) => Err(error::map_connection_error(error::OPEN_STREAM, err)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rcgen::{CertifiedKey, generate_simple_self_signed};
+    use rustls_pki_types::{CertificateDer, PrivateKeyDer};
+    use spark_core::{contract::CallContext, transport::TransportBuilder};
+    use std::net::SocketAddr;
+
+    fn sample_server_config() -> ServerConfig {
+        let CertifiedKey { cert, key_pair } = generate_simple_self_signed(vec!["localhost".into()])
+            .expect("generate test certificate");
+        let cert_der: CertificateDer<'static> = cert.into();
+        let key_der = PrivateKeyDer::try_from(key_pair.serialize_der().as_slice())
+            .expect("build private key")
+            .clone_key();
+        ServerConfig::with_single_cert(vec![cert_der], key_der).expect("build server config")
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn builder_respects_cancellation() {
+        let ctx = CallContext::builder().build();
+        ctx.cancellation().cancel();
+        let result = QuicEndpointBuilder::new(
+            TransportSocketAddr::from(SocketAddr::from(([127, 0, 0, 1], 0))),
+            sample_server_config(),
+        )
+        .build(&ctx.execution())
+        .await;
+
+        let err = result.expect_err("builder should surface cancellation");
+        assert_eq!(err.code(), "spark.transport.quic.cancelled");
     }
 }
