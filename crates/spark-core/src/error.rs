@@ -1,6 +1,7 @@
 use crate::{
-    Error, TraceContext, cluster::NodeId, sealed::Sealed, security::SecurityClass,
-    status::RetryAdvice, transport::TransportSocketAddr, types::BudgetKind,
+    Error, TraceContext, cluster::NodeId, observability::OwnedAttributeSet, sealed::Sealed,
+    security::SecurityClass, status::RetryAdvice, transport::TransportSocketAddr,
+    types::BudgetKind,
 };
 use alloc::borrow::Cow;
 
@@ -20,10 +21,12 @@ pub mod category_matrix {
     //! - 若构建脚本被禁用或生成文件缺失，编译会失败；CI 守门脚本会确保 SOT 资源同步。
     include!("error/generated/category_matrix.rs");
 }
+pub mod observability;
 #[cfg(test)]
 use alloc::format;
 use alloc::{borrow::ToOwned, boxed::Box, string::String};
 use core::fmt;
+pub use observability::ErrorTelemetryView;
 
 /// `CoreError` 表示 `spark-core` 跨层共享的稳定错误域，是所有可观察错误的最终形态。
 ///
@@ -147,6 +150,23 @@ impl CoreError {
     /// 就地更新错误的分类信息。
     pub fn set_category(&mut self, category: ErrorCategory) {
         self.metadata.category = Some(category);
+    }
+
+    /// 将错误映射为标准观测属性并追加至集合。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：集中处理 `error.*` 标签，避免各调用方重复拼接字符串；
+    /// - **逻辑（How）**：借助 [`observability::ErrorTelemetryView`] 解析分类与补充信息，再写入 `OwnedAttributeSet`；
+    /// - **契约（What）**：
+    ///   - `target`：可变属性集合，方法会在末尾追加键值；
+    ///   - 若错误无对应语义（如非重试错误没有等待时间），相关键将被跳过；
+    ///   - 输出键遵循 `contracts/observability_keys.toml` 中的 `attributes::error` 契约。
+    ///
+    /// # 风险提示
+    /// - 当 `RetryAdvice` 携带自定义描述或 `BudgetKind::Custom` 时需分配字符串，建议复用 `OwnedAttributeSet` 以摊销成本。
+    pub fn write_observability_attributes(&self, target: &mut OwnedAttributeSet) {
+        let view = observability::ErrorTelemetryView::from_error(self);
+        view.apply_to(target);
     }
 
     /// 获取结构化错误分类。
@@ -411,6 +431,29 @@ impl SparkError {
     /// 获取可选的节点 ID。
     pub fn node_id(&self) -> Option<&NodeId> {
         self.node_id.as_ref()
+    }
+
+    /// 将领域错误转换为观测标签集合，委托核心错误的实现保持语义一致。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：业务层面通常持有 `SparkError`，因此提供薄包装以复用核心错误的标签写入逻辑，避免重复解析。
+    /// - **执行（How）**：直接调用内部 [`CoreError::write_observability_attributes`]，确保字段来源与核心一致。
+    /// - **契约（What）**：
+    ///   - `target`：可变属性集合；方法会追加 `error.*` 键值。
+    ///   - **前置条件**：`target` 已初始化，允许被追加标签。
+    ///   - **后置条件**：标签集包含与核心错误一致的错误码、分类、预算等维度。
+    pub fn write_observability_attributes(&self, target: &mut OwnedAttributeSet) {
+        self.core.write_observability_attributes(target);
+    }
+
+    /// 获取错误观测视图，便于测试或外部扩展直接消费标签快照。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：允许上层在不持有 `OwnedAttributeSet` 的情况下，直接断言或转发结构化视图。
+    /// - **执行（How）**：将内部核心错误交给 [`ErrorTelemetryView::from_error`] 构造结构体。
+    /// - **契约（What）**：返回的视图包含所有契约字段；调用前无需额外初始化状态。
+    pub fn observability_view(&self) -> ErrorTelemetryView {
+        ErrorTelemetryView::from_error(&self.core)
     }
 
     /// 获取可选的底层原因。
