@@ -101,7 +101,8 @@ pub mod types;
 
 pub use audit::{
     AuditActor, AuditChangeEntry, AuditChangeSet, AuditContext, AuditDeletedEntry, AuditEntityRef,
-    AuditError, AuditEventV1, AuditPipeline, AuditRecorder, AuditStateHasher, TsaEvidence,
+    AuditError, AuditEventV1, AuditPipeline, AuditRecorder, AuditStateHasher, AuditTag,
+    TsaEvidence,
 };
 pub use buffer::{
     BufView, BufferAllocator, BufferPool, Bytes, Chunks, ErasedSparkBuf, ErasedSparkBufMut,
@@ -168,8 +169,9 @@ pub use observability::{
     DefaultObservabilityFacade, EventPolicy, Gauge, HealthCheckProvider, HealthChecks, HealthState,
     Histogram, IdleDirection, IdleTimeout, InstrumentDescriptor, KeyValue, LogField, LogRecord,
     LogSeverity, Logger, MetricAttributeValue, MetricsProvider, ObservabilityFacade, OpsEvent,
-    OpsEventBus, OpsEventKind, OwnedAttributeSet, RateDirection, RateLimited, TlsInfo,
-    TraceContext, TraceContextError, TraceFlags, TraceState, TraceStateEntry, TraceStateError,
+    OpsEventBus, OpsEventKind, OwnedAttributeSet, OwnedResourceAttrs, RateDirection, RateLimited,
+    ResourceAttr, ResourceAttrSet, SpanId, TlsInfo, TraceContext, TraceContextError, TraceFlags,
+    TraceId, TraceState, TraceStateEntry, TraceStateError,
 };
 pub use pipeline::{
     ChainBuilder, Channel, ChannelState, Context as PipelineContext, Controller, ControllerEvent,

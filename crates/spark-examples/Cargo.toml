@@ -12,6 +12,18 @@ doctest = false
 test = false
 bench = false
 
+[[bin]]
+name = "audit_replay"
+path = "src/bin/audit_replay.rs"
+bench = false
+test = false
+
+[[bin]]
+name = "cancel_deadline_slo"
+path = "src/bin/cancel_deadline_slo.rs"
+bench = false
+test = false
+
 [features]
 default = ["alloc"]
 alloc = []
@@ -20,3 +32,5 @@ std = ["alloc"]
 [dependencies]
 spark-core = { workspace = true, default-features = false, features = ["alloc"] }
 spin = { workspace = true, default-features = false, features = ["mutex"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

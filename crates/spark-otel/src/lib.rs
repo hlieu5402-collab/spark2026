@@ -16,7 +16,7 @@ use opentelemetry_sdk::{
 };
 use spark_core::{
     observability::{
-        TraceContext, TraceFlags, TraceState, TraceStateEntry,
+        SpanId, TraceContext, TraceFlags, TraceId, TraceState, TraceStateEntry,
         keys::tracing::pipeline as pipeline_keys,
     },
     pipeline::{
@@ -387,8 +387,8 @@ fn trace_context_to_otel(parent: &TraceContext) -> spark_core::Result<Context, E
     .map_err(|err| Error::TraceStateConversion(format!("构造 otel TraceState 失败: {err}")))?;
 
     let span_context = OtelSpanContext::new(
-        otel_trace::TraceId::from_bytes(parent.trace_id),
-        otel_trace::SpanId::from_bytes(parent.span_id),
+        otel_trace::TraceId::from_bytes(parent.trace_id.to_bytes()),
+        otel_trace::SpanId::from_bytes(parent.span_id.to_bytes()),
         otel_trace::TraceFlags::new(parent.trace_flags.bits()),
         true,
         otel_state,
@@ -430,8 +430,8 @@ fn trace_context_from_otel(ctx: &OtelSpanContext) -> spark_core::Result<TraceCon
     };
 
     Ok(TraceContext {
-        trace_id: ctx.trace_id().to_bytes(),
-        span_id: ctx.span_id().to_bytes(),
+        trace_id: TraceId::from_bytes(ctx.trace_id().to_bytes()),
+        span_id: SpanId::from_bytes(ctx.span_id().to_bytes()),
         trace_flags: TraceFlags::new(ctx.trace_flags().to_u8()),
         trace_state,
     })

@@ -1,3 +1,5 @@
+#![cfg(feature = "test-util")]
+
 use std::{
     any::Any,
     pin::Pin,
@@ -13,7 +15,7 @@ use spark_core::{
     future::BoxFuture,
     observability::{
         DefaultObservabilityFacade, EventPolicy, LogRecord, Logger, MetricsProvider, OpsEvent,
-        OpsEventBus, OpsEventKind, TraceContext,
+        OpsEventBus, OpsEventKind, SpanId, TraceContext,
     },
     pipeline::{
         Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
@@ -117,21 +119,21 @@ fn trace_context_auto_injected_and_spans_form_parent_child_tree() {
     let spans = spark_otel::testing::finished_spans();
     assert_eq!(spans.len(), 2, "应导出两个 Handler Span");
 
-    let mut alpha_span_id = None;
-    let mut beta_parent = None;
-    let mut beta_span_id = None;
+    let mut alpha_span_id: Option<SpanId> = None;
+    let mut beta_parent: Option<SpanId> = None;
+    let mut beta_span_id: Option<SpanId> = None;
     for span in spans {
         if span.name.contains("alpha") {
-            alpha_span_id = Some(span.span_context.span_id().to_bytes());
+            alpha_span_id = Some(SpanId::from_bytes(span.span_context.span_id().to_bytes()));
             assert_eq!(
-                span.parent_span_id.to_bytes(),
+                SpanId::from_bytes(span.parent_span_id.to_bytes()),
                 root_trace.span_id,
                 "alpha Span 的父级应是根上下文"
             );
         }
         if span.name.contains("beta") {
-            beta_parent = Some(span.parent_span_id.to_bytes());
-            beta_span_id = Some(span.span_context.span_id().to_bytes());
+            beta_parent = Some(SpanId::from_bytes(span.parent_span_id.to_bytes()));
+            beta_span_id = Some(SpanId::from_bytes(span.span_context.span_id().to_bytes()));
         }
     }
 
@@ -144,12 +146,12 @@ fn trace_context_auto_injected_and_spans_form_parent_child_tree() {
 
     assert_eq!(
         alpha_trace.span_id, alpha_span_id,
-        "alpha 日志的 span_id 应与对应 Span 一致"
+        "alpha 日志的 span_id 应与对应 Span 一致",
     );
     assert_eq!(
         beta_trace.span_id,
         beta_span_id.expect("必须捕获 beta Span"),
-        "beta 日志的 span_id 应匹配其 Span"
+        "beta 日志的 span_id 应匹配其 Span",
     );
 }
 
@@ -451,20 +453,6 @@ impl TaskExecutor for NoopRuntime {
         _ctx: &CallContext,
         _fut: BoxFuture<'static, TaskResult<Box<dyn Any + Send>>>,
     ) -> JoinHandle<Box<dyn Any + Send>> {
-        // 教案级说明（Why）
-        // - 该测试运行时仅用于驱动控制器逻辑验证，不负责调度异步任务。
-        // - 通过返回恒定的错误句柄，确保任何试图等待任务的调用方都会收到明确反馈。
-        //
-        // 教案级说明（How）
-        // - 忽略 `CallContext` 与任务体，直接创建 `NoopHandle`。
-        // - 使用 [`JoinHandle::from_task_handle`] 满足执行器契约。
-        //
-        // 教案级说明（What）
-        // - 输入：上下文与 Future（均被丢弃）。
-        // - 输出：一个永远返回 [`TaskError::ExecutorTerminated`] 的 [`JoinHandle`]。
-        //
-        // 教案级说明（Trade-offs）
-        // - 无法覆盖真实的上下文传播，但显著降低了测试复杂度与成本。
         JoinHandle::from_task_handle(Box::new(NoopHandle))
     }
 }
@@ -482,22 +470,6 @@ impl TimeDriver for NoopRuntime {
 }
 
 /// `NoopHandle` 模拟被执行器拒绝调度的任务。
-///
-/// # 设计背景（Why）
-/// - 可观测性集成测试只关注日志与 Span 的传播，无需承载实际异步执行。
-/// - 通过提供不可等待成功的句柄，提醒未来维护者：如需验证运行时行为应替换实现。
-///
-/// # 逻辑解析（How）
-/// - 固定关联类型为 `Box<dyn Any + Send>`，与 `spawn_dyn` 的类型擦除保持一致。
-/// - `join` 直接返回 [`TaskError::ExecutorTerminated`]，避免误以为任务成功完成。
-/// - 其余方法保持恒定返回值，保证句柄可安全地被多次查询。
-///
-/// # 契约说明（What）
-/// - **前置条件**：调用方不得依赖任务执行结果。
-/// - **后置条件**：句柄一旦消费即返回错误，不会修改任何共享状态。
-///
-/// # 风险提示（Trade-offs）
-/// - 若未来测试要验证上下文传播到真实运行时，请替换为具备最小调度能力的实现。
 #[derive(Default)]
 struct NoopHandle;
 

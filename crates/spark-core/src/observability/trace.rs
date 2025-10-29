@@ -8,6 +8,118 @@ use loom::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+/// Trace ID 的强类型封装，避免直接暴露裸数组导致的 API 漂移。
+///
+/// # 教案式说明
+/// - **意图（Why）**：将 128 bit 的 Trace 标识抽象为不可变值类型，便于在 `spark-core` 与外部实现之间传递，同时阻止调用方意外
+///   修改底层数组。
+/// - **逻辑（How）**：内部持有固定长度的 `[u8; 16]`，并通过方法暴露只读视图与辅助判断；实现 `Deref` 以兼容历史基于切片
+///   的访问方式。
+/// - **契约（What）**：通过 [`TraceId::from_bytes`] 构造实例；`as_bytes`/`to_bytes` 提供读取，`is_zero` 用于校验全零非法值。
+/// - **风险（Trade-offs）**：保持零拷贝语义但不做合法性校验，校验仍由 [`TraceContext::validate`] 统一处理，以避免重复逻辑。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TraceId([u8; Self::LENGTH]);
+
+impl TraceId {
+    /// Trace ID 的字节长度。
+    pub const LENGTH: usize = 16;
+
+    /// 从原始字节构造 Trace ID。
+    ///
+    /// # 契约说明
+    /// - **输入参数**：`bytes` 为 16 字节数组，通常来源于上游协议头或随机数生成器。
+    /// - **前置条件**：调用方需保证字节序与 W3C Trace Context 对齐；是否为全零由调用方或 [`TraceContext::validate`] 检查。
+    /// - **后置条件**：返回的 `TraceId` 拥有数据所有权，可在多线程环境中自由复制。
+    #[inline]
+    pub const fn from_bytes(bytes: [u8; Self::LENGTH]) -> Self {
+        Self(bytes)
+    }
+
+    /// 以引用形式访问底层字节数组，供序列化或比较使用。
+    #[inline]
+    pub const fn as_bytes(&self) -> &[u8; Self::LENGTH] {
+        &self.0
+    }
+
+    /// 复制出底层字节数组。
+    #[inline]
+    pub const fn to_bytes(self) -> [u8; Self::LENGTH] {
+        self.0
+    }
+
+    /// 判断 Trace ID 是否为全零值。
+    #[inline]
+    pub fn is_zero(&self) -> bool {
+        self.0.iter().all(|byte| *byte == 0)
+    }
+}
+
+impl core::ops::Deref for TraceId {
+    type Target = [u8; Self::LENGTH];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<[u8; TraceId::LENGTH]> for TraceId {
+    fn from(value: [u8; TraceId::LENGTH]) -> Self {
+        TraceId::from_bytes(value)
+    }
+}
+
+/// Span ID 的强类型封装，与 [`TraceId`] 类似但长度为 64 bit。
+///
+/// # 教案式说明
+/// - **意图（Why）**：在 Handler Span 传播过程中避免 `u64`/`[u8; 8]` 混用带来的歧义，并强调 Span ID 必须不可变。
+/// - **逻辑（How）**：存储 `[u8; 8]` 并提供与 [`TraceId`] 同步的辅助方法，确保 API 一致性。
+/// - **契约（What）**：通过 [`SpanId::from_bytes`] 构造；`is_zero` 帮助校验非法值；其余访问接口同 `TraceId`。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SpanId([u8; Self::LENGTH]);
+
+impl SpanId {
+    /// Span ID 的字节长度。
+    pub const LENGTH: usize = 8;
+
+    /// 根据原始字节构造 Span ID。
+    #[inline]
+    pub const fn from_bytes(bytes: [u8; Self::LENGTH]) -> Self {
+        Self(bytes)
+    }
+
+    /// 返回底层字节数组的共享引用。
+    #[inline]
+    pub const fn as_bytes(&self) -> &[u8; Self::LENGTH] {
+        &self.0
+    }
+
+    /// 复制出底层字节数组。
+    #[inline]
+    pub const fn to_bytes(self) -> [u8; Self::LENGTH] {
+        self.0
+    }
+
+    /// 判断 Span ID 是否为全零值。
+    #[inline]
+    pub fn is_zero(&self) -> bool {
+        self.0.iter().all(|byte| *byte == 0)
+    }
+}
+
+impl core::ops::Deref for SpanId {
+    type Target = [u8; Self::LENGTH];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<[u8; SpanId::LENGTH]> for SpanId {
+    fn from(value: [u8; SpanId::LENGTH]) -> Self {
+        SpanId::from_bytes(value)
+    }
+}
+
 /// 链路追踪上下文，遵循 W3C Trace Context 规范。
 ///
 /// # 设计背景（Why）
@@ -28,17 +140,17 @@ use loom::{
 /// - `trace_state` 拥有堆分配开销，建议在热路径复用缓冲或限制条目数量（W3C 推荐 <= 32）。
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TraceContext {
-    pub trace_id: [u8; Self::TRACE_ID_LENGTH],
-    pub span_id: [u8; Self::SPAN_ID_LENGTH],
+    pub trace_id: TraceId,
+    pub span_id: SpanId,
     pub trace_flags: TraceFlags,
     pub trace_state: TraceState,
 }
 
 impl TraceContext {
     /// Trace ID 的长度（字节）。
-    pub const TRACE_ID_LENGTH: usize = 16;
+    pub const TRACE_ID_LENGTH: usize = TraceId::LENGTH;
     /// Span ID 的长度（字节）。
-    pub const SPAN_ID_LENGTH: usize = 8;
+    pub const SPAN_ID_LENGTH: usize = SpanId::LENGTH;
 
     /// 创建新的追踪上下文。
     ///
@@ -53,13 +165,13 @@ impl TraceContext {
     /// # 风险提示
     /// - 若未遵守唯一性，将导致跨服务 Trace 聚合错误；建议在持续集成中加入契约测试确保 ID 生成逻辑正确。
     pub fn new(
-        trace_id: [u8; Self::TRACE_ID_LENGTH],
-        span_id: [u8; Self::SPAN_ID_LENGTH],
+        trace_id: impl Into<TraceId>,
+        span_id: impl Into<SpanId>,
         trace_flags: TraceFlags,
     ) -> Self {
         Self {
-            trace_id,
-            span_id,
+            trace_id: trace_id.into(),
+            span_id: span_id.into(),
             trace_flags,
             trace_state: TraceState::default(),
         }
@@ -82,10 +194,10 @@ impl TraceContext {
     /// - **输入参数**：`child_span_id` 必须为新生成的 64 bit ID。
     /// - **前置条件**：`child_span_id` 不得与当前 `span_id` 相同，避免产生重复节点。
     /// - **后置条件**：新上下文继承 `trace_id`、`trace_flags`、`trace_state`，但 `span_id` 替换为给定值。
-    pub fn child_context(&self, child_span_id: [u8; Self::SPAN_ID_LENGTH]) -> Self {
+    pub fn child_context(&self, child_span_id: impl Into<SpanId>) -> Self {
         Self {
             trace_id: self.trace_id,
-            span_id: child_span_id,
+            span_id: child_span_id.into(),
             trace_flags: self.trace_flags,
             trace_state: self.trace_state.clone(),
         }
@@ -104,10 +216,10 @@ impl TraceContext {
 
     /// 校验上下文是否满足基础合法性（ID 非全零，`TraceState` 不包含重复键等）。
     pub fn validate(&self) -> crate::Result<(), TraceContextError> {
-        if self.trace_id.iter().all(|byte| *byte == 0) {
+        if self.trace_id.is_zero() {
             return Err(TraceContextError::InvalidTraceId);
         }
-        if self.span_id.iter().all(|byte| *byte == 0) {
+        if self.span_id.is_zero() {
             return Err(TraceContextError::InvalidSpanId);
         }
         self.trace_state.validate()?;
@@ -122,8 +234,8 @@ impl TraceContext {
     /// - **契约（What）**：返回值携带空的 `TraceState`，调用方可在必要时通过 [`TraceContext::with_state`] 附加供应商扩展；生成过程线程安全且无锁。
     pub fn generate() -> Self {
         Self {
-            trace_id: next_trace_id_bytes(),
-            span_id: next_span_id_bytes(),
+            trace_id: TraceId::from_bytes(next_trace_id_bytes()),
+            span_id: SpanId::from_bytes(next_span_id_bytes()),
             trace_flags: TraceFlags::new(TraceFlags::SAMPLED),
             trace_state: TraceState::default(),
         }
@@ -134,8 +246,8 @@ impl TraceContext {
     /// # 契约（What）
     /// - **前置条件**：无需额外状态；内部使用原子计数保证跨线程唯一。
     /// - **后置条件**：返回值绝不会为全零，确保符合 W3C Trace Context 要求。
-    pub(crate) fn generate_span_id() -> [u8; Self::SPAN_ID_LENGTH] {
-        next_span_id_bytes()
+    pub(crate) fn generate_span_id() -> SpanId {
+        SpanId::from_bytes(next_span_id_bytes())
     }
 }
 

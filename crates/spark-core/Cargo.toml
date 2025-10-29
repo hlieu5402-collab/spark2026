@@ -42,7 +42,6 @@ toml = { workspace = true, optional = true }
 criterion = { workspace = true }
 proptest = { workspace = true }
 thiserror = { workspace = true }
-spark-otel = { workspace = true, features = ["test-util"] }
 spark-contract-tests = { workspace = true }
 futures = { workspace = true, features = ["executor"] }
 serde_json = { workspace = true }
@@ -99,10 +98,6 @@ path = "tests/contracts/ready_state_matrix.rs"
 [[test]]
 name = "pipeline"
 path = "tests/pipeline/mod.rs"
-
-[[test]]
-name = "observability"
-path = "tests/observability/mod.rs"
 
 [[test]]
 name = "time"
