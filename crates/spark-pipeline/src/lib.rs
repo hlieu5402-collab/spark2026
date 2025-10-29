@@ -22,8 +22,7 @@ pub use factory::DefaultControllerFactory;
 pub mod router;
 
 pub use router::{
-    RouterContextSnapshot, RouterContextState, RouterHandler, load_router_context,
-    store_router_context,
+    RouterContextSnapshot, RouterContextState, load_router_context, store_router_context,
 };
 mod router_handler;
 
