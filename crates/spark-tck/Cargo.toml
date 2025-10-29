@@ -18,6 +18,7 @@ bench = false
 [dependencies]
 spark-core = { workspace = true, features = ["std"] }
 spark-codec-sip = { workspace = true }
+bytes.workspace = true
 spark-codec-sdp = { workspace = true }
 spark-transport-udp = { workspace = true, features = ["batch-udp-unix"] }
 anyhow = { workspace = true }

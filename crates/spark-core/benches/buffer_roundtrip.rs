@@ -1,6 +1,6 @@
 use criterion::{Criterion, black_box};
 use spark_core::{CoreError, ReadableBuffer, WritableBuffer};
-use std::{env, time::Duration};
+use std::{env, mem::MaybeUninit, time::Duration};
 
 /// 简单的基准测试：验证缓冲读写契约的往返成本。
 ///
@@ -148,6 +148,35 @@ impl WritableBuffer for VecWriter {
         Ok(())
     }
 
+    fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        if self.data.len() == self.data.capacity() {
+            self.data.reserve(1);
+        }
+        let spare = self.data.capacity().saturating_sub(self.data.len());
+        if spare == 0 {
+            return empty_mut_slice();
+        }
+        unsafe {
+            let start = self.data.as_mut_ptr().add(self.data.len()) as *mut MaybeUninit<u8>;
+            core::slice::from_raw_parts_mut(start, spare)
+        }
+    }
+
+    fn advance_mut(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
+        let spare = self.data.capacity().saturating_sub(self.data.len());
+        if len > spare {
+            return Err(CoreError::new(
+                "buffer.out_of_range",
+                format!("advance_mut beyond capacity: len={} spare={}", len, spare),
+            ));
+        }
+        unsafe {
+            let new_len = self.data.len() + len;
+            self.data.set_len(new_len);
+        }
+        Ok(())
+    }
+
     fn clear(&mut self) {
         self.data.clear();
     }
@@ -156,4 +185,9 @@ impl WritableBuffer for VecWriter {
         let VecWriter { data } = *self;
         Ok(Box::new(VecReader { data, read: 0 }))
     }
+}
+
+fn empty_mut_slice() -> &'static mut [MaybeUninit<u8>] {
+    static mut EMPTY: [MaybeUninit<u8>; 0] = [];
+    unsafe { &mut EMPTY[..] }
 }

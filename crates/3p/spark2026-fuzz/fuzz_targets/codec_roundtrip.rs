@@ -1,6 +1,7 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
+use core::mem::MaybeUninit;
 use libfuzzer_sys::fuzz_target;
 use spark2026_fuzz::support::{FuzzBufferPool, LinearReadable};
 use spark_codec_line::LineDelimitedCodec;

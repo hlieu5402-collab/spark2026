@@ -2,6 +2,7 @@ use alloc::borrow::Cow;
 use core::future::Future;
 
 use crate::{BackpressureDecision, BackpressureMetrics, ShutdownDirection, TransportSocketAddr};
+use bytes::{Buf, BufMut};
 
 /// 统一的传输连接接口。
 ///
@@ -72,14 +73,14 @@ pub trait TransportConnection: Send + Sync + 'static {
     fn read<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::CallCtx<'ctx>,
-        buf: &'ctx mut [u8],
+        buf: &'ctx mut (dyn BufMut + Send + Sync + 'static),
     ) -> Self::ReadFuture<'ctx>;
 
     /// 写入数据。
     fn write<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::CallCtx<'ctx>,
-        buf: &'ctx [u8],
+        buf: &'ctx mut (dyn Buf + Send + Sync + 'static),
     ) -> Self::WriteFuture<'ctx>;
 
     /// 刷新缓冲区。
