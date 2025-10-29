@@ -167,6 +167,12 @@ jobs:
           set -eo pipefail
           tools/ci/public_api_diff_budget.sh origin/main 0 2>&1 | tee ci-artifacts/cargo-public-api.log
 
+      - name: 契约索引覆盖率
+        if: matrix.name == 'default'
+        run: |
+          set -eo pipefail
+          ./tools/ci/check_contracts_index.sh 2>&1 | tee ci-artifacts/contracts-index.log
+
       - name: 上传工件
         if: always()
         uses: actions/upload-artifact@v4
