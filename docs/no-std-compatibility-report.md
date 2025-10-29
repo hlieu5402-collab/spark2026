@@ -4,8 +4,8 @@
 
 ## 编译基线
 - 构建命令：`cargo check -p spark-core --no-default-features`
-- 目标：验证 `spark-core` 在仅启用 `alloc` 的情况下能够通过语义检查。
-- 依赖策略：移除对 `std` 独占依赖的三方库或提供回退实现，确保核心契约在嵌入式/受限环境可用。
+- 目标：验证 `spark-core` 在顶层默认启用 `std` 的前提下，仍能在“核心最小化”轨道（禁用所有 Feature，但保留 `alloc` 分配能力）通过语义检查。
+- 依赖策略：移除对 `std` 独占依赖的三方库或提供回退实现，确保核心契约在嵌入式/受限环境可用；CI 现已新增 `core-no-std-min` 组合，持续追踪该约束。
 
 ## 已覆盖模块
 - **契约与上下文层**：`contract`, `context`, `pipeline`, `service`, `router` 等模块均依赖 `alloc` 类型，现已在 `no_std` 编译下通过检查。

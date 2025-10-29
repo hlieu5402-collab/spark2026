@@ -104,9 +104,16 @@ jobs:
           cargo test --workspace 2>&1 | tee ci-artifacts/cargo-test.log
 
       - name: 构建 (cargo build)
+        if: matrix.name != 'core-no-std-min'
         run: |
           set -eo pipefail
           cargo build --workspace ${{ matrix.cargo_flags }} 2>&1 | tee ci-artifacts/cargo-build-${{ matrix.name }}.log
+
+      - name: 核心最小化检查 (cargo check)
+        if: matrix.name == 'core-no-std-min'
+        run: |
+          set -eo pipefail
+          cargo check -p spark-core --no-default-features 2>&1 | tee ci-artifacts/cargo-check-${{ matrix.name }}.log
 
       - name: no_std(alloc) 组合附加检查
         if: matrix.name == 'no-default-alloc'

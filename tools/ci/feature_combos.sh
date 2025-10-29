@@ -75,6 +75,11 @@ emit_matrix_json() {
     "name": "no-default-alloc",
     "cargo_flags": "--no-default-features --features alloc",
     "summary": "no_std + alloc 基线，确保核心组件在无 std 场景可编译。"
+  },
+  {
+    "name": "core-no-std-min",
+    "cargo_flags": "--no-default-features",
+    "summary": "核心最小化：禁用全部 Feature，验证 spark-core 在仅有 alloc 支持时可通过检查。"
   }
 ]
 JSON

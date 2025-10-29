@@ -1,4 +1,4 @@
-use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use bytes::BytesMut;
@@ -194,31 +194,40 @@ impl PoolInner {
         let pool_misses = self.metrics.pool_misses.load(Ordering::Relaxed);
         let total_bytes = self.metrics.total_bytes.load(Ordering::Relaxed);
 
-        let mut custom_dimensions = Vec::with_capacity(6);
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("slab_free_slots"),
-            value: free_slots,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("active_buffers"),
-            value: active_buffers,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("total_allocated"),
-            value: total_allocated,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("total_recycled"),
-            value: total_recycled,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("pool_misses"),
-            value: pool_misses,
-        });
-        custom_dimensions.push(PoolStatDimension {
-            key: Cow::Borrowed("total_bytes"),
-            value: total_bytes,
-        });
+        // 教案级补充：指标集合构建策略
+        //
+        // - **意图（Why）**：一次性初始化所有 `PoolStatDimension`，避免 `Vec::with_capacity + push`
+        //   模式在 Clippy 的 `vec-init-then-push` 检查下触发告警，同时保证读者理解指标顺序的稳定性。
+        // - **逻辑（How）**：直接使用 `vec![]` 宏按最终顺序填充条目，既减轻错误处理，也让代码
+        //   对“指标数量固定”为前置条件的假设更加直观。
+        // - **契约（What）**：生成的 `custom_dimensions` 始终包含 6 个元素，对应自由槽位、活跃缓冲等指标。
+        // - **权衡（Trade-offs）**：失去显式 `with_capacity` 的微观优化，但换来静态分析友好性与可读性。
+        let custom_dimensions = vec![
+            PoolStatDimension {
+                key: Cow::Borrowed("slab_free_slots"),
+                value: free_slots,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("active_buffers"),
+                value: active_buffers,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("total_allocated"),
+                value: total_allocated,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("total_recycled"),
+                value: total_recycled,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("pool_misses"),
+                value: pool_misses,
+            },
+            PoolStatDimension {
+                key: Cow::Borrowed("total_bytes"),
+                value: total_bytes,
+            },
+        ];
 
         PoolStats {
             allocated_bytes: self.metrics.allocated_bytes.load(Ordering::Relaxed),
