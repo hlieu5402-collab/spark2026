@@ -1,9 +1,11 @@
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
+use std::{env, fs, path::PathBuf};
 
-use serde::Deserialize;
+#[path = "error_matrix_contract.rs"]
+mod error_matrix_contract;
+use error_matrix_contract::{
+    BudgetDispositionSpec, BusyDispositionSpec, CategoryTemplateSpec, ErrorMatrixContract,
+    SecurityClassSpec, read_error_matrix_contract,
+};
 
 /// 文档生成入口：将 `contracts/error_matrix.toml` 转换为 Markdown 表格。
 ///
@@ -23,94 +25,10 @@ use serde::Deserialize;
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let contract_path = manifest_dir.join("../../contracts/error_matrix.toml");
-    let contract = read_contract(&contract_path);
+    let contract = read_error_matrix_contract(&contract_path);
     let markdown = render_markdown(&contract);
     let doc_path = manifest_dir.join("../../docs/error-category-matrix.md");
     fs::write(&doc_path, markdown).expect("写入 docs/error-category-matrix.md");
-}
-
-/// 与构建脚本一致的顶层结构定义。
-#[derive(Debug, Deserialize)]
-struct ErrorMatrixContract {
-    rows: Vec<ErrorMatrixRow>,
-}
-
-/// 单行条目，支持多个错误码共享模板。
-#[derive(Debug, Deserialize)]
-struct ErrorMatrixRow {
-    codes: Vec<String>,
-    category: CategoryTemplateSpec,
-    doc: DocSpec,
-}
-
-/// 文档列信息。
-#[derive(Debug, Deserialize)]
-struct DocSpec {
-    rationale: String,
-    tuning: String,
-}
-
-/// 分类模板规格。
-#[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum CategoryTemplateSpec {
-    Retryable {
-        wait_ms: u64,
-        reason: String,
-        #[serde(default)]
-        busy: Option<BusyDispositionSpec>,
-    },
-    Timeout,
-    ProtocolViolation {
-        #[serde(rename = "close_message")]
-        _close_message: String,
-    },
-    ResourceExhausted {
-        budget: BudgetDispositionSpec,
-    },
-    Cancelled,
-    NonRetryable,
-    Security {
-        class: SecurityClassSpec,
-    },
-}
-
-/// Busy 语义。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum BusyDispositionSpec {
-    Upstream,
-    Downstream,
-}
-
-/// 预算类型。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum BudgetDispositionSpec {
-    Decode,
-    Flow,
-}
-
-/// 安全分类。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum SecurityClassSpec {
-    Authentication,
-    Authorization,
-    Confidentiality,
-    Integrity,
-    Audit,
-    Unknown,
-}
-
-/// 读取并解析合约文件。
-fn read_contract(path: &Path) -> ErrorMatrixContract {
-    let raw = fs::read_to_string(path).unwrap_or_else(|err| {
-        panic!("读取 {path:?} 失败: {err}");
-    });
-    toml::from_str(&raw).unwrap_or_else(|err| {
-        panic!("解析 {path:?} 失败: {err}");
-    })
 }
 
 /// 生成完整的 Markdown 内容。
@@ -165,12 +83,32 @@ fn render_markdown(contract: &ErrorMatrixContract) -> String {
     buf.push_str("\n> **提示**：当新增错误码时，请执行：\n");
     buf.push_str("> 1. 更新 `contracts/error_matrix.toml`；\n");
     buf.push_str("> 2. 运行 `cargo run -p spark-core --bin gen_error_doc --features std,error_contract_doc` 生成文档；\n");
-    buf.push_str("> 3. 触发构建脚本（`cargo build -p spark-core`）更新 `src/error/category_matrix.rs` 并补充契约测试。\n");
+    buf.push_str("> 3. 触发构建脚本（`cargo build -p spark-core`）更新 `src/error/generated/category_matrix.rs` 并补充契约测试。\n");
 
     buf
 }
 
 /// 生成分类列的描述文字。
+///
+/// # 教案式说明（Why）
+/// - 文档中的“分类”列需直接映射到 `spark_core::error::ErrorCategory`，
+///   若手工书写极易出现大小写或参数遗漏，因而改为集中渲染。
+///
+/// # 契约定义（What）
+/// - **输入**：分类模板 [`CategoryTemplateSpec`] 的引用；
+/// - **返回**：对应的 Markdown 片段（已格式化的字符串）。
+/// - **前置条件**：调用方确保模板来自 [`read_error_matrix_contract`] 的解析结果；
+/// - **后置条件**：输出文本与生成代码中的枚举构造保持一致，便于评审 diff。
+///
+/// # 逻辑拆解（How）
+/// 1. 对每种模板枚举进行匹配，并拼装固定格式的字符串；
+/// 2. 当模板包含嵌套字段（如 `Retryable` 的等待时间、原因），将字段插入说明，
+///    确保文档展示与代码生成参数一一对应；
+/// 3. 返回结果不包含 Markdown 转义，由调用者在写入表格时直接使用。
+///
+/// # 风险与注意事项（Trade-offs & Gotchas）
+/// - 若后续扩展新的分类枚举，必须同步更新该函数，否则文档会缺少对应描述；
+/// - 文本格式需保持稳定，便于与历史文档 diff；避免使用随机排序或浮点格式化。
 fn describe_category(category: &CategoryTemplateSpec) -> String {
     match category {
         CategoryTemplateSpec::Retryable {
@@ -204,6 +142,25 @@ fn describe_category(category: &CategoryTemplateSpec) -> String {
 }
 
 /// 生成默认动作列文本。
+///
+/// # 教案式说明（Why）
+/// - “默认动作”列帮助运营人员快速判断自动处置策略，与 `DefaultAutoResponse`
+///   的语义一一对应；若缺少这一列，读者需要翻阅代码才能理解分类影响。
+///
+/// # 契约定义（What）
+/// - **输入**：分类模板 [`CategoryTemplateSpec`]；
+/// - **返回**：表示自动响应的自然语言字符串，用于 Markdown 表格；
+/// - **前置条件**：模板字段已通过契约解析并校验；
+/// - **后置条件**：返回值与生成代码中的 `DefaultAutoResponse` 映射保持一致。
+///
+/// # 实现逻辑（How）
+/// 1. 使用 `match` 对所有模板分支赋予固定描述；
+/// 2. 对 `Retryable` 额外拼接 `Busy` 主语义，复刻自动响应器的广播行为；
+/// 3. 其余枚举直接映射到框架中约定的动作常量。
+///
+/// # 风险提示（Trade-offs & Gotchas）
+/// - 若未来扩充自动动作，需保持字符串描述与运行时行为同步；
+/// - 文本需要与知识库说明保持风格统一，因此避免引入多余标点或英文缩写。
 fn describe_action(category: &CategoryTemplateSpec) -> String {
     match category {
         CategoryTemplateSpec::Retryable { busy, .. } => match busy {

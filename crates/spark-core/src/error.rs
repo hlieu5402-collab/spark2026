@@ -4,7 +4,22 @@ use crate::{
 };
 use alloc::borrow::Cow;
 
-pub mod category_matrix;
+pub mod category_matrix {
+    //! 错误分类矩阵模块由构建脚本生成，当前文件通过 `include!` 将其纳入编译单元。
+    //!
+    //! # 教案式说明（Why）
+    //! - 将生成文件集中置于 `error/generated/` 目录，避免手工维护静态矩阵；
+    //! - 通过 `include!` 维持历史上 `spark_core::error::category_matrix` 的模块路径，确保外部调用者零感知迁移。
+    //!
+    //! # 契约定义（What）
+    //! - 生成文件提供查询接口与数据结构，调用方依旧经由 `category_matrix::entries()` 等 API 访问；
+    //! - **前置条件**：构建阶段已由 `build.rs` 写出最新矩阵；
+    //! - **后置条件**：编译期包含的代码与 `contracts/error_matrix.toml` 保持一致。
+    //!
+    //! # 风险提示（Trade-offs & Gotchas）
+    //! - 若构建脚本被禁用或生成文件缺失，编译会失败；CI 守门脚本会确保 SOT 资源同步。
+    include!("error/generated/category_matrix.rs");
+}
 #[cfg(test)]
 use alloc::format;
 use alloc::{borrow::ToOwned, boxed::Box, string::String};
