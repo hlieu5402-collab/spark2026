@@ -14,6 +14,23 @@ use crate::{
 
 /// Handler 访问运行时能力与事件流的统一入口。
 ///
+/// # 契约维度速览
+/// - **语义**：提供 `channel`、`controller`、`executor` 等接口，让 Handler 能够读写消息、调度异步任务并访问核心服务。
+/// - **错误**：写入失败返回 [`CoreError`](crate::CoreError)，常见错误码：`pipeline.write_closed`、`pipeline.buffer_unavailable`。
+/// - **并发**：Trait 要求 `Send + Sync`；引用可跨线程短期借用，但需遵守生命周期约束并避免长期持有裸引用。
+/// - **背压**：`write` 返回 [`WriteSignal`](super::WriteSignal)，调用方应依据其中的 [`BackpressureSignal`](crate::contract::BackpressureSignal) 调整速率。
+/// - **超时**：通过 `call_context().deadline()` 与 `timer()` 协作，确保 Handler 在等待外部操作时能主动超时。
+/// - **取消**：`call_context()` 暴露 [`Cancellation`](crate::contract::Cancellation)，长耗时逻辑需轮询取消位并提前退出。
+/// - **观测标签**：统一在日志/指标中附带 `pipeline.stage`、`pipeline.handler`、`pipeline.event`，使用 `trace_context()` 与 `metrics()` 打点。
+/// - **示例(伪码)**：
+///   ```text
+///   if ctx.call_context().cancellation().is_cancelled() { return; }
+///   let pool = ctx.buffer_pool();
+///   let mut buf = pool.acquire(1024)?;
+///   encode(&mut buf)?;
+///   ctx.write(PipelineMessage::from(buf.freeze()))?;
+///   ```
+///
 /// # 设计背景（Why）
 /// - 融合 Netty `ChannelHandlerContext`、Tower `ServiceContext`、Envoy Filter Callback、Akka `ActorContext` 的设计理念，提供集中化入口减少耦合。
 /// - 通过对象安全 Trait，支持动态装配 Handler/Middleware，同时保留 `no_std` 可用性。

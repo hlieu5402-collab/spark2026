@@ -5,6 +5,23 @@ use super::WritableBuffer;
 
 /// `BufferPool` 规定缓冲区租借与回收的统一接口。
 ///
+/// # 契约维度速览
+/// - **语义**：统一“租借 → 写入 → 冻结/归还”的生命周期，支撑传输、编解码与 Pipeline 在零拷贝路径下复用缓冲。
+/// - **错误**：所有失败均返回 [`CoreError`]，建议使用 `resource_exhausted.pool_unavailable`、`protocol.decode` 等稳定错误码。
+/// - **并发**：Trait 要求 `Send + Sync`；实现内部若采用锁或原子，需要保证在高并发下无活锁/饥饿。
+/// - **背压**：当池容量不足时可通过错误返回或在 [`PoolStats`] 中暴露水位，提示上层切换降级或退避策略。
+/// - **超时**：契约未定义内置超时；调用方若需限时租借，应结合 `CallContext::deadline()` 或外部定时器主动终止等待。
+/// - **取消**：当上层取消调用时，正在等待的租借操作应尽快退出并释放已持有资源；实现若包含自旋，应定期查询取消信号。
+/// - **观测标签**：推荐在指标/日志中统一记录 `pool.name`、`pool.tenant`、`pool.event`（`acquire`、`shrink`、`stats`）。
+/// - **示例(伪码)**：
+///   ```text
+///   buf = pool.acquire(min_capacity)
+///   try encode(buf)
+///       send(buf.freeze())
+///   catch err => log(err.code)
+///   finally metrics.record(pool.statistics())
+///   ```
+///
 /// # 设计背景（Why）
 /// - 综合 Netty `ByteBufAllocator`、Envoy `WatermarkBufferFactory`、Aerospike `BufferPool`、ClickHouse `Arena`、Tokio `BytesMut` 共享池实践，确保在高并发场景稳定控制内存峰值。
 /// - 运行时、传输层、协议层需要共享统一的租借来源，以支持跨线程协程协作和背压策略。

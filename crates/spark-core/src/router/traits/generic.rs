@@ -40,6 +40,21 @@ where
 
 /// `Router` Trait 是路由子系统的泛型契约。
 ///
+/// # 契约维度速览
+/// - **语义**：`route` 基于 [`RoutingContext`] 选择目标 [`RouteDecision`]，`snapshot` 提供观测快照，`validate` 在配置写入前做语义检查。
+/// - **错误**：必须返回结构化 [`RouteError`] 或 [`CoreError`](crate::error::CoreError)，常见错误码：`router.not_found`、`router.policy_denied`、`router.service_unavailable`。
+/// - **并发**：要求 `Send + Sync`；实现应支持并发读（`route`）与写（热更新）操作，推荐使用读写锁或无锁快照结构。
+/// - **背压**：当后端服务繁忙时，`RouteDecision` 可附带 [`BusyReason`](crate::status::BusyReason) 供上层传播背压信号。
+/// - **超时**：路由过程通常应在微秒级完成；如需访问外部目录，应结合 `RoutingContext::call_context().deadline()` 限制耗时。
+/// - **取消**：若上下文取消，应提前终止长耗时的路由查找或外部请求，避免浪费资源。
+/// - **观测标签**：统一记录 `router.intent`, `router.route_id`, `router.decision`（命中/拒绝/兜底），便于审计与告警。
+/// - **示例(伪码)**：
+///   ```text
+///   let decision = router.route(ctx)?;
+///   metrics.count("router.hit", decision.route_id())
+///   return decision.into_service()
+///   ```
+///
 /// # 设计动机（Why）
 /// - 融合 Envoy 动态路由、Linkerd 服务配置、NATS subject 匹配经验，为零虚分派场景提供高性能接口；
 /// - 与对象层 [`super::object::DynRouter`] 配对，保证通过适配器后语义不变。

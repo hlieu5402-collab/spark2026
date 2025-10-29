@@ -39,6 +39,26 @@ use std::time::Instant;
 
 /// 服务就绪检查的核心状态枚举。
 ///
+/// # 契约维度速览
+/// - **语义**：以 `Ready`/`Busy`/`BudgetExhausted`/`RetryAfter` 四元组表达服务可受理度；由 [`PollReady`] 在 `poll_ready` 中统一返回。
+/// - **错误**：枚举本身不含错误分支；若需错误请使用 [`ReadyCheck::Err`]。
+/// - **并发**：枚举为纯数据类型，可在线程间自由传递，常作为跨模块就绪信号。
+/// - **背压**：`Busy` 与 `RetryAfter` 对应软背压，`BudgetExhausted` 表示硬背压，应立即阻止新的调用。
+/// - **超时**：配合 [`RetryAdvice::after`](crate::status::RetryAdvice::after) 提供退避时间，帮助上层实现超时后的再试策略。
+/// - **取消**：若调用因取消提前终止，应结合 [`BackpressureSignal::ShutdownPending`](crate::contract::BackpressureSignal::ShutdownPending) 或错误分支告知上游；本枚举不直接表示取消。
+/// - **观测标签**：统一在指标中记录 `ready.state`、`ready.reason`、`ready.budget_kind`，用于 SLO 与背压分析。
+/// - **示例(伪码)**：
+///   ```text
+///   match service.poll_ready(ctx, cx)? {
+///       Poll::Ready(ReadyCheck::Ready(ReadyState::Ready)) => proceed(),
+///       Poll::Ready(ReadyCheck::Ready(ReadyState::Busy(reason))) => backoff(reason),
+///       Poll::Ready(ReadyCheck::Ready(ReadyState::BudgetExhausted(snapshot))) => stop_and_alert(snapshot),
+///       Poll::Ready(ReadyCheck::Ready(ReadyState::RetryAfter(advice))) => schedule_retry(advice),
+///       Poll::Pending => await_waker(),
+///       Poll::Ready(ReadyCheck::Err(err)) => fail_fast(err),
+///   }
+///   ```
+///
 /// # 设计初衷（Why）
 /// - **统一语义**：过往实现分别返回 `Ready/Not Ready/Backpressure` 等别名，
 ///   使调用方难以编写跨域兼容的退避逻辑。本枚举统一抽象为四种语义：

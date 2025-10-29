@@ -103,6 +103,23 @@ impl<Body> Message<Body> {
 }
 
 /// 单个协议帧，传输层以其为最小调度单位。
+///
+/// # 契约维度速览
+/// - **语义**：`Frame` 将请求 ID、递增序号与 `fin` 终止位绑定，确保消息边界与乱序恢复可被精确推断。
+/// - **错误**：`try_new` 在序号耗尽时返回 `CoreError`（`protocol.budget_exceeded`），调用方应中止流式发送。
+/// - **并发**：结构体本身 `Send + Sync`（若 `Payload` 满足），适合作为多生产者/消费者队列中的共享消息。
+/// - **背压**：帧级背压由上游 `BackpressureSignal` 驱动；当上层指示 `Busy/RetryAfter` 时，应暂停创建新的 `Frame`。
+/// - **超时**：构造函数不直接处理超时，需由调用方结合 `CallContext::deadline()` 或传输层调度器决定发送窗口。
+/// - **取消**：若收到取消信号，应停止进一步分片并丢弃尚未发送的帧，防止对端收到残缺序列。
+/// - **观测标签**：建议在遥测中使用 `frame.request`, `frame.seq`, `frame.fin` 记录关键维度，辅助审计乱序问题。
+/// - **示例(伪码)**：
+///   ```text
+///   seq = 0
+///   for chunk in message.chunks():
+///       frame = Frame::try_new(req_id, seq, chunk.is_last(), chunk)
+///       transport.send(frame)
+///       seq += 1
+///   ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Frame<Payload> {
     request: RequestId,
@@ -114,23 +131,14 @@ pub struct Frame<Payload> {
 impl<Payload> Frame<Payload> {
     /// 构造帧；序号必须从 0 开始递增。
     ///
-    /// # 背景（Why）
-    /// - 帧序号是重放保护与乱序恢复的关键字段，必须统一校验逻辑；
-    /// - `fin` 标志用于判定消息边界，避免在编解码层重复推断。
-    ///
-    /// # 契约说明（What）
-    /// - `request`：关联的 [`RequestId`]；
-    /// - `sequence`：单调递增的帧序号，范围 `[0, u32::MAX)`；
-    /// - `fin`：若为 `true` 表示当前帧包含消息结尾；
-    /// - `payload`：帧携带的数据片段。
-    ///
-    /// # 执行步骤（How）
-    /// - 若 `sequence == u32::MAX`，立即返回 `protocol.budget_exceeded` 错误，提示上层终止；
-    /// - 否则构造帧结构体并返回。
-    ///
-    /// # 风险提示（Trade-offs）
-    /// - 未对序号连续性做进一步校验，保持灵活度以支持跳号确认；
-    /// - 若需强制检查（如 QUIC 低层），应在具体传输实现中追加逻辑。
+    /// - **语义**：保证 `(request, sequence)` 组合唯一映射消息片段，`fin` 显式声明消息结束。
+    /// - **错误**：当 `sequence == u32::MAX` 时返回 `protocol.budget_exceeded`，提示上层终止分片流程。
+    /// - **并发**：函数为纯计算，可在多线程上下文中安全调用；需由调用方保证序号生成的原子性。
+    /// - **背压**：若上游检测到 `ReadyState::Busy`，应暂停调用该函数；函数本身不感知背压信号。
+    /// - **超时**：若在发送前超时，请勿继续构造后续帧，避免对端收到过期数据。
+    /// - **取消**：检测到取消时立即停止调用，并回收尚未发送的 `payload`。
+    /// - **观测标签**：建议在创建成功后记录 `frame.sequence`、`frame.fin`、`frame.size`（`payload` 字节数）。
+    /// - **伪码**：`Frame::try_new(ctx.request_id(), seq.fetch_add(1), is_last, chunk)`。
     pub fn try_new(request: RequestId, sequence: u32, fin: bool, payload: Payload) -> Result<Self> {
         if sequence == u32::MAX {
             return Err(CoreError::new(

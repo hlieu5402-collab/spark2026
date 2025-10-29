@@ -5,6 +5,26 @@ use crate::{Error, context::Context, contract::CallContext, sealed::Sealed};
 
 /// `Service` 提供 Spark 数据平面“零虚分派”范式下的业务调用契约。
 ///
+/// # 契约维度速览
+/// - **语义**：`poll_ready`/`call` 双阶段驱动业务处理，配合 [`CallContext`] 传播取消、截止与预算语义。
+/// - **错误**：实现返回的 `Error` 必须实现 [`crate::Error`]，常见错误码包括 `service.busy`、`service.unavailable`、`app.*`。
+/// - **并发**：Trait 要求 `Send + Sync`，允许多线程并发调用 `poll_ready`/`call`；实现方应保证内部状态的线程安全。
+/// - **背压**：`poll_ready` 应返回 [`ReadyState`](crate::status::ReadyState) 或 [`BusyReason`](crate::status::BusyReason) 映射的状态，帮助上层退避。
+/// - **超时**：应在 `poll_ready` 与 `call` 内检查 `ctx.deadline()`；若超时应返回 `CoreError` 或业务错误提示上游终止。
+/// - **取消**：`CallContext` 携带 [`Cancellation`](crate::contract::Cancellation)，长耗时操作需定期检查并及时终止。
+/// - **观测标签**：建议在指标/日志中输出 `service.name`、`service.route`、`service.outcome`（成功/失败/背压）。
+/// - **示例(伪码)**：
+///   ```text
+///   loop {
+///       match service.poll_ready(ctx.view(), task_cx)? {
+///           ReadyState::Ready => break,
+///           ReadyState::Busy(reason) => retry_with_backoff(reason),
+///           _ => handle_budget_or_retry()
+///       }
+///   }
+///   response = await service.call(call_ctx.clone(), request)
+///   ```
+///
 /// # 设计初衷（Why）
 /// - 继承 Tower `Service`/`Layer` 生态的编排模式，允许上层通过泛型组合实现零开销内联；
 /// - 在控制面统一 `CallContext`（取消/截止/预算三元组）之后，本接口成为所有 Handler、Router
