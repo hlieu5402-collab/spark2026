@@ -94,10 +94,10 @@ pub trait Context: Send + Sync + Sealed {
     /// 当前调用上下文，携带取消/截止/预算等统一契约。
     fn call_context(&self) -> &CallContext;
 
-    /// 快速派生三元组视图，减少热路径中的上下文克隆。
+    /// 快速派生元数据视图，减少热路径中的上下文克隆。
     ///
     /// # 设计背景（Why）
-    /// - Handler 在执行 `poll_ready`、预算检查等操作时，只需访问取消/截止/预算三元组，
+    /// - Handler 在执行 `poll_ready`、预算检查或衍生追踪 span 时，只需访问取消/截止/预算/追踪/身份等元数据，
     ///   若强制克隆整份 [`CallContext`] 将带来多余的 `Arc` 管理成本。
     ///
     /// # 契约说明（What）

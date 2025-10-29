@@ -568,8 +568,15 @@ mod tests {
         .with_metadata(intent_metadata);
 
         let request = PipelineMessage::from_user(String::from("payload"));
-        let context =
-            RoutingContext::new(&request, &intent, None, None, &dynamic_metadata, snapshot);
+        let call_ctx = CallContext::builder().build();
+        let context = RoutingContext::new(
+            call_ctx.execution(),
+            &request,
+            &intent,
+            None,
+            &dynamic_metadata,
+            snapshot,
+        );
 
         let decision = router.route_dyn(context).expect("应命中默认路由");
         assert_eq!(counter.load(Ordering::SeqCst), 1);
@@ -612,7 +619,15 @@ mod tests {
         ));
         let request = PipelineMessage::from_user(String::from("payload"));
         let empty_metadata = RouteMetadata::new();
-        let context = RoutingContext::new(&request, &intent, None, None, &empty_metadata, snapshot);
+        let call_ctx = CallContext::builder().build();
+        let context = RoutingContext::new(
+            call_ctx.execution(),
+            &request,
+            &intent,
+            None,
+            &empty_metadata,
+            snapshot,
+        );
 
         let result = router.route_dyn(context);
         assert!(matches!(result, Err(RouteError::NotFound { .. })));
@@ -642,7 +657,15 @@ mod tests {
         let intent = spark_core::router::context::RoutingIntent::new(pattern.clone());
         let request = PipelineMessage::from_user(String::from("payload"));
         let empty_metadata = RouteMetadata::new();
-        let context = RoutingContext::new(&request, &intent, None, None, &empty_metadata, snapshot);
+        let call_ctx = CallContext::builder().build();
+        let context = RoutingContext::new(
+            call_ctx.execution(),
+            &request,
+            &intent,
+            None,
+            &empty_metadata,
+            snapshot,
+        );
 
         let decision = router.route_dyn(context).expect("动态注册的路由应立即可用");
         assert_eq!(counter.load(Ordering::SeqCst), 1);
@@ -676,7 +699,15 @@ mod tests {
         let intent = spark_core::router::context::RoutingIntent::new(pattern);
         let request = PipelineMessage::from_user(String::from("payload"));
         let empty_metadata = RouteMetadata::new();
-        let context = RoutingContext::new(&request, &intent, None, None, &empty_metadata, snapshot);
+        let call_ctx = CallContext::builder().build();
+        let context = RoutingContext::new(
+            call_ctx.execution(),
+            &request,
+            &intent,
+            None,
+            &empty_metadata,
+            snapshot,
+        );
 
         let result = router.route_dyn(context);
         assert!(matches!(result, Err(RouteError::NotFound { .. })));

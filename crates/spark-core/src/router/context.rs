@@ -1,4 +1,6 @@
+use crate::context::Context as ExecutionContext;
 use crate::observability::TraceContext;
+use crate::security::IdentityDescriptor;
 use crate::transport::{ConnectionIntent, QualityOfService, SecurityMode};
 
 use super::catalog::RouteCatalog;
@@ -125,7 +127,7 @@ impl<'a> RoutingSnapshot<'a> {
 /// - `request`：原始请求引用，仅用于读取关键信息。
 /// - `intent`：路由意图，描述目标模式与偏好。
 /// - `connection`：底层传输意图，便于结合网络维度决定路由。
-/// - `trace`：观测追踪上下文，辅助路由级别的可观测采样。
+/// - `execution`：[`ExecutionContext`] 视图，统一承载取消/截止/预算/追踪/身份五元组；
 /// - `dynamic_metadata`：运行时补充的标签，如请求头、租户 ID。
 /// - `snapshot`：路由表只读视图，协助在决策中进行本地校验。
 ///
@@ -141,10 +143,10 @@ impl<'a> RoutingSnapshot<'a> {
 ///   若异步任务需要跨线程持有路由上下文，应复制必要的请求/意图数据，避免借用超出 `Context` 生命周期。
 #[derive(Debug)]
 pub struct RoutingContext<'a, Request> {
+    execution: ExecutionContext<'a>,
     request: &'a Request,
     intent: &'a RoutingIntent,
     connection: Option<&'a ConnectionIntent>,
-    trace: Option<&'a TraceContext>,
     dynamic_metadata: &'a RouteMetadata,
     snapshot: RoutingSnapshot<'a>,
 }
@@ -152,21 +154,33 @@ pub struct RoutingContext<'a, Request> {
 impl<'a, Request> RoutingContext<'a, Request> {
     /// 构造上下文。
     pub fn new(
+        execution: ExecutionContext<'a>,
         request: &'a Request,
         intent: &'a RoutingIntent,
         connection: Option<&'a ConnectionIntent>,
-        trace: Option<&'a TraceContext>,
         dynamic_metadata: &'a RouteMetadata,
         snapshot: RoutingSnapshot<'a>,
     ) -> Self {
         Self {
+            execution,
             request,
             intent,
             connection,
-            trace,
             dynamic_metadata,
             snapshot,
         }
+    }
+
+    /// 访问执行上下文视图。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：为路由逻辑提供取消/截止/预算/追踪/身份五元组的统一只读接口，避免各实现重复解析 [`crate::contract::CallContext`]。
+    /// - **逻辑（How）**：返回 [`ExecutionContext`] 的按值拷贝；该类型实现 `Copy`，调用方可自由存储在局部变量中。
+    /// - **契约（What）**：
+    ///   - **前置条件**：调用方需确保引用的生命周期未超出当前路由判定；
+    ///   - **后置条件**：返回值仅提供只读访问，预算扣减仍需通过原始 [`crate::contract::CallContext`] 完成。
+    pub fn execution(&self) -> ExecutionContext<'a> {
+        self.execution
     }
 
     /// 访问原始请求。
@@ -186,7 +200,7 @@ impl<'a, Request> RoutingContext<'a, Request> {
 
     /// 访问追踪上下文。
     pub fn trace(&self) -> Option<&'a TraceContext> {
-        self.trace
+        Some(self.execution.trace_context())
     }
 
     /// 访问动态属性。
@@ -197,6 +211,16 @@ impl<'a, Request> RoutingContext<'a, Request> {
     /// 访问路由快照。
     pub fn snapshot(&self) -> RoutingSnapshot<'a> {
         self.snapshot
+    }
+
+    /// 访问调用主体身份。
+    pub fn identity(&self) -> Option<&'a IdentityDescriptor> {
+        self.execution.identity()
+    }
+
+    /// 访问通信对端身份。
+    pub fn peer_identity(&self) -> Option<&'a IdentityDescriptor> {
+        self.execution.peer_identity()
     }
 }
 

@@ -569,15 +569,15 @@ impl CallContext {
         self.inner.budgets.iter()
     }
 
-    /// 返回三元组只读视图，便于在热路径中读取取消/截止/预算。
+    /// 返回调用元数据的只读视图，便于在热路径中读取取消/截止/预算/追踪/身份。
     ///
     /// # 使用场景（Why）
-    /// - `Service::poll_ready`、`DynService::poll_ready_dyn` 等接口仅需三元组即可决策背压；
+    /// - `Service::poll_ready`、`DynService::poll_ready_dyn` 等接口仅需读取调用状态即可决策背压或追踪采样；
     ///   通过该方法避免克隆整个 [`CallContext`]，降低热路径负担。
     ///
     /// # 契约说明（What）
     /// - **前置条件**：`self` 必须保持有效，且在返回的 [`Context`] 存活期间不得释放；
-    /// - **后置条件**：返回视图仅提供只读访问；预算消费仍需通过原始 [`Budget`] 调用。
+    /// - **后置条件**：返回视图仅提供只读访问；预算消费、身份变更仍需通过原始 [`CallContext`] 或安全模块处理。
     pub fn execution(&self) -> Context<'_> {
         Context::from(self)
     }
