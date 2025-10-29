@@ -1,5 +1,6 @@
 use crate::{CoreError, sealed::Sealed};
 use alloc::boxed::Box;
+use core::mem::MaybeUninit;
 
 use super::ReadableBuffer;
 
@@ -53,9 +54,74 @@ pub trait WritableBuffer: Send + Sync + 'static + Sealed {
         len: usize,
     ) -> crate::Result<(), CoreError>;
 
+    /// 暴露当前可写入的连续内存切片，返回值使用 [`MaybeUninit`] 表示尚未初始化的字节。
+    ///
+    /// # 教案式注释
+    /// - **意图 (Why)**：
+    ///   - 传输层在读取底层 socket 时希望直接写入缓冲区，避免先读到临时 `Vec<u8>` 再调用
+    ///     [`put_slice`](Self::put_slice) 造成的额外拷贝；
+    ///   - 模仿 `bytes::BufMut::chunk_mut` 语义，让零拷贝契约覆盖 `codec-*` 与 `transport-*` 的读路径。
+    /// - **实现要点 (How)**：
+    ///   - 返回的切片必须指向尚未初始化但可安全写入的连续内存；
+    ///   - 调用方在写入后需配合 [`advance_mut`](Self::advance_mut) 宣告实际写入字节数；
+    ///   - 若当前缓冲不可写（例如已被冻结），应返回长度为 0 的切片。
+    /// - **契约说明 (What)**：
+    ///   - **前置条件**：实现者需确保在返回切片期间不会触发重新分配或缩容，避免悬垂指针；
+    ///   - **后置条件**：切片生命周期与 `&mut self` 等长，调用方不得保留超过本次借用的引用；
+    ///   - **错误防御**：切片长度应与 [`remaining_mut`](Self::remaining_mut) 一致或为其下界，若长度为 0
+    ///     则视为没有可写空间。
+    /// - **风险提示 (Trade-offs)**：
+    ///   - 某些实现（如通过共享内存映射的缓冲）可能需要显式“固定”内存以满足此接口；
+    ///   - 若实现选择返回缓存池中的大块区域，应权衡碎片化与写放大风险。
+    fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>];
+
+    /// 标记最近一次通过 [`chunk_mut`](Self::chunk_mut) 写入的字节数。
+    ///
+    /// # 教案式注释
+    /// - **意图 (Why)**：
+    ///   - 与 `chunk_mut` 配套，显式告知缓冲实现“已有多少字节被初始化”，以便更新内部写入指针；
+    ///   - 避免在传输层调用 `put_slice` 时再次复制数据，实现真正的零拷贝写入路径。
+    /// - **执行步骤 (How)**：
+    ///   1. 调用方在获得切片后，将底层 IO 的读取结果写入该切片；
+    ///   2. 按实际写入的 `len` 调用本方法；
+    ///   3. 实现需校验 `len <= chunk_mut().len()`，并推进内部游标或更新长度。
+    /// - **契约说明 (What)**：
+    ///   - **输入**：`len` 表示本次新增的有效字节数；
+    ///   - **前置条件**：必须先调用 [`chunk_mut`](Self::chunk_mut) 获取可写区域；
+    ///   - **后置条件**：成功后 [`written`](Self::written) 增加 `len`，并保证后续 `freeze` 能够观察到新数据。
+    /// - **风险提示 (Trade-offs)**：
+    ///   - 若调用方传入超出可写空间的长度，实现应返回 [`CoreError`] 并保持内部状态不变；
+    ///   - 对于引用计数或分片缓冲，实现者需确保推进写指针不会破坏其它别名引用的语义。
+    fn advance_mut(&mut self, len: usize) -> crate::Result<(), CoreError>;
+
     /// 清空已写内容但保留容量，便于重复使用。
     fn clear(&mut self);
 
     /// 冻结缓冲区，转换为只读视图。
     fn freeze(self: Box<Self>) -> crate::Result<Box<dyn ReadableBuffer>, CoreError>;
+}
+
+#[allow(unsafe_code)]
+unsafe impl bytes::BufMut for dyn WritableBuffer + Send + Sync + 'static {
+    fn remaining_mut(&self) -> usize {
+        WritableBuffer::remaining_mut(self)
+    }
+
+    fn chunk_mut(&mut self) -> &mut bytes::buf::UninitSlice {
+        WritableBuffer::chunk_mut(self).into()
+    }
+
+    unsafe fn advance_mut(&mut self, cnt: usize) {
+        if cnt == 0 {
+            return;
+        }
+        if let Err(err) = WritableBuffer::advance_mut(self, cnt) {
+            panic!("WritableBuffer::advance_mut failed: {:?}", err);
+        }
+    }
+
+    fn put_slice(&mut self, src: &[u8]) {
+        WritableBuffer::put_slice(self, src)
+            .unwrap_or_else(|err| panic!("WritableBuffer::put_slice failed: {:?}", err));
+    }
 }

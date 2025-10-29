@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use serde::Serialize;
 use spark_core::{
     contract::CallContext,
@@ -335,10 +336,11 @@ async fn run_server_loop(
 ) -> spark_core::Result<(), CoreError> {
     let (channel, _) = listener.accept(&accept_ctx).await?;
     let _ = ready_tx.send(());
-    let mut buffer = vec![0_u8; payload_bytes];
+    let mut buffer = Vec::with_capacity(payload_bytes);
     for _ in 0..total_iterations {
         read_exact(&channel, &server_ctx, &mut buffer, payload_bytes).await?;
-        channel.write(&server_ctx, &buffer).await?;
+        let mut payload = Bytes::copy_from_slice(&buffer);
+        channel.write(&server_ctx, &mut payload).await?;
     }
     Ok(())
 }
@@ -352,20 +354,21 @@ async fn run_server_loop(
 ///   2. 通过 [`read_exact`] 读取同等大小数据；
 ///   3. 如启用 `verify_echo`，比较回显内容与原始 payload，确保服务器未篡改数据。
 /// - **契约 (What)**：
-///   - **输入**：客户端通道、上下文、payload、复用的缓冲区以及布尔标志；
+///   - **输入**：客户端通道、上下文、payload、可重复利用的 `scratch` 缓冲（以 `Vec<u8>` 表示）以及布尔标志；
 ///   - **输出**：若成功则返回 `()`，失败时传播底层 [`CoreError`]；
-///   - **前置条件**：`scratch` 缓冲区长度必须至少等于 `payload.len()`；
+///   - **前置条件**：`scratch` 必须具备至少 `payload.len()` 的容量（函数会在内部清空并复用底层内存，避免重复分配）；
 ///   - **后置条件**：当 `verify_echo` 为真时，保证回显内容与原始 payload 一致。
 async fn perform_roundtrip(
     channel: &TcpChannel,
     ctx: &CallContext,
     payload: &[u8],
-    scratch: &mut [u8],
+    scratch: &mut Vec<u8>,
     verify_echo: bool,
 ) -> spark_core::Result<(), CoreError> {
-    channel.write(ctx, payload).await?;
+    let mut payload_buf = Bytes::copy_from_slice(payload);
+    channel.write(ctx, &mut payload_buf).await?;
     read_exact(channel, ctx, scratch, payload.len()).await?;
-    if verify_echo && scratch[..payload.len()] != *payload {
+    if verify_echo && scratch.as_slice() != payload {
         return Err(CoreError::new(
             codes::TRANSPORT_IO,
             "echo payload mismatch during warmup",
@@ -378,28 +381,33 @@ async fn perform_roundtrip(
 ///
 /// # 教案式说明
 /// - **意图 (Why)**：TCP 读操作可能出现短读，需显式循环以确保读取完整 payload，避免在吞吐统计中混入重试逻辑的额外成本。
-/// - **逻辑 (How)**：循环调用 `read`，累计成功读取的字节数；若返回 0 视为对端提前关闭，映射为 `CoreError`。
+/// - **逻辑 (How)**：循环调用 `read`，每次直接写入 `Vec<u8>` 的尾部空间；若返回 0 视为对端提前关闭，映射为 `CoreError`。
 /// - **契约 (What)**：
-///   - **输入**：通道、上下文、可写缓冲区以及期望读取的字节数；
+///   - **输入**：通道、上下文、可增长的 `Vec<u8>` 以及期望读取的字节数；
 ///   - **输出**：若成功读取完整数据返回 `()`，否则返回封装的 `CoreError`；
-///   - **前置条件**：`expected_len` 不得超过缓冲区长度；
-///   - **后置条件**：成功时缓冲区前 `expected_len` 字节被新数据填满。
+///   - **前置条件**：`buffer` 的容量至少为 `expected_len`；函数会调用 `clear()` 以重置长度。
+///   - **后置条件**：成功时 `buffer.len() == expected_len`，前 `expected_len` 字节为最新读取的数据。
 async fn read_exact(
     channel: &TcpChannel,
     ctx: &CallContext,
-    buffer: &mut [u8],
+    buffer: &mut Vec<u8>,
     expected_len: usize,
 ) -> spark_core::Result<(), CoreError> {
-    let mut offset = 0;
-    while offset < expected_len {
-        let bytes = channel.read(ctx, &mut buffer[offset..expected_len]).await?;
+    if buffer.capacity() < expected_len {
+        buffer.reserve(expected_len - buffer.capacity());
+    }
+    buffer.clear();
+    while buffer.len() < expected_len {
+        let bytes = channel.read(ctx, buffer).await?;
         if bytes == 0 {
             return Err(CoreError::new(
                 codes::TRANSPORT_IO,
                 "unexpected EOF while reading payload",
             ));
         }
-        offset += bytes;
+    }
+    if buffer.len() > expected_len {
+        buffer.truncate(expected_len);
     }
     Ok(())
 }

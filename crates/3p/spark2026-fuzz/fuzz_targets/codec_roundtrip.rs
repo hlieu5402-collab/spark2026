@@ -1,6 +1,7 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
+use core::mem::MaybeUninit;
 use libfuzzer_sys::fuzz_target;
 use spark_codec_line::LineDelimitedCodec;
 use spark_core::buffer::{BufferPool, PoolStats, ReadableBuffer, WritableBuffer};
@@ -110,6 +111,35 @@ impl WritableBuffer for FuzzWritable {
         Ok(())
     }
 
+    fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        if self.data.len() == self.data.capacity() {
+            self.data.reserve(1);
+        }
+        let spare = self.data.capacity().saturating_sub(self.data.len());
+        if spare == 0 {
+            return empty_mut_slice();
+        }
+        unsafe {
+            let start = self.data.as_mut_ptr().add(self.data.len()) as *mut MaybeUninit<u8>;
+            core::slice::from_raw_parts_mut(start, spare)
+        }
+    }
+
+    fn advance_mut(&mut self, len: usize) -> Result<(), CoreError> {
+        let spare = self.data.capacity().saturating_sub(self.data.len());
+        if len > spare {
+            return Err(CoreError::new(
+                codes::APP_INVALID_ARGUMENT,
+                format!("advance_mut requested {} bytes but only {} spare", len, spare),
+            ));
+        }
+        unsafe {
+            let new_len = self.data.len() + len;
+            self.data.set_len(new_len);
+        }
+        Ok(())
+    }
+
     fn clear(&mut self) {
         self.data.clear();
     }
@@ -117,6 +147,11 @@ impl WritableBuffer for FuzzWritable {
     fn freeze(self: Box<Self>) -> Result<Box<dyn ReadableBuffer>, CoreError> {
         Ok(Box::new(FuzzReadable::from(self.data)))
     }
+}
+
+fn empty_mut_slice() -> &'static mut [MaybeUninit<u8>] {
+    static mut EMPTY: [MaybeUninit<u8>; 0] = [];
+    unsafe { &mut EMPTY[..] }
 }
 
 /// Fuzz 只读缓冲，实现增量读取与拆分能力。

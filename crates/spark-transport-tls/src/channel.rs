@@ -1,3 +1,5 @@
+use bytes::{Buf, BufMut};
+use core::slice;
 use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use std::{borrow::Cow, pin::Pin, sync::Arc};
 use tokio::{
@@ -85,14 +87,33 @@ impl TlsChannel {
     pub async fn read(
         &self,
         ctx: &CallContext,
-        buf: &mut [u8],
+        buf: &mut (dyn BufMut + Send + Sync + 'static),
     ) -> spark_core::Result<usize, CoreError> {
         run_with_context(
             ctx,
             error::READ,
             async {
                 let mut guard = self.inner.stream.lock().await;
-                guard.read(buf).await
+                let chunk = buf.chunk_mut();
+                if chunk.len() == 0 {
+                    return Ok(0);
+                }
+                let raw = unsafe {
+                    slice::from_raw_parts_mut(chunk.as_mut_ptr().cast::<u8>(), chunk.len())
+                };
+                match guard.read(raw).await {
+                    Ok(size) => {
+                        if size == 0 {
+                            Ok(0)
+                        } else {
+                            unsafe {
+                                buf.advance_mut(size);
+                            }
+                            Ok(size)
+                        }
+                    }
+                    Err(err) => Err(err),
+                }
             },
             error::map_stream_error,
         )
@@ -103,18 +124,32 @@ impl TlsChannel {
     pub async fn write(
         &self,
         ctx: &CallContext,
-        buf: &[u8],
+        buf: &mut (dyn Buf + Send + Sync + 'static),
     ) -> spark_core::Result<usize, CoreError> {
-        if buf.is_empty() {
+        if !buf.has_remaining() {
             return Ok(0);
         }
-        let len = buf.len();
         run_with_context(
             ctx,
             error::WRITE,
             async {
                 let mut guard = self.inner.stream.lock().await;
-                guard.write_all(buf).await.map(|_| len)
+                let mut total = 0usize;
+                while buf.has_remaining() {
+                    let chunk = buf.chunk();
+                    if chunk.is_empty() {
+                        break;
+                    }
+                    match guard.write(chunk).await {
+                        Ok(0) => break,
+                        Ok(size) => {
+                            buf.advance(size);
+                            total += size;
+                        }
+                        Err(err) => return Err(err),
+                    }
+                }
+                Ok(total)
             },
             error::map_stream_error,
         )
@@ -223,7 +258,7 @@ impl TransportConnectionTrait for TlsChannel {
     fn read<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::CallCtx<'ctx>,
-        buf: &'ctx mut [u8],
+        buf: &'ctx mut (dyn BufMut + Send + Sync + 'static),
     ) -> Self::ReadFuture<'ctx> {
         Box::pin(async move { TlsChannel::read(self, ctx, buf).await })
     }
@@ -231,7 +266,7 @@ impl TransportConnectionTrait for TlsChannel {
     fn write<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::CallCtx<'ctx>,
-        buf: &'ctx [u8],
+        buf: &'ctx mut (dyn Buf + Send + Sync + 'static),
     ) -> Self::WriteFuture<'ctx> {
         Box::pin(async move { TlsChannel::write(self, ctx, buf).await })
     }

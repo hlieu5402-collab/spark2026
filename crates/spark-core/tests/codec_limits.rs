@@ -1,5 +1,7 @@
 use core::num::NonZeroU16;
 
+use core::mem::MaybeUninit;
+
 use spark_core::buffer::{PoolStats, ReadableBuffer, WritableBuffer};
 use spark_core::codec::{DecodeContext, EncodeContext};
 use spark_core::error::codes;
@@ -38,6 +40,21 @@ impl WritableBuffer for NoopBuffer {
         Ok(())
     }
 
+    fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        empty_mut_slice()
+    }
+
+    fn advance_mut(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
+        if len == 0 {
+            Ok(())
+        } else {
+            Err(CoreError::new(
+                codes::APP_INVALID_ARGUMENT,
+                "noop buffer has no capacity for advance_mut",
+            ))
+        }
+    }
+
     fn clear(&mut self) {}
 
     fn freeze(self: Box<Self>) -> spark_core::Result<Box<dyn ReadableBuffer>, CoreError> {
@@ -46,6 +63,11 @@ impl WritableBuffer for NoopBuffer {
             "noop buffer does not support freeze",
         ))
     }
+}
+
+fn empty_mut_slice() -> &'static mut [MaybeUninit<u8>] {
+    static mut EMPTY: [MaybeUninit<u8>; 0] = [];
+    unsafe { &mut EMPTY[..] }
 }
 
 /// `TestAllocator` 始终返回零实现缓冲，用于构造上下文。

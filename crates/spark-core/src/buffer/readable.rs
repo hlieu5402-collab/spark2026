@@ -52,3 +52,36 @@ pub trait ReadableBuffer: Send + Sync + 'static + Sealed {
         self.remaining() == 0
     }
 }
+
+#[cfg(feature = "std")]
+impl bytes::Buf for dyn ReadableBuffer + Send + Sync + 'static {
+    fn remaining(&self) -> usize {
+        ReadableBuffer::remaining(self)
+    }
+
+    fn chunk(&self) -> &[u8] {
+        ReadableBuffer::chunk(self)
+    }
+
+    fn advance(&mut self, cnt: usize) {
+        if cnt == 0 {
+            return;
+        }
+        if let Err(err) = ReadableBuffer::advance(self, cnt) {
+            panic!("ReadableBuffer::advance failed: {:?}", err);
+        }
+    }
+
+    fn chunks_vectored<'a>(&'a self, dst: &mut [std::io::IoSlice<'a>]) -> usize {
+        if dst.is_empty() {
+            return 0;
+        }
+        let chunk = ReadableBuffer::chunk(self);
+        if chunk.is_empty() {
+            0
+        } else {
+            dst[0] = std::io::IoSlice::new(chunk);
+            1
+        }
+    }
+}

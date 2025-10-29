@@ -136,6 +136,8 @@ pub mod transport {
         sync::{Arc, Once},
     };
 
+    use bytes::Bytes;
+
     use anyhow::{Context, Result};
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
@@ -257,7 +259,7 @@ pub mod transport {
                 .accept(&ctx, tcp)
                 .await
                 .map_err(|err| anyhow!("TLS 握手失败: {err}"))?;
-            let mut buffer = vec![0u8; 512];
+            let mut buffer = Vec::with_capacity(512);
             let received = tls
                 .read(&ctx, &mut buffer)
                 .await
@@ -266,7 +268,8 @@ pub mod transport {
             observation.payload.extend_from_slice(&buffer[..received]);
             observation.server_name = tls.server_name().map(|name| name.to_string());
             observation.alpn = tls.alpn_protocol().map(|proto| proto.to_vec());
-            tls.write(&ctx, response)
+            let mut response_buf = Bytes::copy_from_slice(response);
+            tls.write(&ctx, &mut response_buf)
                 .await
                 .map_err(|err| anyhow!("TLS 服务端写入失败: {err}"))?;
             Ok::<_, anyhow::Error>(observation)
@@ -490,13 +493,14 @@ pub mod transport {
                     let connection = server.accept().await?;
                     while let Some(channel) = connection.accept_bi().await? {
                         let ctx = CallContext::builder().build();
-                        let mut buffer = vec![0u8; 1024];
+                        let mut buffer = Vec::with_capacity(1024);
                         let size = channel.read(&ctx, &mut buffer).await?;
                         let mut response = buffer[..size].to_vec();
                         response
                             .iter_mut()
                             .for_each(|byte| *byte = byte.to_ascii_uppercase());
-                        channel.write(&ctx, &response).await?;
+                        let mut response_buf = Bytes::from(response);
+                        channel.write(&ctx, &mut response_buf).await?;
                         channel.shutdown(&ctx, ShutdownDirection::Write).await?;
                     }
                     Ok::<(), CoreError>(())
@@ -521,15 +525,16 @@ pub mod transport {
                     Poll::Pending => panic!("poll_ready unexpectedly returned Pending"),
                     Poll::Ready(other) => panic!("unexpected ReadyCheck variant: {other:?}"),
                 }
+                let mut payload_buf = Bytes::copy_from_slice(payload);
                 channel
-                    .write(&ctx, payload)
+                    .write(&ctx, &mut payload_buf)
                     .await
                     .map_err(|err| anyhow!(err))?;
                 channel
                     .shutdown(&ctx, ShutdownDirection::Write)
                     .await
                     .map_err(|err| anyhow!(err))?;
-                let mut buffer = vec![0u8; 1024];
+                let mut buffer = Vec::with_capacity(1024);
                 let size = channel
                     .read(&ctx, &mut buffer)
                     .await

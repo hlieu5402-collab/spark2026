@@ -182,6 +182,7 @@ impl Codec for LineDelimitedCodec {
 mod tests {
     use super::*;
     use alloc::vec::Vec;
+    use core::mem::MaybeUninit;
     use spark_codecs::buffer::{BufferPool, PoolStats, ReadableBuffer, WritableBuffer};
     use spark_codecs::{DecodeContext, DecodeOutcome, EncodeContext};
 
@@ -255,6 +256,36 @@ mod tests {
             let segment = src.split_to(len)?;
             let chunk = segment.try_into_vec()?;
             self.data.extend_from_slice(&chunk);
+            Ok(())
+        }
+
+        fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+            if self.data.len() == self.data.capacity() {
+                // 触发增长以保证至少存在一个待写区域。
+                self.data.reserve(1);
+            }
+            let spare = self.data.capacity().saturating_sub(self.data.len());
+            if spare == 0 {
+                return empty_mut_slice();
+            }
+            unsafe {
+                let start = self.data.as_mut_ptr().add(self.data.len()) as *mut MaybeUninit<u8>;
+                core::slice::from_raw_parts_mut(start, spare)
+            }
+        }
+
+        fn advance_mut(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
+            let spare = self.data.capacity().saturating_sub(self.data.len());
+            if len > spare {
+                return Err(CoreError::new(
+                    "buffer.out_of_range",
+                    "advance_mut beyond remaining capacity",
+                ));
+            }
+            unsafe {
+                let new_len = self.data.len() + len;
+                self.data.set_len(new_len);
+            }
             Ok(())
         }
 
@@ -341,6 +372,11 @@ mod tests {
             let TestReadable { data, read } = *self;
             Ok(data[read..].to_vec())
         }
+    }
+
+    fn empty_mut_slice() -> &'static mut [MaybeUninit<u8>] {
+        static mut EMPTY: [MaybeUninit<u8>; 0] = [];
+        unsafe { &mut EMPTY[..] }
     }
 
     #[test]

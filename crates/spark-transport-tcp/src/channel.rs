@@ -3,6 +3,8 @@ use crate::{
     error::{self, CONFIGURE, FLUSH, map_io_error},
     util::{deadline_expired, deadline_remaining, run_with_context, to_socket_addr},
 };
+use bytes::{Buf, BufMut};
+use core::slice;
 use socket2::SockRef;
 use spark_core::prelude::{
     CallContext, Context, CoreError, PollReady, ReadyCheck, ReadyState, ShutdownDirection,
@@ -21,11 +23,8 @@ use std::{
     task::Poll,
     time::Duration,
 };
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream as TokioTcpStream,
-    sync::Mutex as AsyncMutex,
-};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::{net::TcpStream as TokioTcpStream, sync::Mutex as AsyncMutex};
 
 /// TCP 套接字级配置项，实现对内核行为的显式控制。
 ///
@@ -228,11 +227,29 @@ impl TcpChannel {
     pub async fn read(
         &self,
         ctx: &CallContext,
-        buf: &mut [u8],
+        buf: &mut (dyn BufMut + Send + Sync + 'static),
     ) -> spark_core::Result<usize, CoreError> {
         run_with_context(ctx, error::READ, async {
             let mut guard = self.inner.stream.lock().await;
-            guard.read(buf).await
+            let chunk = buf.chunk_mut();
+            if chunk.len() == 0 {
+                return Ok(0);
+            }
+            let raw =
+                unsafe { slice::from_raw_parts_mut(chunk.as_mut_ptr().cast::<u8>(), chunk.len()) };
+            match guard.read(raw).await {
+                Ok(size) => {
+                    if size == 0 {
+                        Ok(0)
+                    } else {
+                        unsafe {
+                            buf.advance_mut(size);
+                        }
+                        Ok(size)
+                    }
+                }
+                Err(err) => Err(err),
+            }
         })
         .await
     }
@@ -241,15 +258,29 @@ impl TcpChannel {
     pub async fn write(
         &self,
         ctx: &CallContext,
-        buf: &[u8],
+        buf: &mut (dyn Buf + Send + Sync + 'static),
     ) -> spark_core::Result<usize, CoreError> {
-        if buf.is_empty() {
+        if !buf.has_remaining() {
             return Ok(0);
         }
-        let len = buf.len();
         let written = run_with_context(ctx, error::WRITE, async {
             let mut guard = self.inner.stream.lock().await;
-            guard.write_all(buf).await.map(|_| len)
+            let mut total = 0usize;
+            while buf.has_remaining() {
+                let chunk = buf.chunk();
+                if chunk.is_empty() {
+                    break;
+                }
+                match guard.write(chunk).await {
+                    Ok(0) => break,
+                    Ok(size) => {
+                        buf.advance(size);
+                        total += size;
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+            Ok(total)
         })
         .await?;
         if let Ok(mut state) = self.inner.backpressure.lock() {
@@ -565,7 +596,7 @@ impl TransportConnectionTrait for TcpChannel {
     fn read<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::CallCtx<'ctx>,
-        buf: &'ctx mut [u8],
+        buf: &'ctx mut (dyn BufMut + Send + Sync + 'static),
     ) -> Self::ReadFuture<'ctx> {
         Box::pin(async move { TcpChannel::read(self, ctx, buf).await })
     }
@@ -573,7 +604,7 @@ impl TransportConnectionTrait for TcpChannel {
     fn write<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::CallCtx<'ctx>,
-        buf: &'ctx [u8],
+        buf: &'ctx mut (dyn Buf + Send + Sync + 'static),
     ) -> Self::WriteFuture<'ctx> {
         Box::pin(async move { TcpChannel::write(self, ctx, buf).await })
     }

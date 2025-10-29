@@ -15,6 +15,7 @@ spark-core = { workspace = true, features = ["std"] }
 spark-transport = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"], optional = true }
+bytes.workspace = true
 
 [features]
 default = ["runtime-tokio"]

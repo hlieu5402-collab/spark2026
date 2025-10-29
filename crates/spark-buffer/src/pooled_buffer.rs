@@ -1,6 +1,7 @@
 use alloc::{boxed::Box, format, sync::Arc, vec, vec::Vec};
 use core::{
     mem,
+    mem::MaybeUninit,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -193,6 +194,55 @@ impl BufferState {
             BufferState::ReadOnly(bytes) => bytes.to_vec(),
         }
     }
+
+    /// 返回当前剩余可写区域的裸视图。
+    fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        match self {
+            BufferState::Writable(buf) => {
+                // bytes::BufMut::chunk_mut 暴露的是 `UninitSlice`，其安全 API 不提供直接
+                // 访问 `MaybeUninit<u8>` 的方法。为了与 WritableBuffer 的返回类型对齐，
+                // 我们通过指针还原底层切片：
+                // 1. 取得切片长度与原始指针；
+                // 2. 使用 `from_raw_parts_mut` 将其视作 `MaybeUninit<u8>`；
+                // 3. 该转换不越界且保持未初始化区间，满足安全约束。
+                let chunk = buf.chunk_mut();
+                let len = chunk.len();
+                let ptr = chunk.as_mut_ptr().cast::<MaybeUninit<u8>>();
+                unsafe { core::slice::from_raw_parts_mut(ptr, len) }
+            }
+            BufferState::ReadOnly(_) => empty_chunk_mut(),
+        }
+    }
+
+    /// 推进写指针，告知内部有多少字节被初始化。
+    fn advance_mut(&mut self, len: usize) -> Result<(), CoreError> {
+        match self {
+            BufferState::Writable(buf) => {
+                let available = buf.chunk_mut().len();
+                if len > available {
+                    return Err(CoreError::new(
+                        codes::APP_INVALID_ARGUMENT,
+                        format!(
+                            "PooledBuffer::advance_mut 超出剩余可写空间：请求 {len}，实际 {available}",
+                        ),
+                    ));
+                }
+                unsafe {
+                    buf.advance_mut(len);
+                }
+                Ok(())
+            }
+            BufferState::ReadOnly(_) => Err(CoreError::new(
+                codes::APP_INVALID_ARGUMENT,
+                "PooledBuffer 已冻结，advance_mut 无效",
+            )),
+        }
+    }
+}
+
+fn empty_chunk_mut() -> &'static mut [MaybeUninit<u8>] {
+    static mut EMPTY: [MaybeUninit<u8>; 0] = [];
+    unsafe { &mut EMPTY[..] }
 }
 
 /// `PooledBuffer` 是面向池化场景的零拷贝缓冲。
@@ -436,6 +486,19 @@ impl WritableBuffer for PooledBuffer {
         let mut tmp = vec![0u8; len];
         src.copy_into_slice(&mut tmp)?;
         self.put_slice(&tmp)
+    }
+
+    fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        if self.is_writable() {
+            self.state.chunk_mut()
+        } else {
+            empty_chunk_mut()
+        }
+    }
+
+    fn advance_mut(&mut self, len: usize) -> Result<(), CoreError> {
+        self.require_writable("advance_mut")?;
+        self.state.advance_mut(len)
     }
 
     fn clear(&mut self) {

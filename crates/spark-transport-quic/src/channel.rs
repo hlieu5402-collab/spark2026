@@ -3,6 +3,7 @@ use crate::{
     error::{self, FLUSH},
     util::{deadline_expired, deadline_remaining, run_with_context},
 };
+use bytes::{Buf, BufMut};
 use futures::task::noop_waker_ref;
 use quinn::{Connection, RecvStream, SendStream, VarInt};
 use spark_core::prelude::{
@@ -91,18 +92,38 @@ impl QuicChannel {
     pub async fn read(
         &self,
         ctx: &CallContext,
-        buf: &mut [u8],
+        buf: &mut (dyn BufMut + Send + Sync + 'static),
     ) -> spark_core::Result<usize, CoreError> {
-        if buf.is_empty() {
-            return Ok(0);
-        }
         run_with_context(ctx, error::READ, async {
             let mut guard = self.inner.recv.lock().await;
-            match guard.read(buf).await {
-                Ok(Some(size)) => Ok(size),
-                Ok(None) => Ok(0),
-                Err(err) => Err(error::map_read_error(error::READ, err)),
+            let (size, capacity) = {
+                let chunk = buf.chunk_mut();
+                let capacity = chunk.len();
+                if capacity == 0 {
+                    (0, capacity)
+                } else {
+                    let raw = unsafe {
+                        core::slice::from_raw_parts_mut(chunk.as_mut_ptr().cast::<u8>(), capacity)
+                    };
+                    let size = match guard.read(raw).await {
+                        Ok(Some(size)) => size,
+                        Ok(None) => 0,
+                        Err(err) => return Err(error::map_read_error(error::READ, err)),
+                    };
+                    (size, capacity)
+                }
+            };
+            if size == 0 {
+                return Ok(0);
             }
+            debug_assert!(
+                size <= capacity,
+                "quinn read reported bytes beyond reserved chunk"
+            );
+            unsafe {
+                buf.advance_mut(size);
+            }
+            Ok(size)
         })
         .await
     }
@@ -110,19 +131,29 @@ impl QuicChannel {
     pub async fn write(
         &self,
         ctx: &CallContext,
-        buf: &[u8],
+        buf: &mut (dyn Buf + Send + Sync + 'static),
     ) -> spark_core::Result<usize, CoreError> {
-        if buf.is_empty() {
+        if !buf.has_remaining() {
             return Ok(0);
         }
-        let len = buf.len();
         let result = run_with_context(ctx, error::WRITE, async {
             let mut guard = self.inner.send.lock().await;
-            guard
-                .write_all(buf)
-                .await
-                .map_err(|err| error::map_write_error(error::WRITE, err))?;
-            Ok(len)
+            let mut total = 0usize;
+            while buf.has_remaining() {
+                let chunk = buf.chunk();
+                if chunk.is_empty() {
+                    break;
+                }
+                match guard.write(chunk).await {
+                    Ok(0) => break,
+                    Ok(size) => {
+                        buf.advance(size);
+                        total += size;
+                    }
+                    Err(err) => return Err(error::map_write_error(error::WRITE, err)),
+                }
+            }
+            Ok(total)
         })
         .await?;
 
@@ -289,7 +320,7 @@ impl TransportConnectionTrait for QuicChannel {
     fn read<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::CallCtx<'ctx>,
-        buf: &'ctx mut [u8],
+        buf: &'ctx mut (dyn BufMut + Send + Sync + 'static),
     ) -> Self::ReadFuture<'ctx> {
         Box::pin(async move { QuicChannel::read(self, ctx, buf).await })
     }
@@ -297,7 +328,7 @@ impl TransportConnectionTrait for QuicChannel {
     fn write<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::CallCtx<'ctx>,
-        buf: &'ctx [u8],
+        buf: &'ctx mut (dyn Buf + Send + Sync + 'static),
     ) -> Self::WriteFuture<'ctx> {
         Box::pin(async move { QuicChannel::write(self, ctx, buf).await })
     }

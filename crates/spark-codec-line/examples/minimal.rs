@@ -20,6 +20,8 @@
 //! - Mock 缓冲池采用堆分配，未做零拷贝优化；真实系统应替换为池化实现。
 //! - 错误路径统一返回 `CoreError`，便于与框架其他组件协同；示例中遇到 `DecodeOutcome::Incomplete` 会转换为错误退出。
 
+use core::mem::MaybeUninit;
+
 use spark_codec_line::LineDelimitedCodec;
 use spark_codecs::buffer::{BufferPool, PoolStats, ReadableBuffer, WritableBuffer};
 use spark_codecs::{Codec, CoreError, DecodeContext, DecodeOutcome, EncodeContext, codes};
@@ -155,6 +157,38 @@ impl WritableBuffer for VecWritableBuffer {
         Ok(())
     }
 
+    fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        if self.buf.len() == self.buf.capacity() {
+            self.buf.reserve(1);
+        }
+        let spare = self.buf.capacity().saturating_sub(self.buf.len());
+        if spare == 0 {
+            return empty_mut_slice();
+        }
+        unsafe {
+            let start = self.buf.as_mut_ptr().add(self.buf.len()) as *mut MaybeUninit<u8>;
+            core::slice::from_raw_parts_mut(start, spare)
+        }
+    }
+
+    fn advance_mut(&mut self, len: usize) -> spark_core::Result<(), CoreError> {
+        let spare = self.buf.capacity().saturating_sub(self.buf.len());
+        if len > spare {
+            return Err(CoreError::new(
+                codes::APP_INVALID_ARGUMENT,
+                format!(
+                    "advance_mut requested {} bytes but only {} spare",
+                    len, spare
+                ),
+            ));
+        }
+        unsafe {
+            let new_len = self.buf.len() + len;
+            self.buf.set_len(new_len);
+        }
+        Ok(())
+    }
+
     fn clear(&mut self) {
         // Why: 允许调用方重复利用缓冲。
         // How: 调用 `Vec::clear`，保留容量避免重复分配。
@@ -169,6 +203,11 @@ impl WritableBuffer for VecWritableBuffer {
         let data = mem::take(&mut this.buf);
         Ok(Box::new(VecReadableBuffer::from_vec(data)))
     }
+}
+
+fn empty_mut_slice() -> &'static mut [MaybeUninit<u8>] {
+    static mut EMPTY: [MaybeUninit<u8>; 0] = [];
+    unsafe { &mut EMPTY[..] }
 }
 
 /// 只读缓冲的最小实现，用于演示如何满足 `ReadableBuffer` 契约。

@@ -19,6 +19,7 @@ rustls = { workspace = true, default-features = false, features = ["std"], optio
 tokio-rustls = { workspace = true, optional = true }
 arc-swap = { workspace = true, optional = true }
 thiserror = { workspace = true }
+bytes.workspace = true
 
 [features]
 default = ["runtime-tokio"]
