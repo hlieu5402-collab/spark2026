@@ -20,6 +20,20 @@ mod factory;
 
 pub use factory::DefaultControllerFactory;
 
+pub use router::{
+    RouterContextSnapshot, RouterContextState, RouterHandler as LegacyRouterHandler,
+    load_router_context, store_router_context,
+};
+
+/// 教案级别别名说明：`LegacyRouterHandler`
+///
+/// - **意图（Why）**：保留早期 Router Handler 的最小实现，供仍依赖旧生命周期语义的调用方逐步迁移。
+/// - **契约（What）**：类型等价于 `router::RouterHandler`，主要承担扩展存储读写与对象路由桥接逻辑；
+///   由于 crate 根 re-export 为 `LegacyRouterHandler`，调用方在更新依赖时能直观识别其旧语义定位。
+/// - **逻辑（How）**：通过 `pub use router::RouterHandler as LegacyRouterHandler` 建立别名，避免与全新
+///   的 `router_handler::RouterHandler` 冲突，同时维持模块路径 `spark_pipeline::router::RouterHandler` 的可用性。
+/// - **风险（Trade-offs）**：别名强调“旧版”定位，提醒维护者未来在完全迁移后可考虑移除；当前做法牺牲
+///   了一些命名纯粹性，但换取向后兼容。
 
 mod router_handler;
 
