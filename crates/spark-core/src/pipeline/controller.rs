@@ -465,12 +465,22 @@ impl HandlerEntry {
     }
 
     /// 复用既有元数据构造替换节点。
-    fn with_replacement(id: ControllerHandleId, label: String, handler: Arc<dyn Handler>) -> Self {
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：当调用方通过 `replace_handler` 更新链路节点时，注册表应立即反映新 Handler 的自描述信息，
+    ///   避免旧标签与新实现不匹配造成观测混乱。
+    /// - **逻辑（How）**：忽略传入的历史标签，改为读取替换 Handler 的 [`MiddlewareDescriptor`]；
+    ///   将其中的 `name()` 作为最新标签写回注册表，同时克隆方向与入/出站实现，维持节点语义完整。
+    /// - **契约（What）**：调用前需确保替换 Handler 正确实现 `descriptor()`，否则注册表会退化为匿名标签；
+    ///   替换成功后，链路外部读取到的 label/descriptor 即与新 Handler 保持一致。
+    fn with_replacement(id: ControllerHandleId, _label: String, handler: Arc<dyn Handler>) -> Self {
         let direction = handler.direction();
+        let descriptor = handler.descriptor();
+        let label = descriptor.name().to_string();
         Self {
             id,
             label,
-            descriptor: handler.descriptor(),
+            descriptor,
             direction,
             inbound: handler.clone_inbound(),
             outbound: handler.clone_outbound(),
