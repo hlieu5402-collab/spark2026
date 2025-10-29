@@ -4,11 +4,11 @@ use crate::{
 };
 use core::slice;
 
-/// `ExecutionContext` 聚合一次执行路径上最关键的调用元数据：取消标记、截止时间与预算切片。
+/// `Context` 聚合一次执行路径上最关键的调用元数据：取消标记、截止时间与预算切片。
 ///
 /// # 设计初衷（Why）
 /// - 服务治理评审明确要求：所有对外公开的调用链必须显式携带“取消/截止/预算”三元组，
-///   以便在背压、超时与速率限制之间保持一致语义；`ExecutionContext` 即为这一约束的最小只读投影。
+///   以便在背压、超时与速率限制之间保持一致语义；`Context` 即为这一约束的最小只读投影。
 /// - `CallContext` 还包含安全、可观测性等重型信息。对于多数快速路径（如 `poll_ready`），
 ///   我们只需读取三元组即可决策，故将其抽离为独立视图，避免强迫实现者依赖整套上下文。
 ///
@@ -32,14 +32,23 @@ use core::slice;
 /// - 选择存储引用而非克隆预算，确保 `poll_ready` 等热路径零分配；但调用方需确保底层 `CallContext`
 ///   不会在视图仍存活时释放或突变；
 /// - 截止时间按值拷贝，避免引用生命周期过于复杂；若未来转向更大结构，可考虑 `Cow`。
+///
+/// # 生命周期与线程安全
+/// - `Context<'a>` 自身实现 `Copy`，可在单线程或多线程间按值复制；但引用字段要求调用方确保
+///   源 [`CallContext`] 在 `'a` 生命周期内保持有效；
+/// - 结构体未实现 `Send/Sync` 自动派生，是否跨线程共享取决于被借用的 `Cancellation` 与 `Budget`
+///   是否线程安全；默认场景下它们内部使用 `Arc`，可安全跨线程，但若上层引入自定义预算实现，
+///   需重新审视线程安全约束；
+/// - 若需要在线程池任务中长期持有上下文，请优先克隆 [`CallContext`] 后再派生新的 `Context`，
+///   避免底层数据过早释放导致悬垂引用。
 #[derive(Clone, Copy)]
-pub struct ExecutionContext<'a> {
+pub struct Context<'a> {
     cancellation: &'a Cancellation,
     deadline: Deadline,
     budgets: &'a [Budget],
 }
 
-impl<'a> ExecutionContext<'a> {
+impl<'a> Context<'a> {
     /// 构造执行上下文视图。
     ///
     /// # 参数说明
@@ -48,7 +57,7 @@ impl<'a> ExecutionContext<'a> {
     /// - `budgets`：预算数组的只读切片，通常由 `CallContext` 内部 `Vec` 提供。
     ///
     /// # 前置条件
-    /// - 调用方需保证 `budgets` 生命周期不少于 `ExecutionContext`；
+    /// - 调用方需保证 `budgets` 生命周期不少于 `Context`；
     /// - `cancellation` 引用必须有效且指向统一的取消状态。
     ///
     /// # 后置条件
@@ -105,7 +114,7 @@ impl<'a> ExecutionContext<'a> {
     }
 }
 
-impl<'a> From<&'a CallContext> for ExecutionContext<'a> {
+impl<'a> From<&'a CallContext> for Context<'a> {
     /// 从完整的 [`CallContext`] 派生执行视图。
     ///
     /// # 逻辑说明
@@ -119,3 +128,9 @@ impl<'a> From<&'a CallContext> for ExecutionContext<'a> {
         }
     }
 }
+
+#[deprecated(
+    since = "0.1.0",
+    note = "removal: planned for 0.3.0; migration: 将 `ExecutionContext` 全量替换为 `Context` 并更新相关导入路径。"
+)]
+pub type ExecutionContext<'a> = Context<'a>;

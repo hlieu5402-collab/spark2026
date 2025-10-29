@@ -2,7 +2,7 @@ use spark_core::contract::{
     Budget, BudgetKind, CallContext, Cancellation, Deadline, ObservabilityContract,
     SecurityContextSnapshot,
 };
-use spark_core::context::ExecutionContext;
+use spark_core::context::Context;
 
 /// 验证构建器在未提供预算时会自动注入无限 Flow 预算，满足幂等契约。
 ///
@@ -35,7 +35,7 @@ fn call_context_injects_default_flow_budget() {
 ///
 /// # 测试目标（Why）
 /// - 确保 `CallContext` 保留调用方提供的所有信息，便于跨模块共享；
-/// - 验证 `ExecutionContext` 视图引用同一取消原语与预算切片，保持零拷贝；
+/// - 验证 `Context` 视图引用同一取消原语与预算切片，保持零拷贝；
 /// - 检查安全与可观测性契约在构建后可通过访问器读取。
 ///
 /// # 测试步骤（How）
@@ -46,7 +46,7 @@ fn call_context_injects_default_flow_budget() {
 ///
 /// # 输入/输出契约（What）
 /// - **前置条件**：调用方提供的各项输入均有效；
-/// - **后置条件**：`CallContext` 与 `ExecutionContext` 均可读取到相同的数据；
+/// - **后置条件**：`CallContext` 与 `Context` 均可读取到相同的数据；
 /// - **风险提示**：若引用未共享，将导致视图读取到过期或不一致的状态。
 #[test]
 fn call_context_preserves_inputs_and_execution_view() {
@@ -100,7 +100,7 @@ fn call_context_preserves_inputs_and_execution_view() {
     let observability_ref = ctx.observability();
     assert_eq!(observability_ref.metric_names(), &["metric.a"]);
 
-    let exec: ExecutionContext<'_> = ctx.execution();
+    let exec: Context<'_> = ctx.execution();
     assert!(
         exec.cancellation().is_cancelled(),
         "执行视图应共享取消状态"

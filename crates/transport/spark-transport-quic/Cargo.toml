@@ -24,6 +24,10 @@ default = ["runtime-tokio"]
 runtime-tokio = ["dep:tokio", "dep:quinn", "dep:quinn-proto", "dep:futures"]
 batch-udp-unix = ["runtime-tokio", "dep:socket2"]
 
+[dev-dependencies]
+rcgen = { workspace = true }
+rustls-pki-types = { workspace = true }
+
 [dependencies.socket2]
 workspace = true
 optional = true

@@ -3,9 +3,10 @@ use crate::{
     error::{self, map_io_error},
     util::{deadline_expired, run_with_context, to_socket_addr},
 };
-use spark_core::prelude::{CallContext, CoreError, ExecutionContext, TransportSocketAddr};
+use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use spark_transport::{ShutdownDirection, TransportListener as TransportListenerTrait};
-use std::pin::Pin;
+use std::boxed::Box;
+use std::{future::Future, pin::Pin, time::Duration};
 use tokio::net::TcpListener as TokioTcpListener;
 
 /// 对 Tokio `TcpListener` 的语义封装。
@@ -39,11 +40,38 @@ use tokio::net::TcpListener as TokioTcpListener;
 pub struct TcpListener {
     inner: TokioTcpListener,
     local_addr: TransportSocketAddr,
+    default_config: TcpSocketConfig,
 }
 
 impl TcpListener {
     /// 绑定到指定地址并返回监听器。
     pub async fn bind(addr: TransportSocketAddr) -> spark_core::Result<Self, CoreError> {
+        Self::bind_with_config(addr, TcpSocketConfig::default()).await
+    }
+
+    /// 绑定到指定地址并设置默认的套接字配置。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 支持在监听阶段就指定新连接的默认 `TcpSocketConfig`（例如 `SO_LINGER`），保证服务端在大量连接场景下仍能保持一致的关闭策略；
+    /// - 作为 Builder 模式的实际落地入口，让 `TcpListenerBuilder` 可以在构造时一次性注入介质特有配置。
+    ///
+    /// ## 契约（What）
+    /// - `addr`：监听的传输地址；
+    /// - `default_config`：后续 `accept` 默认应用的 [`TcpSocketConfig`]；
+    /// - 返回：成功初始化的 [`TcpListener`]；失败时返回结构化 [`CoreError`]，错误码与原 `bind` 保持一致；
+    /// - **前置条件**：调用方需在 Tokio 运行时中执行；
+    /// - **后置条件**：`TcpListener::default_socket_config` 返回的配置即为传入值。
+    ///
+    /// ## 逻辑（How）
+    /// - 将 `TransportSocketAddr` 转换为标准库地址，调用 Tokio `bind`；
+    /// - 读取实际绑定地址并封装为 `TransportSocketAddr`；
+    /// - 缓存 `default_config`，供后续 `accept` 克隆使用。
+    pub async fn bind_with_config(
+        addr: TransportSocketAddr,
+        default_config: TcpSocketConfig,
+    ) -> spark_core::Result<Self, CoreError> {
         let socket_addr = to_socket_addr(addr);
         let listener = TokioTcpListener::bind(socket_addr)
             .await
@@ -54,6 +82,7 @@ impl TcpListener {
         Ok(Self {
             inner: listener,
             local_addr: TransportSocketAddr::from(local),
+            default_config,
         })
     }
 
@@ -62,12 +91,28 @@ impl TcpListener {
         self.local_addr
     }
 
+    /// 读取监听器为后续 `accept` 预设的默认套接字配置。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 让运维或测试在运行时快速确认新连接将继承的 `TcpSocketConfig`，避免逐个检查内核选项；
+    /// - 方便 Builder 与监听器之间共享状态：`TcpListenerBuilder` 设置的配置即可通过本方法验证。
+    ///
+    /// ## 契约（What）
+    /// - 返回值为 [`TcpSocketConfig`] 的只读引用，反映 `bind` 阶段指定的默认值；
+    /// - **前置条件**：监听器已通过 [`TcpListener::bind`] 或 [`TcpListener::bind_with_config`] 成功初始化；
+    /// - **后置条件**：函数不会触发 I/O，也不会修改监听器内部状态。
+    pub fn default_socket_config(&self) -> &TcpSocketConfig {
+        &self.default_config
+    }
+
     /// 接受一个入站连接，并根据上下文处理取消/超时。
     pub async fn accept(
         &self,
         ctx: &CallContext,
     ) -> spark_core::Result<(TcpChannel, TransportSocketAddr), CoreError> {
-        self.accept_with_config(ctx, TcpSocketConfig::default())
+        self.accept_with_config(ctx, self.default_config.clone())
             .await
     }
 
@@ -122,10 +167,80 @@ impl TcpListener {
     }
 }
 
+/// `TcpListener` 的建造器，实现介质选项的下沉配置。
+///
+/// # 教案级注释
+///
+/// ## 意图（Why）
+/// - 提供 Builder 模式以传递 `TcpSocketConfig` 等介质特有选项，确保宿主只依赖 `TransportBuilder` 抽象即可装配 TCP 监听器；
+/// - 支持在启动前一次性设定默认的 `SO_LINGER` 或其他套接字行为，避免在业务层重复操作 `socket2`。
+///
+/// ## 契约（What）
+/// - `new`：以监听地址创建 Builder，默认配置等同于 [`TcpSocketConfig::default`]；
+/// - `with_default_socket_config`：显式替换默认配置；
+/// - `with_linger`：提供常见的快捷设置；
+/// - `build`：遵循 [`TransportBuilder`] 契约，若 `ExecutionContext` 已取消则立即返回取消错误，否则调用 [`TcpListener::bind_with_config`]。
+///
+/// ## 风险提示（Trade-offs）
+/// - Builder 被消费后无法复用，若需不同配置请分别构建；
+/// - 当前仅封装 `linger`，后续扩展需保持方法命名一致性，以便阅读者快速识别。
+#[derive(Clone, Debug)]
+pub struct TcpListenerBuilder {
+    addr: TransportSocketAddr,
+    default_config: TcpSocketConfig,
+}
+
+impl TcpListenerBuilder {
+    /// 基于监听地址创建 Builder。
+    pub fn new(addr: TransportSocketAddr) -> Self {
+        Self {
+            addr,
+            default_config: TcpSocketConfig::default(),
+        }
+    }
+
+    /// 覆盖默认的套接字配置。
+    pub fn with_default_socket_config(mut self, config: TcpSocketConfig) -> Self {
+        self.default_config = config;
+        self
+    }
+
+    /// 便捷设置 `SO_LINGER`。
+    pub fn with_linger(mut self, linger: Option<Duration>) -> Self {
+        self.default_config = self.default_config.clone().with_linger(linger);
+        self
+    }
+}
+
+impl TransportBuilder for TcpListenerBuilder {
+    type Output = TcpListener;
+
+    type BuildFuture<'ctx>
+        = Pin<Box<dyn Future<Output = spark_core::Result<Self::Output, CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx;
+
+    fn scheme(&self) -> &'static str {
+        "tcp"
+    }
+
+    fn build<'ctx>(self, ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+        let cancelled = ctx.cancellation().is_cancelled();
+        let addr = self.addr;
+        let config = self.default_config;
+        Box::pin(async move {
+            if cancelled {
+                return Err(error::cancelled_error(error::BIND));
+            }
+            TcpListener::bind_with_config(addr, config).await
+        })
+    }
+}
+
 impl TransportListenerTrait for TcpListener {
     type Error = CoreError;
     type AcceptCtx<'ctx> = CallContext;
-    type ShutdownCtx<'ctx> = ExecutionContext<'ctx>;
+    type ShutdownCtx<'ctx> = Context<'ctx>;
     type Connection = TcpChannel;
 
     type AcceptFuture<'ctx>
@@ -174,4 +289,25 @@ fn _assert_tcp_transport_listener()
 where
     TcpListener: TransportListenerTrait<Error = CoreError, Connection = TcpChannel>,
 {
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use spark_core::{contract::CallContext, transport::TransportSocketAddr};
+    use std::net::SocketAddr;
+
+    /// 验证 `TcpListenerBuilder` 能够将自定义的 `linger` 配置写入监听器默认配置。
+    #[tokio::test(flavor = "multi_thread")]
+    async fn builder_applies_default_config() {
+        let addr: SocketAddr = "127.0.0.1:0".parse().expect("parse addr");
+        let linger = Some(Duration::from_secs(2));
+        let listener = TcpListenerBuilder::new(TransportSocketAddr::from(addr))
+            .with_linger(linger)
+            .build(&CallContext::builder().build().execution())
+            .await
+            .expect("build listener");
+
+        assert_eq!(listener.default_socket_config().linger(), linger);
+    }
 }

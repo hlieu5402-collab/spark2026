@@ -24,4 +24,6 @@
 
 pub mod sugar;
 
-pub use sugar::{CallContext, ContextCaps, RuntimeCaps, spawn_in};
+#[allow(deprecated)]
+pub use sugar::ContextCaps;
+pub use sugar::{CallContext, PipelineContextCaps, RuntimeCaps, spawn_in};

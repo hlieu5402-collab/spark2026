@@ -15,7 +15,7 @@
 
 use core::{
     future::{Ready, ready},
-    task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+    task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
 use std::{
@@ -29,7 +29,7 @@ use std::{
 use spark_core::{
     SparkError,
     buffer::PipelineMessage,
-    context::ExecutionContext,
+    context::Context as ExecutionView,
     contract::CallContext,
     service::{Service, bridge_to_box_service},
     status::{BusyReason, ReadyCheck, ReadyState, RetryAdvice, SubscriptionBudget},
@@ -116,8 +116,8 @@ impl Service<PipelineMessage> for MatrixReadyService {
 
     fn poll_ready(
         &mut self,
-        _ctx: &ExecutionContext<'_>,
-        cx: &mut Context<'_>,
+        _ctx: &ExecutionView<'_>,
+        cx: &mut TaskContext<'_>,
     ) -> spark_core::status::PollReady<Self::Error> {
         {
             let mut slot = self.pending.state.lock().expect("pending mutex poisoned");
@@ -225,7 +225,7 @@ fn drive_generic_path(case: &TransitionCase) {
 
     let wake_flag = Arc::new(AtomicBool::new(false));
     let waker = flag_waker(wake_flag.clone());
-    let mut cx = Context::from_waker(&waker);
+    let mut cx = TaskContext::from_waker(&waker);
 
     let mut observed = Vec::new();
     let mut pending_seen = false;
@@ -287,7 +287,7 @@ fn drive_dynamic_path(case: &TransitionCase) {
 
     let wake_flag = Arc::new(AtomicBool::new(false));
     let waker = flag_waker(wake_flag.clone());
-    let mut cx = Context::from_waker(&waker);
+    let mut cx = TaskContext::from_waker(&waker);
 
     let mut observed = Vec::new();
     let mut pending_seen = false;

@@ -124,6 +124,8 @@ pub use configuration::{
     SnapshotLayer, SnapshotMetadata, SnapshotProfile, SnapshotValue, SourceMetadata,
     ValidationFinding, ValidationReport, ValidationState,
 };
+pub use context::Context;
+#[allow(deprecated)]
 pub use context::ExecutionContext;
 pub use contract::{
     CallContext, CallContextBuilder, Cancellation, DEFAULT_OBSERVABILITY_CONTRACT, Deadline,
@@ -209,8 +211,9 @@ pub use transport::{
     DynServerTransport, DynTransportFactory, Endpoint, EndpointKind, HandshakeError,
     HandshakeErrorKind, HandshakeOffer, HandshakeOutcome, ListenerConfig, ListenerShutdown,
     NegotiationAuditContext, QualityOfService, SecurityMode, ServerTransport,
-    ServerTransportObject, SessionLifecycle, TransportFactory, TransportFactoryObject,
-    TransportParams, TransportSocketAddr, Version, describe_shutdown_target, negotiate,
+    ServerTransportObject, SessionLifecycle, TransportBuilder, TransportFactory,
+    TransportFactoryObject, TransportParams, TransportSocketAddr, Version,
+    describe_shutdown_target, negotiate,
 };
 
 use alloc::boxed::Box;

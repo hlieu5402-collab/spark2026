@@ -18,7 +18,7 @@ use crate::{BackpressureDecision, BackpressureMetrics, ShutdownDirection, Transp
 ///
 /// ## 契约说明（What）
 /// - `CallCtx<'ctx>`：读写操作使用的上下文类型（如 `CallContext`）。
-/// - `ReadyCtx<'ctx>`：背压/就绪检查使用的上下文类型（如 `ExecutionContext<'ctx>`）。
+/// - `ReadyCtx<'ctx>`：背压/就绪检查使用的上下文类型（如 `Context<'ctx>`）。
 /// - `read`/`write`/`shutdown` 返回 `Future`，继承上下文的取消与预算；
 /// - `classify_backpressure` 将内部状态转换为 [`BackpressureDecision`]；
 /// - `peer_addr`/`local_addr` 返回结构化地址，若实现无该信息可返回 `None`。

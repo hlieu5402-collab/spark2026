@@ -1,4 +1,4 @@
-use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use bytes::BytesMut;

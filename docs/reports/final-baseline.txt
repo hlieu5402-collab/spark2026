@@ -10,13 +10,13 @@ $ rg -n -i 'Busy\s*\(\s*.*Budget'
 tools/ci/check_consistency.sh:289:#   2. 发现 `Busy(` 后跟踪括号深度，仅在该调用作用域内搜寻 `Budget`/`BudgetExhausted`；
 tools/ci/check_consistency.sh:299:#   - 若业务使用 `let budget = ...; ReadyState::Busy(budget.into())` 且 `into` 内部才引用 `Budget`，
 
-$ rg -n "fn .*\\(.*&ExecutionContext" crates/spark-core/src/transport/traits
-crates/spark-core/src/transport/traits/object.rs:54:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
-crates/spark-core/src/transport/traits/object.rs:110:    fn local_addr_dyn(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr {
-crates/spark-core/src/transport/traits/object.rs:160:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str;
-crates/spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &ExecutionContext<'_>) -> &'static str {
-crates/spark-core/src/transport/traits/generic.rs:60:    fn local_addr(&self, ctx: &ExecutionContext<'_>) -> TransportSocketAddr;
-crates/spark-core/src/transport/traits/generic.rs:140:    fn scheme(&self, ctx: &ExecutionContext<'_>) -> &'static str;
+$ rg -n "fn .*\\(.*&Context" crates/spark-core/src/transport/traits
+crates/spark-core/src/transport/traits/object.rs:54:    fn local_addr_dyn(&self, ctx: &Context<'_>) -> TransportSocketAddr;
+crates/spark-core/src/transport/traits/object.rs:110:    fn local_addr_dyn(&self, ctx: &Context<'_>) -> TransportSocketAddr {
+crates/spark-core/src/transport/traits/object.rs:160:    fn scheme_dyn(&self, ctx: &Context<'_>) -> &'static str;
+crates/spark-core/src/transport/traits/object.rs:243:    fn scheme_dyn(&self, ctx: &Context<'_>) -> &'static str {
+crates/spark-core/src/transport/traits/generic.rs:60:    fn local_addr(&self, ctx: &Context<'_>) -> TransportSocketAddr;
+crates/spark-core/src/transport/traits/generic.rs:140:    fn scheme(&self, ctx: &Context<'_>) -> &'static str;
 
 $ cargo fmt --all --check
 

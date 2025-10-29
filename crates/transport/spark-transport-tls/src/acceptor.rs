@@ -2,8 +2,11 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use rustls::ServerConfig;
-use spark_core::prelude::{CallContext, CoreError};
+use spark_core::{
+    CoreError, context::ExecutionContext, prelude::CallContext, transport::TransportBuilder,
+};
 use spark_transport_tcp::TcpChannel;
+use std::{future::Future, pin::Pin};
 use tokio_rustls::TlsAcceptor as TokioTlsAcceptor;
 
 use crate::{channel::TlsChannel, error, util::run_with_context};
@@ -74,5 +77,35 @@ impl TlsAcceptor {
         )
         .await?;
         Ok(TlsChannel::new(stream, parts.local_addr, parts.peer_addr))
+    }
+}
+
+/// `TlsAcceptor` 的建造器，支持在 Builder 模式下注入初始配置。
+pub struct TlsAcceptorBuilder {
+    config: Arc<ServerConfig>,
+}
+
+impl TlsAcceptorBuilder {
+    /// 使用 `Arc<ServerConfig>` 构建 Builder。
+    pub fn new(config: Arc<ServerConfig>) -> Self {
+        Self { config }
+    }
+}
+
+impl TransportBuilder for TlsAcceptorBuilder {
+    type Output = TlsAcceptor;
+
+    type BuildFuture<'ctx>
+        = Pin<Box<dyn Future<Output = spark_core::Result<Self::Output, CoreError>> + Send + 'ctx>>
+    where
+        Self: 'ctx;
+
+    fn scheme(&self) -> &'static str {
+        "tls"
+    }
+
+    fn build<'ctx>(self, _ctx: &'ctx ExecutionContext<'ctx>) -> Self::BuildFuture<'ctx> {
+        let config = self.config;
+        Box::pin(async move { Ok(TlsAcceptor::new(config)) })
     }
 }

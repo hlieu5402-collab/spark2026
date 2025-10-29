@@ -50,5 +50,5 @@ mod util;
 #[cfg(feature = "runtime-tokio")]
 pub use channel::QuicChannel;
 #[cfg(feature = "runtime-tokio")]
-pub use endpoint::{QuicConnection, QuicEndpoint};
+pub use endpoint::{QuicConnection, QuicEndpoint, QuicEndpointBuilder};
 pub use spark_core::transport::ShutdownDirection;
