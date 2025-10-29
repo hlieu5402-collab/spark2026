@@ -14,7 +14,7 @@ use spark_core::pipeline::controller::{
     ControllerHandleId, HotSwapController, handler_from_inbound,
 };
 use spark_core::pipeline::handler::InboundHandler;
-use spark_core::pipeline::{Channel, Controller, ExtensionsMap};
+use spark_core::pipeline::{Channel, Controller, ExtensionsMap, middleware::MiddlewareDescriptor};
 use spark_core::runtime::{
     AsyncRuntime, CoreServices, MonotonicTimePoint, TaskCancellationStrategy, TaskExecutor,
     TaskHandle, TaskResult, TimeDriver,
@@ -22,6 +22,7 @@ use spark_core::runtime::{
 use spark_core::test_stubs::observability::{NoopLogger, NoopMetricsProvider};
 use std::any::TypeId;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::{Arc, Barrier, OnceLock};
 use std::task::{Context as TaskContext, Poll};
 use std::thread;
@@ -394,6 +395,14 @@ impl RecordingInbound {
 }
 
 impl InboundHandler for RecordingInbound {
+    fn describe(&self) -> MiddlewareDescriptor {
+        MiddlewareDescriptor::new(
+            self.name,
+            "tck.hot-swap",
+            "records pipeline events for hot swap verification",
+        )
+    }
+
     fn on_channel_active(&self, _ctx: &dyn spark_core::pipeline::Context) {}
 
     fn on_read(&self, ctx: &dyn spark_core::pipeline::Context, msg: PipelineMessage) {
@@ -436,6 +445,7 @@ struct BlockingRecordingInbound {
     events: Arc<Mutex<Vec<String>>>,
     start: Arc<Barrier>,
     release: Arc<Barrier>,
+    first_gate_consumed: AtomicBool,
 }
 
 impl BlockingRecordingInbound {
@@ -443,7 +453,8 @@ impl BlockingRecordingInbound {
     ///
     /// # 教案式说明
     /// - **意图 (Why)**：测试需要在 Handler 正在执行时插入新的链路节点，因此使用栅栏挂起执行线程，便于主线程观察并发窗口。
-    /// - **逻辑 (How)**：`start` 栅栏用于通知主线程“已进入 Handler”；`release` 栅栏控制何时继续转发消息。
+    /// - **逻辑 (How)**：`start` 栅栏用于通知主线程“已进入 Handler”；`release` 栅栏控制何时继续转发消息；
+    ///   借助 `AtomicBool` 确保仅首条消息触发双栅栏同步，后续消息不再阻塞测试线程。
     /// - **契约 (What)**：调用方需保证两个栅栏的参与者均为 2（主线程 + 读线程），否则将导致永久阻塞。
     fn new(
         name: &'static str,
@@ -456,11 +467,20 @@ impl BlockingRecordingInbound {
             events,
             start,
             release,
+            first_gate_consumed: AtomicBool::new(false),
         }
     }
 }
 
 impl InboundHandler for BlockingRecordingInbound {
+    fn describe(&self) -> MiddlewareDescriptor {
+        MiddlewareDescriptor::new(
+            self.name,
+            "tck.hot-swap",
+            "blocking recorder used for epoch barrier assertions",
+        )
+    }
+
     fn on_channel_active(&self, _ctx: &dyn spark_core::pipeline::Context) {}
 
     fn on_read(&self, ctx: &dyn spark_core::pipeline::Context, msg: PipelineMessage) {
@@ -471,8 +491,11 @@ impl InboundHandler for BlockingRecordingInbound {
                         .lock()
                         .push(format!("{}:{}", self.name, user.id));
                 }
-                self.start.wait();
-                self.release.wait();
+                if !self.first_gate_consumed.swap(true, AtomicOrdering::AcqRel) {
+                    // 仅在首条消息上构造并发窗口，以验证栅栏语义；后续消息保持直通，避免测试线程再次阻塞。
+                    self.start.wait();
+                    self.release.wait();
+                }
                 ctx.forward_read(PipelineMessage::from_user(user));
             }
             Err(other) => ctx.forward_read(other),

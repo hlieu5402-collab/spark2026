@@ -19,6 +19,13 @@ use spark_core::router::traits::object::{DynRouter, RouteBindingObject, RouteDec
 use spark_core::service::BoxService;
 use spark_core::{SparkError, buffer::PipelineMessage};
 
+pub mod pipeline;
+
+pub use pipeline::{
+    ExtensionsRoutingContextBuilder, RouterContextSnapshot, RouterContextState, RouterHandler,
+    RoutingContextBuilder, RoutingContextParts, load_router_context, store_router_context,
+};
+
 /// `ServiceFactory` 定义路由表中“如何按需生成对象层 Service” 的抽象。
 ///
 /// # 设计初衷（Why）
