@@ -29,8 +29,17 @@ const COMPOUND_PACKET: [u8; 96] = [
 /// 首分组非报告类型的最小化 RTCP 报文。
 const BYE_ONLY: [u8; 4] = [0x80, 0xCB, 0x00, 0x00];
 
-#[test]
-fn parse_sr_sdes_bye_compound() {
+/// 解析 SR+SDES+BYE 复合报文并逐字段校验，验证复合报文处理逻辑。
+///
+/// # 教案式说明
+/// - **意图（Why）**：确保 `parse_rtcp` 能正确拆解符合 RFC 3550 的复合报文，
+///   否则统计数据将因字段解析错误而产生偏差。
+/// - **流程（How）**：调用解析函数得到分组数组，针对 SR、SDES、BYE 各自断言关键字段。
+/// - **契约（What）**：函数无参，若断言失败会 panic；成功表示解析逻辑满足契约。
+///   - 前置条件：调用方需在 `std` 环境运行（复用解析器依赖的分配）；
+///   - 后置条件：若无 panic，则保证解析器至少支持包含 SR、SDES、BYE 的复合报文。
+/// - **边界考量（Trade-offs）**：示例报文覆盖常见字段，若要验证扩展项需要额外测试。
+pub fn assert_parse_sr_sdes_bye_compound() {
     let packets = parse_rtcp(&COMPOUND_PACKET[..]).expect("解析 SR+SDES+BYE 复合报文应成功");
     assert_eq!(packets.len(), 3, "复合报文应包含 3 个分组");
 
@@ -83,12 +92,35 @@ fn parse_sr_sdes_bye_compound() {
     }
 }
 
-#[test]
-fn reject_compound_without_report() {
+/// 检验当复合报文首分组不是报告类时是否返回 `FirstPacketNotReport` 错误。
+///
+/// # 教案式说明
+/// - **意图（Why）**：RFC 3550 要求复合报文以 SR/RR 开头，若实现忽略该规则可能导致安全漏洞。
+/// - **流程（How）**：将仅包含 BYE 的报文输入解析函数，并断言错误类型。
+/// - **契约（What）**：出错时应准确返回 `RtcpError::FirstPacketNotReport`，便于调用方据此拒绝报文。
+///   - 前置条件：解析器应处于默认配置；
+///   - 后置条件：若 `parse_rtcp` 返回其他错误，TCK 将 panic，提醒实现者补齐校验分支。
+/// - **边界考量（Trade-offs）**：测试仅覆盖首分组违规场景，后续可扩展至长度/对齐异常。
+pub fn assert_reject_compound_without_report() {
     let error = parse_rtcp(&BYE_ONLY[..]).expect_err("首分组不是报告时应触发错误");
     assert_eq!(
         error,
         RtcpError::FirstPacketNotReport { packet_type: 203 },
         "需返回明确的 FirstPacketNotReport 错误"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{assert_parse_sr_sdes_bye_compound, assert_reject_compound_without_report};
+
+    #[test]
+    fn parse_sr_sdes_bye_compound() {
+        assert_parse_sr_sdes_bye_compound();
+    }
+
+    #[test]
+    fn reject_compound_without_report() {
+        assert_reject_compound_without_report();
+    }
 }

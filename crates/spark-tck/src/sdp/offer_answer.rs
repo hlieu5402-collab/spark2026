@@ -16,12 +16,17 @@ use spark_codec_sdp::{
 
 /// 当本地偏好 PCMU 且 offer 同时给出 PCMU/PCMA 时，应优先选择 PCMU。
 ///
-/// ### 预期行为（What）
-/// - 解析成功；
-/// - 回答计划存在音频分支，并被接受；
-/// - 选中负载类型为 0，编解码器为 PCMU。
-#[test]
-fn basic_pcm() {
+/// # 教案式说明
+/// - **意图（Why）**：确认 `apply_offer_answer` 在面对多种常用语音编解码时遵循“本地偏好优先”的协商策略，
+///   避免在生产中选择错误的负载类型导致媒体兼容问题。
+/// - **流程（How）**：解析示例 offer，使用同时开启 PCMU/PCMA 的本地能力运行协商，断言最终计划中的音频
+///   分支被接受且匹配 PCMU（负载 0）。
+/// - **契约（What）**：函数无输入参数、无返回值；若断言失败将 panic，从而使集成该函数的 TCK 立即报错。
+///   - 前置条件：调用方需保证 SDP 编解码器以 std 环境编译（用于字符串处理）。
+///   - 后置条件：若无 panic，则保证协商结果中的音频分支被接受且 `payload_type == 0`。
+/// - **边界考量（Trade-offs）**：采用最小报文示例，若未来支持更多 codec，需要扩展示例以覆盖权衡。
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn assert_basic_pcm() {
     let offer = parse_sdp(
         "v=0\r\n\
          o=- 0 0 IN IP4 192.0.2.1\r\n\
@@ -52,11 +57,17 @@ fn basic_pcm() {
 
 /// 当本地愿意协商 DTMF 时，应能够解析 `telephone-event` 的 `rtpmap` 与 `fmtp`。
 ///
-/// ### 预期行为（What）
-/// - 回答计划中的 DTMF 配置存在，事件范围与采样率与 offer 一致；
-/// - 即便 offer 未提供 PCMA，本地也能在仅支持 PCMU 的情况下完成协商。
-#[test]
-fn negotiate_dtmf() {
+/// # 教案式说明
+/// - **意图（Why）**：验证实现正确识别 RFC 4733 的电话事件协商，确保开启 DTMF 能力后不会遗漏 `fmtp`
+///   中的事件范围配置。
+/// - **流程（How）**：构造包含动态负载 101 的 offer，启用本地 DTMF 能力，随后断言回答计划记录了 payload、
+///   采样率与事件范围。
+/// - **契约（What）**：函数 panic 代表协商逻辑违反契约；无返回值。
+///   - 前置条件：需在测试环境中启用 `dtmf` 能力，且本地至少支持 PCMU。
+///   - 后置条件：成功返回意味着回答计划中的 DTMF 部分拥有正确的 payload、采样率与事件范围。
+/// - **边界考量（Trade-offs）**：场景忽略 `ptime` 等附加属性，若实现依赖这些字段需在 TCK 中补充。
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn assert_negotiate_dtmf() {
     let offer = parse_sdp(
         "v=0\r\n\
          o=- 0 0 IN IP4 198.51.100.1\r\n\
@@ -84,5 +95,20 @@ fn negotiate_dtmf() {
             assert_eq!(dtmf.events, "0-15");
         }
         AudioAnswer::Rejected => panic!("audio should be accepted"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{assert_basic_pcm, assert_negotiate_dtmf};
+
+    #[test]
+    fn basic_pcm() {
+        assert_basic_pcm();
+    }
+
+    #[test]
+    fn negotiate_dtmf() {
+        assert_negotiate_dtmf();
     }
 }
