@@ -486,6 +486,8 @@ covers = [
   "spark_core::error::IntoCoreError",
   "spark_core::error::IntoDomainError",
   "spark_core::error::SparkError",
+  "spark_core::error::ErrorTelemetryView",
+  "spark_core::error::observability::ErrorTelemetryView",
   "spark_core::error::category_matrix::BudgetDisposition",
   "spark_core::error::category_matrix::BusyDisposition",
   "spark_core::error::category_matrix::CategoryMatrixEntry",

@@ -11,6 +11,56 @@
 - **适用范围**：标记该键应用于指标、日志、追踪或运维事件；
 - **更新流程**：修改合约后同步运行生成器，并提交代码与文档。
 
+## attributes.error — 错误观测属性键
+
+> 跨指标/日志/追踪复用的错误标签集合，匹配 CoreError 契约。
+
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ATTR_BUDGET_KIND` | 指标/日志键 | 指标、日志 | `error.budget.kind` | 资源耗尽类错误关联的预算类型。 |
+| `ATTR_BUSY_DIRECTION` | 指标/日志键 | 指标、日志 | `error.busy.direction` | 重试类错误导致的繁忙方向（上游/下游）。 |
+| `ATTR_CATEGORY` | 指标/日志键 | 指标、日志、追踪 | `error.category` | 错误分类名称，与 ErrorCategory 变体一一对应。 |
+| `ATTR_CODE` | 指标/日志键 | 指标、日志、追踪 | `error.code` | 稳定错误码，遵循 <域>.<语义> 约定。 |
+| `ATTR_KIND` | 指标/日志键 | 指标、日志、追踪 | `error.kind` | 稳定错误类别标签，用于聚合错误趋势。 |
+| `ATTR_RETRYABLE` | 指标/日志键 | 指标、日志、追踪 | `error.retryable` | 布尔值，指示错误是否建议重试。 |
+| `ATTR_RETRY_REASON` | 指标/日志键 | 日志 | `error.retry.reason` | Retryable 错误附带的退避原因描述。 |
+| `ATTR_RETRY_WAIT_MS` | 指标/日志键 | 指标、日志 | `error.retry.wait_ms` | Retryable 错误建议等待的毫秒数。 |
+| `ATTR_SECURITY_CLASS` | 指标/日志键 | 指标、日志、追踪 | `error.security.class` | 安全相关错误所属的安全分类（authentication/authorization 等）。 |
+
+## labels.error_kind — 错误类别标签值
+
+> ErrorCategory 到 error.kind 的标准枚举值。
+
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `CANCELLED` | 标签枚举值 | 指标、日志、追踪 | `cancelled` | 调用被主动取消。 |
+| `NON_RETRYABLE` | 标签枚举值 | 指标、日志、追踪 | `non_retryable` | 不可重试错误。 |
+| `PROTOCOL_VIOLATION` | 标签枚举值 | 指标、日志、追踪 | `protocol_violation` | 协议契约被破坏。 |
+| `RESOURCE_EXHAUSTED` | 标签枚举值 | 指标、日志、追踪 | `resource_exhausted` | 资源或预算耗尽。 |
+| `RETRYABLE` | 标签枚举值 | 指标、日志、追踪 | `retryable` | 可重试错误。 |
+| `SECURITY` | 标签枚举值 | 指标、日志、追踪 | `security` | 安全违规或合规相关错误。 |
+| `TIMEOUT` | 标签枚举值 | 指标、日志、追踪 | `timeout` | 调用超时。 |
+| `UNKNOWN` | 标签枚举值 | 指标、日志、追踪 | `unknown` | 未归类错误的兜底标签。 |
+
+## logging.audit — 审计事件日志字段
+
+> AuditEvent 序列化到日志或运维事件时复用的字段，保持合规链条可追溯。
+
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `FIELD_ACTION` | 日志字段 | 日志、运维事件 | `audit.action` | 执行的动作名称，例如 apply_changeset。 |
+| `FIELD_ACTOR_ID` | 日志字段 | 日志、运维事件 | `audit.actor.id` | 触发事件的操作者标识。 |
+| `FIELD_ACTOR_TENANT` | 日志字段 | 日志、运维事件 | `audit.actor.tenant` | 操作者所属租户或逻辑空间，可为空。 |
+| `FIELD_CHANGE_COUNT` | 日志字段 | 日志、运维事件 | `audit.change.count` | 变更条目的数量，帮助快速估算影响范围。 |
+| `FIELD_ENTITY_ID` | 日志字段 | 日志、运维事件 | `audit.entity.id` | 被操作实体的唯一标识。 |
+| `FIELD_ENTITY_KIND` | 日志字段 | 日志、运维事件 | `audit.entity.kind` | 被操作实体的类型，例如 configuration.profile。 |
+| `FIELD_EVENT_ID` | 日志字段 | 日志、运维事件 | `audit.event.id` | 审计事件的全局唯一标识。 |
+| `FIELD_OCCURRED_AT` | 日志字段 | 日志、运维事件 | `audit.occurred_at` | 事件发生时间，Unix 毫秒。 |
+| `FIELD_SEQUENCE` | 日志字段 | 日志、运维事件 | `audit.sequence` | 事件在同一实体上的顺序号，便于检测缺失。 |
+| `FIELD_STATE_CURR_HASH` | 日志字段 | 日志、运维事件 | `audit.state.curr_hash` | 变更后状态的 SHA-256 哈希。 |
+| `FIELD_STATE_PREV_HASH` | 日志字段 | 日志、运维事件 | `audit.state.prev_hash` | 变更前状态的 SHA-256 哈希。 |
+| `FIELD_TSA_CHAIN` | 日志字段 | 日志、运维事件 | `audit.tsa.chain` | 可信时间戳证书链标识，用于合规审计。 |
+
 ## logging.deprecation — 弃用公告日志字段
 
 > 统一的弃用告警日志字段集合，便于告警平台解析。
@@ -127,6 +177,20 @@
 | `RESULT_SUCCESS` | 标签枚举值 | 指标、日志 | `success` | 连接结果：成功。 |
 | `ROLE_CLIENT` | 标签枚举值 | 指标、日志 | `client` | 对端角色：客户端。 |
 | `ROLE_SERVER` | 标签枚举值 | 指标、日志 | `server` | 对端角色：服务端。 |
+
+## resource.core — 核心资源属性键
+
+> 服务、部署与 SDK 元数据的标准资源标签。
+
+| 常量 | 类型 | 适用范围 | 键名/取值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ATTR_DEPLOYMENT_ENVIRONMENT` | 指标/日志键 | 指标、日志、追踪 | `deployment.environment` | 部署环境标签，例如 production/staging。 |
+| `ATTR_SERVICE_INSTANCE_ID` | 指标/日志键 | 指标、日志、追踪 | `service.instance.id` | 实例唯一标识，如 Pod 名称或主机 ID。 |
+| `ATTR_SERVICE_NAME` | 指标/日志键 | 指标、日志、追踪 | `service.name` | 服务逻辑名称，建议与注册中心保持一致。 |
+| `ATTR_SERVICE_NAMESPACE` | 指标/日志键 | 指标、日志、追踪 | `service.namespace` | 服务命名空间或业务域，便于分环境聚合。 |
+| `ATTR_TELEMETRY_AUTO_VERSION` | 指标/日志键 | 指标、日志、追踪 | `telemetry.auto.version` | 自动化安装层版本（若使用自动注入）。 |
+| `ATTR_TELEMETRY_SDK_NAME` | 指标/日志键 | 指标、日志、追踪 | `telemetry.sdk.name` | 可观测性 SDK 名称，默认为 spark-otel。 |
+| `ATTR_TELEMETRY_SDK_VERSION` | 指标/日志键 | 指标、日志、追踪 | `telemetry.sdk.version` | 可观测性 SDK 版本号，与 Cargo 包版本对齐。 |
 
 ## tracing.pipeline — Pipeline Trace 属性
 

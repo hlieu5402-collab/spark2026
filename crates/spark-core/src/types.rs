@@ -92,6 +92,20 @@ impl BudgetKind {
     pub fn custom(name: impl Into<Arc<str>>) -> Self {
         BudgetKind::Custom(name.into())
     }
+
+    /// 返回面向可观测性的稳定标签值。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：指标与日志在记录资源耗尽场景时需要统一的 `error.budget.kind` 标签；
+    /// - **契约（What）**：返回 `Cow<'static, str>`，其中内建预算使用借用值，自定义预算克隆为拥有所有权的字符串；
+    /// - **风险提示**：对自定义预算会触发一次堆分配，调用方应尽量复用自定义命名或缓存结果。
+    pub fn observability_label(&self) -> Cow<'static, str> {
+        match self {
+            BudgetKind::Decode => Cow::Borrowed("decode"),
+            BudgetKind::Flow => Cow::Borrowed("flow"),
+            BudgetKind::Custom(name) => Cow::Owned(name.as_ref().to_string()),
+        }
+    }
 }
 
 /// 预算快照，用于在日志与可观测性中输出剩余额度。

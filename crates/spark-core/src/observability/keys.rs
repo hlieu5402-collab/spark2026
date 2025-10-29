@@ -7,10 +7,211 @@
 //! 契约定义（What）：各子模块（如 `metrics::service`）提供只读常量，供指标、日志与追踪统一引用。
 //! 实现细节（How）：构建阶段展开模块树并写入稳定的 Rust 源文件，每个常量附带类型与适用范围说明。
 
+/// attributes 键名分组（模块标识：attributes）
+///
+/// 该分组由 contracts/observability_keys.toml 自动生成。
+pub mod attributes {
+
+    /// 错误观测属性键
+    ///
+    /// 跨指标/日志/追踪复用的错误标签集合，匹配 CoreError 契约。
+    pub mod error {
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "稳定错误码，遵循 <域>.<语义> 约定。"]
+        pub const ATTR_CODE: &str = "error.code";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "错误分类名称，与 ErrorCategory 变体一一对应。"]
+        pub const ATTR_CATEGORY: &str = "error.category";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "稳定错误类别标签，用于聚合错误趋势。"]
+        pub const ATTR_KIND: &str = "error.kind";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "布尔值，指示错误是否建议重试。"]
+        pub const ATTR_RETRYABLE: &str = "error.retryable";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志。"]
+        #[doc = ""]
+        #[doc = "Retryable 错误建议等待的毫秒数。"]
+        pub const ATTR_RETRY_WAIT_MS: &str = "error.retry.wait_ms";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：日志。"]
+        #[doc = ""]
+        #[doc = "Retryable 错误附带的退避原因描述。"]
+        pub const ATTR_RETRY_REASON: &str = "error.retry.reason";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "安全相关错误所属的安全分类（authentication/authorization 等）。"]
+        pub const ATTR_SECURITY_CLASS: &str = "error.security.class";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志。"]
+        #[doc = ""]
+        #[doc = "资源耗尽类错误关联的预算类型。"]
+        pub const ATTR_BUDGET_KIND: &str = "error.budget.kind";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志。"]
+        #[doc = ""]
+        #[doc = "重试类错误导致的繁忙方向（上游/下游）。"]
+        pub const ATTR_BUSY_DIRECTION: &str = "error.busy.direction";
+    }
+}
+
+/// labels 键名分组（模块标识：labels）
+///
+/// 该分组由 contracts/observability_keys.toml 自动生成。
+pub mod labels {
+
+    /// 错误类别标签值
+    ///
+    /// ErrorCategory 到 error.kind 的标准枚举值。
+    pub mod error_kind {
+        #[doc = "类型：标签枚举值。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "可重试错误。"]
+        pub const RETRYABLE: &str = "retryable";
+
+        #[doc = "类型：标签枚举值。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "不可重试错误。"]
+        pub const NON_RETRYABLE: &str = "non_retryable";
+
+        #[doc = "类型：标签枚举值。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "资源或预算耗尽。"]
+        pub const RESOURCE_EXHAUSTED: &str = "resource_exhausted";
+
+        #[doc = "类型：标签枚举值。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "安全违规或合规相关错误。"]
+        pub const SECURITY: &str = "security";
+
+        #[doc = "类型：标签枚举值。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "协议契约被破坏。"]
+        pub const PROTOCOL_VIOLATION: &str = "protocol_violation";
+
+        #[doc = "类型：标签枚举值。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "调用超时。"]
+        pub const TIMEOUT: &str = "timeout";
+
+        #[doc = "类型：标签枚举值。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "调用被主动取消。"]
+        pub const CANCELLED: &str = "cancelled";
+
+        #[doc = "类型：标签枚举值。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "未归类错误的兜底标签。"]
+        pub const UNKNOWN: &str = "unknown";
+    }
+}
+
 /// logging 键名分组（模块标识：logging）
 ///
 /// 该分组由 contracts/observability_keys.toml 自动生成。
 pub mod logging {
+
+    /// 审计事件日志字段
+    ///
+    /// AuditEvent 序列化到日志或运维事件时复用的字段，保持合规链条可追溯。
+    pub mod audit {
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "审计事件的全局唯一标识。"]
+        pub const FIELD_EVENT_ID: &str = "audit.event.id";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "事件在同一实体上的顺序号，便于检测缺失。"]
+        pub const FIELD_SEQUENCE: &str = "audit.sequence";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "被操作实体的类型，例如 configuration.profile。"]
+        pub const FIELD_ENTITY_KIND: &str = "audit.entity.kind";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "被操作实体的唯一标识。"]
+        pub const FIELD_ENTITY_ID: &str = "audit.entity.id";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "执行的动作名称，例如 apply_changeset。"]
+        pub const FIELD_ACTION: &str = "audit.action";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "触发事件的操作者标识。"]
+        pub const FIELD_ACTOR_ID: &str = "audit.actor.id";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "操作者所属租户或逻辑空间，可为空。"]
+        pub const FIELD_ACTOR_TENANT: &str = "audit.actor.tenant";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "变更前状态的 SHA-256 哈希。"]
+        pub const FIELD_STATE_PREV_HASH: &str = "audit.state.prev_hash";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "变更后状态的 SHA-256 哈希。"]
+        pub const FIELD_STATE_CURR_HASH: &str = "audit.state.curr_hash";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "事件发生时间，Unix 毫秒。"]
+        pub const FIELD_OCCURRED_AT: &str = "audit.occurred_at";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "可信时间戳证书链标识，用于合规审计。"]
+        pub const FIELD_TSA_CHAIN: &str = "audit.tsa.chain";
+
+        #[doc = "类型：日志字段。"]
+        #[doc = "适用范围：日志、运维事件。"]
+        #[doc = ""]
+        #[doc = "变更条目的数量，帮助快速估算影响范围。"]
+        pub const FIELD_CHANGE_COUNT: &str = "audit.change.count";
+    }
 
     /// 弃用公告日志字段
     ///
@@ -422,6 +623,59 @@ pub mod metrics {
         #[doc = ""]
         #[doc = "对端角色：服务端。"]
         pub const ROLE_SERVER: &str = "server";
+    }
+}
+
+/// resource 键名分组（模块标识：resource）
+///
+/// 该分组由 contracts/observability_keys.toml 自动生成。
+pub mod resource {
+
+    /// 核心资源属性键
+    ///
+    /// 服务、部署与 SDK 元数据的标准资源标签。
+    pub mod core {
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "服务逻辑名称，建议与注册中心保持一致。"]
+        pub const ATTR_SERVICE_NAME: &str = "service.name";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "服务命名空间或业务域，便于分环境聚合。"]
+        pub const ATTR_SERVICE_NAMESPACE: &str = "service.namespace";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "实例唯一标识，如 Pod 名称或主机 ID。"]
+        pub const ATTR_SERVICE_INSTANCE_ID: &str = "service.instance.id";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "部署环境标签，例如 production/staging。"]
+        pub const ATTR_DEPLOYMENT_ENVIRONMENT: &str = "deployment.environment";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "可观测性 SDK 名称，默认为 spark-otel。"]
+        pub const ATTR_TELEMETRY_SDK_NAME: &str = "telemetry.sdk.name";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "可观测性 SDK 版本号，与 Cargo 包版本对齐。"]
+        pub const ATTR_TELEMETRY_SDK_VERSION: &str = "telemetry.sdk.version";
+
+        #[doc = "类型：指标/日志键。"]
+        #[doc = "适用范围：指标、日志、追踪。"]
+        #[doc = ""]
+        #[doc = "自动化安装层版本（若使用自动注入）。"]
+        pub const ATTR_TELEMETRY_AUTO_VERSION: &str = "telemetry.auto.version";
     }
 }
 
