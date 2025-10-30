@@ -18,16 +18,18 @@
 //! - 由于对象安全的需要，`DynCodec` 在运行时执行类型擦除并依赖 `Any` 做下转型。适配器在失败时会返回稳定错误码 `protocol.type_mismatch`，请在调用侧处理。
 //! - 注册中心只定义契约，未绑定具体数据结构；实现者需自行关注并发安全与生命周期管理。
 
+mod contract;
 mod decoder;
+mod dyn_codec;
 mod encoder;
 mod metadata;
 pub mod metrics;
 mod registry;
-pub mod traits;
 
+pub use contract::Codec;
 pub use decoder::{DecodeContext, DecodeFrameGuard, DecodeOutcome, Decoder};
+pub use dyn_codec::{DynCodec, TypedCodecAdapter};
 pub use encoder::{EncodeContext, EncodeFrameGuard, EncodedPayload, Encoder};
 pub use metadata::{CodecDescriptor, ContentEncoding, ContentType, SchemaDescriptor};
 pub use metrics::{CodecMetricsHook, CodecPhase};
 pub use registry::{CodecRegistry, DynCodecFactory, NegotiatedCodec, TypedCodecFactory};
-pub use traits::{Codec, DynCodec, TypedCodecAdapter};

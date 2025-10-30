@@ -175,12 +175,6 @@ covers = [
   "spark_core::codec::TypedCodecFactory",
   "spark_core::codec::metrics::CodecMetricsHook",
   "spark_core::codec::metrics::CodecPhase",
-  "spark_core::codec::traits::Codec",
-  "spark_core::codec::traits::DynCodec",
-  "spark_core::codec::traits::TypedCodecAdapter",
-  "spark_core::codec::traits::generic::Codec",
-  "spark_core::codec::traits::object::DynCodec",
-  "spark_core::codec::traits::object::TypedCodecAdapter",
 ]
 
 [[contract]]

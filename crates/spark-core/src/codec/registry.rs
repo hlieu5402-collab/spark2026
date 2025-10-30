@@ -3,9 +3,9 @@ use core::marker::PhantomData;
 
 use crate::{CoreError, sealed::Sealed};
 
+use super::contract::Codec;
+use super::dyn_codec::{DynCodec, TypedCodecAdapter};
 use super::metadata::{CodecDescriptor, ContentEncoding, ContentType};
-use super::traits::generic::Codec;
-use super::traits::object::{DynCodec, TypedCodecAdapter};
 
 /// `NegotiatedCodec` 描述一次内容协商的结果。
 ///

@@ -11,7 +11,7 @@ use spark_core::buffer::{
 use spark_core::codec::decoder::{DecodeContext, DecodeOutcome};
 use spark_core::codec::encoder::{EncodeContext, EncodedPayload};
 use spark_core::codec::metadata::{CodecDescriptor, ContentEncoding, ContentType};
-use spark_core::codec::traits::generic::Codec;
+use spark_core::codec::Codec;
 use spark_core::contract::{
     Budget, BudgetKind, CallContext, Cancellation, Deadline, SecurityContextSnapshot,
     DEFAULT_OBSERVABILITY_CONTRACT,
