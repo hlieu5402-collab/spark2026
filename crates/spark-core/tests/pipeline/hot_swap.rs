@@ -12,8 +12,8 @@ use spark_core::{
     contract::{CallContext, CloseReason, Deadline},
     future::BoxFuture,
     observability::{
-        DefaultObservabilityFacade, EventPolicy, Logger, MetricsProvider, OpsEvent, OpsEventBus,
-        OpsEventKind, TraceContext, TraceFlags,
+        EventPolicy, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, TraceContext,
+        TraceFlags,
     },
     pipeline::{
         Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
@@ -24,7 +24,7 @@ use spark_core::{
         AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
         TaskError, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
     },
-    test_stubs::observability::{NoopLogger, NoopMetricsProvider},
+    test_stubs::observability::{NoopLogger, NoopMetricsProvider, StaticObservabilityFacade},
 };
 
 /// 验证热插拔在运行期不会丢包或打乱顺序。
@@ -38,7 +38,7 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
     let services = CoreServices::with_observability_facade(
         runtime as Arc<dyn AsyncRuntime>,
         Arc::new(NoopBufferPool),
-        DefaultObservabilityFacade::new(
+        StaticObservabilityFacade::new(
             logger as Arc<dyn Logger>,
             metrics as Arc<dyn MetricsProvider>,
             ops as Arc<dyn OpsEventBus>,
@@ -126,7 +126,7 @@ mod loom_tests {
             let services = CoreServices::with_observability_facade(
                 runtime as Arc<dyn AsyncRuntime>,
                 Arc::new(NoopBufferPool),
-                DefaultObservabilityFacade::new(
+                StaticObservabilityFacade::new(
                     logger as Arc<dyn Logger>,
                     metrics as Arc<dyn MetricsProvider>,
                     ops as Arc<dyn OpsEventBus>,

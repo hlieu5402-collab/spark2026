@@ -6,8 +6,8 @@ use spark_core::buffer::{BufferPool, PipelineMessage, WritableBuffer};
 use spark_core::contract::{CallContext, CloseReason, Deadline};
 use spark_core::future::BoxFuture;
 use spark_core::observability::{
-    DefaultObservabilityFacade, EventPolicy, Logger, MetricsProvider, OpsEvent, OpsEventBus,
-    OpsEventKind, TraceContext, TraceFlags,
+    EventPolicy, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, TraceContext,
+    TraceFlags,
 };
 use spark_core::pipeline::channel::{ChannelState, WriteSignal};
 use spark_core::pipeline::controller::{
@@ -20,6 +20,7 @@ use spark_core::runtime::{
     TaskHandle, TaskResult, TimeDriver,
 };
 use spark_core::test_stubs::observability::{NoopLogger, NoopMetricsProvider};
+use spark_otel::facade::DefaultObservabilityFacade;
 use std::any::TypeId;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};

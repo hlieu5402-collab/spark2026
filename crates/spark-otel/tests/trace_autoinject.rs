@@ -14,8 +14,8 @@ use spark_core::{
     contract::{CallContext, CloseReason, Deadline},
     future::BoxFuture,
     observability::{
-        DefaultObservabilityFacade, EventPolicy, LogRecord, Logger, MetricsProvider, OpsEvent,
-        OpsEventBus, OpsEventKind, SpanId, TraceContext,
+        EventPolicy, LogRecord, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
+        SpanId, TraceContext,
     },
     pipeline::{
         Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
@@ -29,6 +29,7 @@ use spark_core::{
     test_stubs::observability::NoopMetricsProvider,
 };
 
+use spark_otel::facade::DefaultObservabilityFacade;
 use spark_otel::{self, Error as OtelError};
 
 /// 验证 Handler 日志自动注入 TraceContext，且 Handler Span 的父子关系正确。

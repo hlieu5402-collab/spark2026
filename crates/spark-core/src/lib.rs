@@ -163,16 +163,14 @@ pub use limits::{
     ResourceKind, config_error_to_spark, decision_queue_snapshot,
 };
 pub use model::{State, Status};
-#[allow(deprecated)]
-pub use observability::LegacyObservabilityHandles;
 pub use observability::{
     ApplicationEvent, AttributeKey, AttributeSet, ComponentHealth, CoreUserEvent, Counter,
-    DefaultObservabilityFacade, EventPolicy, Gauge, HealthCheckProvider, HealthChecks, HealthState,
-    Histogram, IdleDirection, IdleTimeout, InstrumentDescriptor, KeyValue, LogField, LogRecord,
-    LogSeverity, Logger, MetricAttributeValue, MetricsProvider, ObservabilityFacade, OpsEvent,
-    OpsEventBus, OpsEventKind, OwnedAttributeSet, OwnedResourceAttrs, RateDirection, RateLimited,
-    ResourceAttr, ResourceAttrSet, SpanId, TlsInfo, TraceContext, TraceContextError, TraceFlags,
-    TraceId, TraceState, TraceStateEntry, TraceStateError,
+    EventPolicy, Gauge, HealthCheckProvider, HealthChecks, HealthState, Histogram, IdleDirection,
+    IdleTimeout, InstrumentDescriptor, KeyValue, LogField, LogRecord, LogSeverity, Logger,
+    MetricAttributeValue, MetricsProvider, ObservabilityFacade, OpsEvent, OpsEventBus,
+    OpsEventKind, OwnedAttributeSet, OwnedResourceAttrs, RateDirection, RateLimited, ResourceAttr,
+    ResourceAttrSet, SpanId, TlsInfo, TraceContext, TraceContextError, TraceFlags, TraceId,
+    TraceState, TraceStateEntry, TraceStateError,
 };
 pub use pipeline::{
     ChainBuilder, Channel, ChannelState, Context as PipelineContext, Controller, ControllerEvent,

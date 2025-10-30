@@ -17,15 +17,10 @@
 //! * **架构选择：** 通过模块化接口换取统一性，牺牲了直接操作底层 executor 的灵活性，却换来可测试性与跨平台部署能力。
 //! * **边界情况：** 合约作者需关注超时、重复调度、以及宿主拒绝服务等边界；本模块接口文档会明确每个 API 的退化行为，便于上层实现补偿逻辑。
 //!
-#[allow(deprecated)]
-use crate::observability::LegacyObservabilityHandles;
 use crate::{
     buffer::BufferPool,
     cluster::{ClusterMembership, ServiceDiscovery},
-    observability::{
-        DefaultObservabilityFacade, HealthChecks, Logger, MetricsProvider, ObservabilityFacade,
-        OpsEventBus,
-    },
+    observability::{HealthChecks, Logger, MetricsProvider, ObservabilityFacade, OpsEventBus},
 };
 use alloc::sync::Arc;
 
@@ -65,14 +60,61 @@ pub struct CoreServices {
     pub health_checks: HealthChecks,
 }
 
+/// `CoreServices` 返回的内部 Facade 实现。
+///
+/// # 教案式说明
+/// - **意图（Why）**：在 `spark-core` 内部提供一个最小、无外部依赖的 Facade，避免直接依赖 `spark-otel` 的默认实现；
+/// - **逻辑（How）**：简单地克隆四个观测性句柄并实现 [`ObservabilityFacade`] 契约；
+/// - **契约（What）**：仅作为框架内部细节，宿主可替换为自定义实现。
+#[derive(Clone)]
+pub struct InternalObservabilityFacade {
+    logger: Arc<dyn Logger>,
+    metrics: Arc<dyn MetricsProvider>,
+    ops_bus: Arc<dyn OpsEventBus>,
+    health_checks: HealthChecks,
+}
+
+impl InternalObservabilityFacade {
+    fn new(
+        logger: Arc<dyn Logger>,
+        metrics: Arc<dyn MetricsProvider>,
+        ops_bus: Arc<dyn OpsEventBus>,
+        health_checks: HealthChecks,
+    ) -> Self {
+        Self {
+            logger,
+            metrics,
+            ops_bus,
+            health_checks,
+        }
+    }
+}
+
+impl ObservabilityFacade for InternalObservabilityFacade {
+    fn logger(&self) -> Arc<dyn Logger> {
+        Arc::clone(&self.logger)
+    }
+
+    fn metrics(&self) -> Arc<dyn MetricsProvider> {
+        Arc::clone(&self.metrics)
+    }
+
+    fn ops_bus(&self) -> Arc<dyn OpsEventBus> {
+        Arc::clone(&self.ops_bus)
+    }
+
+    fn health_checks(&self) -> &HealthChecks {
+        &self.health_checks
+    }
+}
+
 impl CoreServices {
     /// 基于 Facade 构造 `CoreServices` 的便捷工厂。
     ///
     /// # 设计动机（Why）
     /// - 统一“运行时 + 缓冲池 + 可观测性”三元组的装配入口，避免手动逐字段填写
     ///   `metrics`/`logger`/`ops_bus`/`health_checks` 造成的样板代码；
-    /// - 为 Facade 推广提供正向激励，新代码可直接依赖该工厂，而旧路径仍可通过
-    ///   [`LegacyObservabilityHandles`] 适配；
+    /// - 为 Facade 推广提供正向激励，新代码可直接依赖该工厂；
     /// - 在架构层面明确“CoreServices 由 Facade 派生观测依赖”，便于后续演进时统一治理。
     ///
     /// # 行为逻辑（How）
@@ -89,7 +131,6 @@ impl CoreServices {
     /// # 风险与权衡（Trade-offs）
     /// - 方法会克隆多次 `Arc`（常数成本）；
     /// - 若调用方需要自定义 `membership`/`discovery`，应在返回后手动覆盖；
-    /// - 为降低迁移门槛，仍保留 `with_legacy_observability_handles` 兼容层，但建议尽快迁移。
     pub fn with_observability_facade(
         runtime: Arc<dyn AsyncRuntime>,
         buffer_pool: Arc<dyn BufferPool>,
@@ -105,25 +146,6 @@ impl CoreServices {
             ops_bus: observability.ops_bus(),
             health_checks: observability.health_checks().clone(),
         }
-    }
-
-    /// 旧版“分散句柄”构造器的兼容适配层。
-    ///
-    /// # 提示
-    /// - 保留旧签名以方便存量代码迁移；
-    /// - 内部直接复用 [`Self::with_observability_facade`]，确保逻辑单一来源；
-    /// - 使用时会触发弃用告警，提醒调用方迁移至 Facade。
-    #[allow(deprecated)]
-    #[deprecated(
-        since = "0.2.0",
-        note = "removal: 将在 Facade 全量迁移完毕后移除；migration: 调用 CoreServices::with_observability_facade 并传入 ObservabilityFacade 实现，替代 LegacyObservabilityHandles 构造路径。"
-    )]
-    pub fn with_legacy_observability_handles(
-        runtime: Arc<dyn AsyncRuntime>,
-        buffer_pool: Arc<dyn BufferPool>,
-        handles: LegacyObservabilityHandles,
-    ) -> Self {
-        Self::with_observability_facade(runtime, buffer_pool, handles.into_facade())
     }
 
     /// 提供运行时调度器的便捷访问器，常用于测试中替换实现。
@@ -147,14 +169,14 @@ impl CoreServices {
     /// - **后置条件**：返回的外观实现 [`ObservabilityFacade`](crate::observability::ObservabilityFacade)，克隆后仍指向相同的底层 `Arc`，不会额外分配资源。
     ///
     /// # 逻辑解析（How）
-    /// - 通过克隆内部 `Arc` 构造 [`DefaultObservabilityFacade`]，确保对象安全且易于在 `no_std + alloc` 环境中使用。
+    /// - 通过克隆内部 `Arc` 构造轻量 Facade，实现与契约保持一致；
     /// - 该方法每次调用都会复制 `Arc` 的引用计数，如需缓存可在调用方层面持久化返回值。
     ///
     /// # 风险提示（Trade-offs）
-    /// - 目前始终返回 `DefaultObservabilityFacade`；如需懒加载或按租户隔离，需要在外层包装自定义结构。
+    /// - 返回类型为框架内部的最小实现；若需懒加载或按租户隔离，请在外层包装自定义 Facade；
     /// - 若健康探针集合为空，请在调试文档中说明，以免调用方误以为系统缺失探针实现。
-    pub fn observability_facade(&self) -> DefaultObservabilityFacade {
-        DefaultObservabilityFacade::new(
+    pub fn observability_facade(&self) -> InternalObservabilityFacade {
+        InternalObservabilityFacade::new(
             Arc::clone(&self.logger),
             Arc::clone(&self.metrics),
             Arc::clone(&self.ops_bus),

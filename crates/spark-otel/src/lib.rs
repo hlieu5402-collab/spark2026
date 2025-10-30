@@ -1,32 +1,33 @@
+pub mod events;
+pub mod facade;
+pub mod health;
+pub mod logging;
+pub mod metrics;
+pub mod resource;
+pub mod trace;
+
+pub use events::{CoreUserEvent, EventPolicy, OpsEvent, OpsEventBus, OpsEventKind};
+#[allow(deprecated)]
+pub use facade::{DefaultObservabilityFacade, LegacyObservabilityHandles};
+pub use health::{ComponentHealth, HealthCheckProvider, HealthChecks, HealthState};
+pub use logging::{LogField, LogRecord, LogSeverity, Logger};
+pub use metrics::{Counter, Gauge, Histogram, InstrumentDescriptor, MetricsProvider};
+pub use resource::resource_from_attrs;
+
 use std::{
     borrow::Cow,
     sync::{Arc, OnceLock},
 };
 
-use opentelemetry::{
-    Context, KeyValue, global,
-    trace::{
-        self as otel_trace, Span, SpanContext as OtelSpanContext, SpanKind, TraceContextExt,
-        Tracer, TracerProvider as _,
-    },
-};
+use opentelemetry::{global, trace::TracerProvider as _};
 use opentelemetry_sdk::{
     Resource,
-    trace::{self, TracerProvider},
+    trace::{self as sdktrace, TracerProvider},
 };
-use spark_core::{
-    observability::{
-        ResourceAttrSet, SpanId, TraceContext, TraceFlags, TraceId, TraceState, TraceStateEntry,
-        keys::tracing::pipeline as pipeline_keys,
-    },
-    pipeline::{
-        controller::HandlerDirection,
-        instrument::{
-            HandlerSpan, HandlerSpanGuard, HandlerSpanParams, HandlerSpanTracer,
-            HandlerTracerError, install_handler_tracer,
-        },
-    },
+use spark_core::pipeline::instrument::{
+    HandlerSpanTracer, HandlerTracerError, install_handler_tracer,
 };
+use trace::make_handler_tracer;
 use tracing::dispatcher;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt};
 
@@ -87,13 +88,10 @@ struct InstallState {
     #[allow(dead_code)]
     provider: TracerProvider,
     // 教案级说明（Why）
-    // - `Arc<OtelHandlerTracer>` 需要与 Provider 同生命周期，以确保 Handler Span 创建时始终可用。
+    // - `Arc<dyn HandlerSpanTracer>` 需要与 Provider 同生命周期，以确保 Handler Span 创建时始终可用。
     // - 当前仅用于维持引用，不直接读取；未来若支持卸载可在此结构上扩展 Drop 逻辑。
-    //
-    // 教案级说明（Trade-offs）
-    // - 通过 `#[allow(dead_code)]` 抑制编译器告警，换取命名语义的清晰度；若改名为 `_handler_tracer` 将丧失表达力。
     #[allow(dead_code)]
-    handler_tracer: Arc<OtelHandlerTracer>,
+    handler_tracer: Arc<dyn HandlerSpanTracer>,
 }
 
 /// 零配置安装入口：构建 OpenTelemetry Provider、注册 tracing 层并接管 Handler Span 追踪。
@@ -124,22 +122,6 @@ pub fn install() -> spark_core::Result<(), Error> {
         .map(|_| ())
 }
 
-/// 根据 `spark-core` 的资源属性集合构造 OpenTelemetry `Resource`。
-///
-/// # 教案式说明
-/// - **意图（Why）**：宿主在构建 Resource 时复用 `spark-core` 的轻量类型，保持可观测性标签语义一致；
-/// - **逻辑（How）**：逐条映射为 OpenTelemetry 的 [`KeyValue`]，并调用 [`Resource::new`] 生成 SDK 所需结构；
-/// - **契约（What）**：
-///   - 输入切片应来自 `ResourceAttrSet`，通常由 `OwnedResourceAttrs` 提供；
-///   - 返回的 `Resource` 不包含 schema URL；
-///   - 若存在重复键，OpenTelemetry `Resource::new` 将保留最后一次出现的值。
-pub fn resource_from_attrs(attrs: ResourceAttrSet<'_>) -> Resource {
-    let owned = attrs
-        .iter()
-        .map(|attr| KeyValue::new(attr.key().to_string(), attr.value().to_string()));
-    Resource::new(owned)
-}
-
 fn install_impl() -> spark_core::Result<InstallState, Error> {
     let tracer_provider = build_tracer_provider();
     global::set_tracer_provider(tracer_provider.clone());
@@ -157,9 +139,8 @@ fn install_impl() -> spark_core::Result<InstallState, Error> {
         .with(tracing_opentelemetry::layer().with_tracer(tracer.clone()));
     tracing::subscriber::set_global_default(subscriber).map_err(Error::SetGlobalSubscriber)?;
 
-    let handler_tracer = Arc::new(OtelHandlerTracer::new(tracer));
-    let trait_tracer: Arc<dyn HandlerSpanTracer> = handler_tracer.clone();
-    install_handler_tracer(trait_tracer).map_err(|err| match err {
+    let handler_tracer = make_handler_tracer(tracer);
+    install_handler_tracer(handler_tracer.clone()).map_err(|err| match err {
         HandlerTracerError::AlreadyInstalled => Error::HandlerTracerInstalled,
     })?;
 
@@ -176,8 +157,8 @@ fn build_env_filter() -> EnvFilter {
 fn build_tracer_provider() -> TracerProvider {
     #[allow(unused_mut)]
     let mut builder = TracerProvider::builder().with_config(
-        trace::config()
-            .with_sampler(trace::Sampler::AlwaysOn)
+        sdktrace::config()
+            .with_sampler(sdktrace::Sampler::AlwaysOn)
             .with_resource(Resource::default()),
     );
 
@@ -274,234 +255,6 @@ mod test_support {
         fn shutdown(&mut self) {
             self.reset();
         }
-    }
-}
-
-/// OpenTelemetry 版本的 Handler Span Tracer，实现 `spark-core` 的自动建 Span 需求。
-///
-/// # 教案式说明
-/// - **意图（Why）**：在 Pipeline Handler 调用前后自动维护分布式追踪 Span，并向业务层提供 `TraceContext`。
-/// - **逻辑（How）**：使用 OpenTelemetry `Tracer` 构建 Span、设置父上下文与语义属性，再通过 [`HandlerSpanGuard`] 在作用域末尾调用
-///   `Span::end` 完成收尾。
-/// - **契约（What）**：始终返回与父上下文同一 `trace_id` 的新子上下文，并保证在 Span 生命周期结束时正确退出。
-#[derive(Clone)]
-struct OtelHandlerTracer {
-    tracer: opentelemetry_sdk::trace::Tracer,
-}
-
-impl OtelHandlerTracer {
-    fn new(tracer: opentelemetry_sdk::trace::Tracer) -> Self {
-        Self { tracer }
-    }
-
-    fn start_with_parent(
-        &self,
-        params: &HandlerSpanParams<'_>,
-        parent: &TraceContext,
-    ) -> spark_core::Result<HandlerSpan, Error> {
-        let parent_context = trace_context_to_otel(parent)?;
-        let span_name = format!(
-            "spark.pipeline.{}.{}",
-            direction_tag(params.direction),
-            params.descriptor.name()
-        );
-
-        let mut builder = self.tracer.span_builder(span_name);
-        builder.span_kind = Some(otel_span_kind(params.direction));
-        builder.attributes = Some(vec![
-            KeyValue::new(
-                pipeline_keys::ATTR_DIRECTION,
-                direction_tag(params.direction).to_string(),
-            ),
-            KeyValue::new(pipeline_keys::ATTR_LABEL, params.label.to_string()),
-            KeyValue::new(
-                pipeline_keys::ATTR_COMPONENT,
-                params.descriptor.name().to_string(),
-            ),
-            KeyValue::new(
-                pipeline_keys::ATTR_CATEGORY,
-                params.descriptor.category().to_string(),
-            ),
-            KeyValue::new(
-                pipeline_keys::ATTR_SUMMARY,
-                params.descriptor.summary().to_string(),
-            ),
-        ]);
-
-        let span = self.tracer.build_with_context(builder, &parent_context);
-        let derived = trace_context_from_otel(span.span_context())?;
-        let guard = Box::new(OtelHandlerSpanGuard::new(span));
-
-        Ok(HandlerSpan::from_parts(derived, Some(guard)))
-    }
-}
-
-impl HandlerSpanTracer for OtelHandlerTracer {
-    fn start_span(&self, params: &HandlerSpanParams<'_>, parent: &TraceContext) -> HandlerSpan {
-        self.start_with_parent(params, parent)
-            .unwrap_or_else(|_| fallback_span(parent))
-    }
-}
-
-/// 持有 `tracing` Span 的 Guard，负责在 Handler 回调结束后退出 Span。
-struct OtelHandlerSpanGuard {
-    span: opentelemetry_sdk::trace::Span,
-}
-
-impl OtelHandlerSpanGuard {
-    fn new(span: opentelemetry_sdk::trace::Span) -> Self {
-        Self { span }
-    }
-}
-
-impl HandlerSpanGuard for OtelHandlerSpanGuard {
-    fn finish(mut self: Box<Self>) {
-        self.span.end();
-    }
-}
-
-fn direction_tag(direction: HandlerDirection) -> &'static str {
-    match direction {
-        HandlerDirection::Inbound => pipeline_keys::DIRECTION_INBOUND,
-        HandlerDirection::Outbound => pipeline_keys::DIRECTION_OUTBOUND,
-        _ => pipeline_keys::DIRECTION_UNSPECIFIED,
-    }
-}
-
-fn otel_span_kind(direction: HandlerDirection) -> SpanKind {
-    match direction {
-        HandlerDirection::Inbound => SpanKind::Server,
-        HandlerDirection::Outbound => SpanKind::Client,
-        _ => SpanKind::Internal,
-    }
-}
-
-/// 将 `spark-core` 的 [`TraceContext`] 转换为 OpenTelemetry 的远程 [`Context`]。
-///
-/// # 教案式说明
-/// - **意图（Why）**：`spark-core` 采用自有的轻量结构存储 Trace/Span 信息，而 `tracing-opentelemetry`
-///   在创建子 Span 时需要 W3C 语义的 `Context`；该函数承担两种表示之间的桥梁角色，保障跨组件的一致性。
-/// - **逻辑（How）**：
-///   1. 将 `TraceState` 键值对拷贝到 OpenTelemetry 的 [`otel_trace::TraceState`]；
-///   2. 依据传入的 Trace/Span/Flags 构造 [`OtelSpanContext`]，并标记为“远程父级”；
-///   3. 将 SpanContext 嵌入新的 [`Context`]，供 `tracing-opentelemetry` 在创建 Span 时作为父上下文。
-/// - **契约（What）**：
-///   - **输入参数**：`parent` 为当前 Handler 的父级 [`TraceContext`]，必须来源于可信的上游；
-///   - **返回值**：成功时得到承载远程 Span 的 [`Context`]；失败时返回 [`Error::TraceStateConversion`]。
-/// - **前置条件**：`parent.trace_state` 内的键值需满足 W3C 校验规则；
-/// - **后置条件**：返回的 `Context` 与 `parent` 语义等价，可安全地传递到 OpenTelemetry 生态。
-/// - **风险与取舍（Trade-offs）**：
-///   - 直接重建 `TraceState` 会执行一次分配，但可确保与 W3C 规范对齐；
-///   - 若未来需要零分配，可考虑预先缓存字符串，但需权衡内存占用与实现复杂度。
-fn trace_context_to_otel(parent: &TraceContext) -> spark_core::Result<Context, Error> {
-    let otel_state = otel_trace::TraceState::from_key_value(
-        parent
-            .trace_state
-            .iter()
-            .map(|entry| (entry.key.as_str(), entry.value.as_str())),
-    )
-    .map_err(|err| Error::TraceStateConversion(format!("构造 otel TraceState 失败: {err}")))?;
-
-    let span_context = OtelSpanContext::new(
-        otel_trace::TraceId::from_bytes(parent.trace_id.to_bytes()),
-        otel_trace::SpanId::from_bytes(parent.span_id.to_bytes()),
-        otel_trace::TraceFlags::new(parent.trace_flags.bits()),
-        true,
-        otel_state,
-    );
-
-    Ok(Context::new().with_remote_span_context(span_context))
-}
-
-/// 将 OpenTelemetry 的 [`OtelSpanContext`] 回转为 `spark-core` 的 [`TraceContext`]。
-///
-/// # 教案式说明
-/// - **意图（Why）**：`spark-core` Pipeline 以 `TraceContext` 作为日志与上下文传递的统一媒介，Span 创建后需立即
-///   将 OpenTelemetry 产生的新 SpanContext 映射回内部结构，才能继续向 Handler 传播。
-/// - **逻辑（How）**：
-///   1. 读取 `TraceState` 字符串表示，按 `key=value` 拆分并重建 [`TraceStateEntry`]；
-///   2. 将 Trace/Span ID 以字节数组形式写入新的 [`TraceContext`]；
-///   3. 将 [`otel_trace::TraceFlags`] 转换为 `spark-core` 的 [`TraceFlags`]。
-/// - **契约（What）**：
-///   - **输入参数**：`ctx` 必须来自可信的 OpenTelemetry Span；
-///   - **返回值**：成功时返回新的 `TraceContext`，失败时给出 [`Error::TraceStateConversion`]。
-/// - **前置条件**：`ctx.trace_state()` 的字符串需符合 `key=value` 且逗号分隔的格式；
-/// - **后置条件**：返回的结构保证与 `ctx` 表达的 Trace/Span 信息一致，可直接注入日志或继续派生子 Span。
-/// - **风险与取舍（Trade-offs）**：
-///   - 字符串拆分会产生暂存分配，但换取了实现清晰度；
-///   - 若未来存在大量 TraceState 条目，可引入自定义解析器以提升性能。
-fn trace_context_from_otel(ctx: &OtelSpanContext) -> spark_core::Result<TraceContext, Error> {
-    let state = ctx.trace_state().header();
-    let trace_state = if state.is_empty() {
-        TraceState::default()
-    } else {
-        let entries = state
-            .split(',')
-            .filter_map(|pair| pair.split_once('='))
-            .map(|(key, value)| TraceStateEntry::new(key.to_string(), value.to_string()))
-            .collect();
-        TraceState::from_entries(entries).map_err(|err| {
-            Error::TraceStateConversion(format!("otel TraceState -> spark 失败: {err}"))
-        })?
-    };
-
-    Ok(TraceContext {
-        trace_id: TraceId::from_bytes(ctx.trace_id().to_bytes()),
-        span_id: SpanId::from_bytes(ctx.span_id().to_bytes()),
-        trace_flags: TraceFlags::new(ctx.trace_flags().to_u8()),
-        trace_state,
-    })
-}
-
-/// 回退逻辑：在追踪安装缺失或出错时，本地生成子 [`TraceContext`]。
-///
-/// # 教案式说明
-/// - **意图（Why）**：保持 Pipeline 的 Trace 结构完整，即便未成功对接 OpenTelemetry，也能保障日志继续携带合理的
-///   `trace_id`/`span_id` 并维持父子关系。
-/// - **逻辑（How）**：
-///   1. 调用 [`TraceContext::generate_span_id`] 生成新的子 Span 标识；
-///   2. 复用父级 `trace_id` 与状态，通过 [`TraceContext::child_context`] 派生子上下文；
-///   3. 构造不携带 Guard 的 [`HandlerSpan`]，以零成本结束生命周期。
-/// - **契约（What）**：输入为父级 TraceContext；输出的 HandlerSpan 仅用于内部传播，不会触发外部导出。
-/// - **前置条件**：`parent` 必须来自合法调用链；
-/// - **后置条件**：返回的 TraceContext 与父级共享同一 Trace ID，Span ID 为新生成值。
-/// - **风险与取舍（Trade-offs）**：
-///   - 放弃真实 Span 导出可确保 Pipeline 不中断，但失去可观测性后端的链路展示；
-///   - 若频繁触发该逻辑，应在监控中及时告警以提醒安装流程可能异常。
-fn fallback_span(parent: &TraceContext) -> HandlerSpan {
-    let span_id = TraceContext::generate().span_id;
-    let trace_context = parent.child_context(span_id);
-    HandlerSpan::from_parts(trace_context, None)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use opentelemetry::Value;
-    use spark_core::observability::OwnedResourceAttrs;
-    use std::collections::HashMap;
-
-    #[test]
-    fn resource_mapping_preserves_all_attributes() {
-        let mut owned = OwnedResourceAttrs::new();
-        owned.push_owned("service.name", "demo");
-        owned.push_owned("deployment.environment", "staging");
-
-        let resource = resource_from_attrs(owned.as_slice());
-        let mut map = HashMap::new();
-        for (key, value) in resource.iter() {
-            let text = match value {
-                Value::String(s) => s.to_string(),
-                Value::Bool(flag) => flag.to_string(),
-                Value::F64(number) => number.to_string(),
-                Value::I64(number) => number.to_string(),
-                Value::Array(array) => format!("{:?}", array),
-            };
-            map.insert(key.as_str().to_string(), text);
-        }
-
-        assert_eq!(map.get("service.name").unwrap(), "demo");
-        assert_eq!(map.get("deployment.environment").unwrap(), "staging");
     }
 }
 

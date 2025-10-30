@@ -24,3 +24,4 @@ spark-codec-line = { workspace = true }
 spark-contract-tests-macros = { workspace = true }
 parking_lot = { workspace = true }
 spark-hosting = { workspace = true, features = ["std"] }
+spark-otel = { workspace = true }
