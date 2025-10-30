@@ -7,6 +7,7 @@ use spark_core::codec::{DecodeContext, EncodeContext};
 use spark_core::error::codes;
 use spark_core::types::{Budget, BudgetKind};
 use spark_core::{BufferPool, CoreError};
+use std::sync::Arc;
 
 /// `NoopBuffer` 是测试使用的最小可写缓冲实现，仅满足接口契约。
 struct NoopBuffer;
@@ -133,4 +134,25 @@ fn encode_context_budget_and_depth_behavior_matches_decoder() {
 
     std::mem::drop(ctx.enter_frame().expect("第一次进入深度应成功"));
     assert_eq!(ctx.current_depth(), 0, "守卫释放后深度归零");
+}
+
+#[test]
+fn encode_context_accepts_trait_object_allocator() {
+    let pool = TestAllocator;
+    let dyn_view: &dyn BufferPool = &pool;
+    let adapter = dyn_view.as_allocator();
+    let ctx = EncodeContext::new(&adapter);
+
+    ctx.acquire_buffer(0)
+        .expect("trait object应当满足 BufferAllocator blanket 实现");
+}
+
+#[test]
+fn encode_context_accepts_arc_trait_object_allocator() {
+    let pool: Arc<dyn BufferPool> = Arc::new(TestAllocator);
+    let adapter = pool.as_allocator();
+    let ctx = EncodeContext::new(&adapter);
+
+    ctx.acquire_buffer(0)
+        .expect("Arc<dyn BufferPool> 也应实现 BufferAllocator");
 }

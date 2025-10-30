@@ -83,8 +83,29 @@ impl bytes::Buf for dyn ReadableBuffer + Send + Sync + 'static {
         if cnt == 0 {
             return;
         }
+
+        let remaining = ReadableBuffer::remaining(self);
+        if cnt > remaining {
+            let io_err = std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!(
+                    "bytes::Buf::advance requested {cnt} bytes but only {remaining} remain; call sites must preflight remaining() before delegating to the adapter"
+                ),
+            );
+            panic!(
+                "ReadableBuffer::advance contract violated: {io_err}. 该 panic 提醒调用方在进入传输/编解码前确保缓冲空间一致"
+            );
+        }
+
         if let Err(err) = ReadableBuffer::advance(self, cnt) {
-            panic!("ReadableBuffer::advance failed: {:?}", err);
+            let io_err = std::io::Error::other(format!(
+                "ReadableBuffer::advance returned CoreError(code={}, message={})",
+                err.code(),
+                err.message()
+            ));
+            panic!(
+                "ReadableBuffer::advance failed after contract preflight: {io_err}. 请检查缓冲实现的错误传播或在进入适配器前处理该异常"
+            );
         }
     }
 

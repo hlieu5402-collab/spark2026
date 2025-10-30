@@ -211,17 +211,42 @@ pub trait BufferPool: Send + Sync + 'static + Sealed {
 /// - **权衡与注意事项 (Trade-offs & Gotchas)**：
 ///   - 保持接口最小化可让不同池实现（预分配、按需增长、分级分配）自由选择内部策略；
 ///   - trait 本身不提供归还接口，约定通过 `Drop`、引用计数或池内部回收完成资源释放，上层在热路径中需谨慎处理泄漏风险。
-pub trait BufferAllocator: Send + Sync + 'static + Sealed {
+pub trait BufferAllocator: Send + Sync + Sealed {
     /// 租借满足最小容量的缓冲。
     fn acquire(&self, min_capacity: usize) -> crate::Result<Box<ErasedSparkBufMut>, CoreError>;
 }
 
 impl<T> BufferAllocator for T
 where
-    T: BufferPool,
+    T: BufferPool + ?Sized,
 {
     fn acquire(&self, min_capacity: usize) -> crate::Result<Box<ErasedSparkBufMut>, CoreError> {
         BufferPool::acquire(self, min_capacity)
+    }
+}
+
+/// 将 [`BufferPool`] 引用包装为 [`BufferAllocator`] 视图的适配器。
+pub struct BufferPoolAllocatorAdapter<'a> {
+    pool: &'a dyn BufferPool,
+}
+
+impl<'a> BufferPoolAllocatorAdapter<'a> {
+    /// 通过池引用构造适配器。
+    pub fn new(pool: &'a dyn BufferPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl BufferAllocator for BufferPoolAllocatorAdapter<'_> {
+    fn acquire(&self, min_capacity: usize) -> crate::Result<Box<ErasedSparkBufMut>, CoreError> {
+        self.pool.acquire(min_capacity)
+    }
+}
+
+impl dyn BufferPool {
+    /// 获取针对当前池的 [`BufferAllocator`] 视图。
+    pub fn as_allocator(&self) -> BufferPoolAllocatorAdapter<'_> {
+        BufferPoolAllocatorAdapter::new(self)
     }
 }
 
