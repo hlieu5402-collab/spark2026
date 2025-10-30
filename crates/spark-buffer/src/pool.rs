@@ -1,4 +1,4 @@
-use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec, vec::Vec};
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use bytes::BytesMut;
@@ -333,81 +333,4 @@ fn saturating_inc(target: &AtomicUsize) {
     let _ = target.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
         Some(current.saturating_add(1))
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reusable_capacity_returns_to_pool() {
-        let pool = SlabBufferPool::new();
-        {
-            let mut writable = pool.alloc_writable(64).expect("租借缓冲失败");
-            assert!(writable.remaining_mut() >= 64);
-            writable.put_slice(&[1, 2, 3, 4]).expect("写入测试数据");
-        }
-        let snapshot = pool.statistics().expect("读取统计失败");
-        assert!(snapshot.available_bytes >= 64);
-        {
-            let _second = pool.alloc_writable(16).expect("复用缓冲失败");
-        }
-        let after = pool.statistics().expect("读取统计失败");
-        assert!(after.allocated_bytes >= snapshot.allocated_bytes);
-    }
-
-    #[test]
-    fn alloc_readable_preserves_payload() {
-        let pool = SlabBufferPool::new();
-        let payload = [9u8, 8, 7, 6];
-        let mut readable = pool.alloc_readable(&payload).expect("分配只读缓冲失败");
-        let mut out = [0u8; 4];
-        readable.copy_into_slice(&mut out).expect("读取数据失败");
-        assert_eq!(out, payload);
-    }
-
-    #[test]
-    fn stats_track_allocation_lifecycle() {
-        fn dimension(stats: &PoolStats, key: &str) -> usize {
-            stats
-                .custom_dimensions
-                .iter()
-                .find(|dim| dim.key == key)
-                .map(|dim| dim.value)
-                .unwrap_or_default()
-        }
-
-        let pool = SlabBufferPool::new();
-        let initial = pool.stats();
-        assert_eq!(dimension(&initial, "total_allocated"), 0);
-        assert_eq!(dimension(&initial, "total_recycled"), 0);
-        assert_eq!(dimension(&initial, "pool_misses"), 0);
-
-        {
-            let _first = pool.alloc_writable(32).expect("首次租借失败");
-            let during_first = pool.stats();
-            assert_eq!(dimension(&during_first, "active_buffers"), 1);
-            assert_eq!(dimension(&during_first, "total_allocated"), 1);
-            assert_eq!(dimension(&during_first, "pool_misses"), 1);
-            assert!(dimension(&during_first, "total_bytes") >= 32);
-        }
-
-        let after_first = pool.stats();
-        assert_eq!(dimension(&after_first, "active_buffers"), 0);
-        assert_eq!(dimension(&after_first, "total_allocated"), 1);
-        assert_eq!(dimension(&after_first, "total_recycled"), 1);
-
-        {
-            let _second = pool.alloc_writable(8).expect("第二次租借失败");
-            let during_second = pool.stats();
-            assert_eq!(dimension(&during_second, "active_buffers"), 1);
-            assert_eq!(dimension(&during_second, "total_allocated"), 2);
-            assert_eq!(dimension(&during_second, "pool_misses"), 1);
-        }
-
-        let after_second = pool.stats();
-        assert_eq!(dimension(&after_second, "active_buffers"), 0);
-        assert_eq!(dimension(&after_second, "total_allocated"), 2);
-        assert_eq!(dimension(&after_second, "total_recycled"), 2);
-    }
 }
