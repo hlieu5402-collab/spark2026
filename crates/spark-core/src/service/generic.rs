@@ -29,7 +29,7 @@ use crate::{Error, context::Context, contract::CallContext, sealed::Sealed};
 /// - 继承 Tower `Service`/`Layer` 生态的编排模式，允许上层通过泛型组合实现零开销内联；
 /// - 在控制面统一 `CallContext`（取消/截止/预算三元组）之后，本接口成为所有 Handler、Router
 ///   与传输模块共享的基座；
-/// - 与对象层 [`crate::service::traits::object::DynService`] 保持语义一致，为 T05“二层 API”目标
+/// - 与对象层 [`crate::service::object::DynService`] 保持语义一致，为 T05“二层 API”目标
 ///   提供形式化的“泛型基线”。
 ///
 /// # 行为逻辑（How）
