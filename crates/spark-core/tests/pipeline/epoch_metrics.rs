@@ -51,11 +51,8 @@ fn pipeline_mutations_emit_epoch_metrics_and_logs() {
 
     let call_context = CallContext::builder().build();
     let channel = Arc::new(TestChannel::new("epoch-metrics-channel"));
-    let controller = Arc::new(HotSwapController::new(
-        channel.clone() as Arc<dyn Channel>,
-        services,
-        call_context,
-    ));
+    let controller =
+        HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
     channel
         .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
 

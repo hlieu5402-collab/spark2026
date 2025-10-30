@@ -1,30 +1,38 @@
-#![allow(unsafe_code)]
-// SAFETY: HotSwap 管道上下文需要短暂脱离借用检查器来向 Handler 传递控制器引用，
+// 教案级安全说明：HotSwap 管道上下文
+//
 // ## 意图（Why）
-// - `HotSwapContext` 在遍历 Handler 时必须实现 `PipelineContext`，其生命周期需跨越 `&self`
-//   的借用边界，以便在回调期间继续访问控制器；
-// - 控制器需要对 Handler 链执行再次调度，因此上下文必须保留对原控制器的访问能力。
+// - 在 Handler 链路中传播 `PipelineContext` 时，需要随时访问控制器以继续调度后续 Handler；
+// - 早期实现借助裸指针跨越借用检查器，存在在异步扩展场景下被误用的风险。
+//
 // ## 解析逻辑（How）
-// 1. 构造上下文时记录 `HotSwapController` 的裸指针，确保 Handler 回调期间仍可调用原控制器；
-// 2. 指针仅在受控的同步路径下解引用：调用发生在 `dispatch_inbound_from` 或通知遍历中，
-//    而这些逻辑都在控制器持有 `Arc` 的生命周期内执行；
-// 3. `Send`/`Sync` 的实现仅传播底层控制器的线程安全语义，其他字段均为 `Arc` 或 `Clone`，
-//    不会产生额外的数据竞争。
+// - 本版实现通过 `Arc<HotSwapController>` 显式捕获控制器共享所有权，在构建上下文时
+//   由控制器内部的弱引用升级获得；
+// - `HotSwapContext` 直接持有 `Arc`，从而可以在无需 `unsafe` 的前提下调用控制器的受保护方法，
+//   并让 Rust 编译器负责线程安全性推导。
+//
 // ## 契约（What）
-// - 指针来源：始终由活跃的 `HotSwapController` 实例提供，且控制器以 `Arc` 持有，
-//   确保不会在 Handler 回调期间被释放；
-// - 使用前提：仅允许在 Handler 链调度时同步访问，禁止跨线程持久保存该上下文。
+// - `HotSwapController::new` 会自动注册自身弱引用，保证上下文在创建时一定能升级为强引用；
+// - Handler 必须遵循“事件回调内即时使用上下文”的前置条件，避免跨线程长期保留 `Arc` 以防记忆泄漏。
+//
 // ## 风险与权衡（Trade-offs）
-// - 为避免在 API 层暴露生命周期参数并保持 Handler 接口简洁，我们接受受控的 `unsafe`，
-//   以换取零拷贝地传递控制器引用；
-// - 若未来引入跨线程异步执行器，需要重新审视该策略并可能改为 `Arc<HotSwapController>`。
+// - 每次构建上下文都会升级一次弱引用，成本为一次原子引用计数更新；在换取完全安全的指针管理后，
+//   该开销可接受；
+// - 若未来在极端性能场景下观察到升级成本突出，可考虑通过对象池复用上下文结构，但需额外审慎设计。
 use alloc::string::ToString;
-use alloc::{borrow::Cow, boxed::Box, format, string::String, sync::Arc, vec::Vec};
+use alloc::{
+    borrow::Cow,
+    boxed::Box,
+    format,
+    string::String,
+    sync::{Arc, Weak},
+    vec::Vec,
+};
 
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use spin::Mutex;
 
 use crate::{
+    arc_swap::ArcSwap,
     buffer::PipelineMessage,
     contract::{CallContext, CloseReason, Deadline},
     error::{CoreError, SparkError},
@@ -570,6 +578,7 @@ pub struct HotSwapController {
     registry: HotSwapRegistry,
     sequence: AtomicU64,
     mutation: Mutex<()>,
+    self_ref: ArcSwap<Weak<HotSwapController>>,
 }
 
 /// HotSwap 控制器在观测指标中的控制器标签取值。
@@ -586,8 +595,8 @@ impl HotSwapController {
         channel: Arc<dyn Channel>,
         services: CoreServices,
         call_context: CallContext,
-    ) -> Self {
-        Self {
+    ) -> Arc<Self> {
+        let controller = Arc::new(Self {
             channel,
             services,
             call_context,
@@ -595,7 +604,19 @@ impl HotSwapController {
             registry: HotSwapRegistry::new(),
             sequence: AtomicU64::new(1),
             mutation: Mutex::new(()),
-        }
+            self_ref: ArcSwap::from_pointee(Weak::new()),
+        });
+
+        // ## 教案级自引用注册说明
+        // - **Why**：上下文构建时需要安全地回到当前控制器，避免裸指针；
+        // - **How**：构造完成后立即写入 `Weak<Self>`，并在后续上下文中通过 `upgrade` 获得强引用；
+        // - **Contract**：该弱引用写入动作只执行一次，且不会在控制器生命周期内被清除；
+        // - **Trade-offs**：初始化阶段多了一次 `Arc` 克隆，但换取了运行期的完全安全性。
+        controller
+            .self_ref
+            .store(Arc::new(Arc::downgrade(&controller)));
+
+        controller
     }
 
     fn append_handler(&self, label: &str, handler: Arc<dyn Handler>) -> ControllerHandleId {
@@ -708,6 +729,18 @@ impl HotSwapController {
         Arc::new(entries)
     }
 
+    fn upgrade_self(&self) -> Arc<HotSwapController> {
+        // ## 教案级说明：自引用升级
+        // - **Why**：在仅持有 `&self` 的上下文中，将 `Weak<Self>` 升级为 `Arc<Self>` 以便构建安全的执行上下文；
+        // - **How**：读取 `ArcSwap` 保存的弱引用，调用 `upgrade` 获取强引用；若异常发生，记录不可恢复错误；
+        // - **Contract**：返回的 `Arc` 生命周期独立于当前借用，调用者必须避免长时间持有以免阻滞 Drop；
+        // - **Trade-offs**：升级失败意味着控制器处于已释放或未初始化状态，属于严重程序错误，此处直接 `expect`。
+        self.self_ref
+            .load_full()
+            .upgrade()
+            .expect("HotSwapController weak self must be initialized")
+    }
+
     fn locate_insertion_index(
         chain: &[Arc<HandlerEntry>],
         anchor: ControllerHandleId,
@@ -732,7 +765,7 @@ impl HotSwapController {
         trace_context: TraceContext,
     ) -> HotSwapContext {
         HotSwapContext::new(
-            self,
+            self.upgrade_self(),
             Arc::clone(&self.channel),
             &self.services,
             &self.call_context,
@@ -947,6 +980,95 @@ impl Controller for HotSwapController {
     }
 }
 
+impl Controller for Arc<HotSwapController> {
+    type HandleId = ControllerHandleId;
+
+    fn register_inbound_handler(&self, label: &str, handler: Box<dyn InboundHandler>) {
+        <HotSwapController as Controller>::register_inbound_handler(self.as_ref(), label, handler);
+    }
+
+    fn register_inbound_handler_static(&self, label: &str, handler: &'static dyn InboundHandler) {
+        <HotSwapController as Controller>::register_inbound_handler_static(
+            self.as_ref(),
+            label,
+            handler,
+        );
+    }
+
+    fn register_outbound_handler(&self, label: &str, handler: Box<dyn OutboundHandler>) {
+        <HotSwapController as Controller>::register_outbound_handler(self.as_ref(), label, handler);
+    }
+
+    fn register_outbound_handler_static(&self, label: &str, handler: &'static dyn OutboundHandler) {
+        <HotSwapController as Controller>::register_outbound_handler_static(
+            self.as_ref(),
+            label,
+            handler,
+        );
+    }
+
+    fn install_middleware(
+        &self,
+        middleware: &dyn Middleware,
+        services: &CoreServices,
+    ) -> crate::Result<(), CoreError> {
+        <HotSwapController as Controller>::install_middleware(self.as_ref(), middleware, services)
+    }
+
+    fn emit_channel_activated(&self) {
+        <HotSwapController as Controller>::emit_channel_activated(self.as_ref());
+    }
+
+    fn emit_read(&self, msg: PipelineMessage) {
+        <HotSwapController as Controller>::emit_read(self.as_ref(), msg);
+    }
+
+    fn emit_read_completed(&self) {
+        <HotSwapController as Controller>::emit_read_completed(self.as_ref());
+    }
+
+    fn emit_writability_changed(&self, is_writable: bool) {
+        <HotSwapController as Controller>::emit_writability_changed(self.as_ref(), is_writable);
+    }
+
+    fn emit_user_event(&self, event: CoreUserEvent) {
+        <HotSwapController as Controller>::emit_user_event(self.as_ref(), event);
+    }
+
+    fn emit_exception(&self, error: CoreError) {
+        <HotSwapController as Controller>::emit_exception(self.as_ref(), error);
+    }
+
+    fn emit_channel_deactivated(&self) {
+        <HotSwapController as Controller>::emit_channel_deactivated(self.as_ref());
+    }
+
+    fn registry(&self) -> &dyn HandlerRegistry {
+        <HotSwapController as Controller>::registry(self.as_ref())
+    }
+
+    fn epoch(&self) -> u64 {
+        <HotSwapController as Controller>::epoch(self.as_ref())
+    }
+
+    fn add_handler_after(
+        &self,
+        anchor: ControllerHandleId,
+        label: &str,
+        handler: Arc<dyn Handler>,
+    ) -> ControllerHandleId {
+        <HotSwapController as Controller>::add_handler_after(self.as_ref(), anchor, label, handler)
+    }
+
+    fn remove_handler(&self, handle: ControllerHandleId) -> bool {
+        <HotSwapController as Controller>::remove_handler(self.as_ref(), handle)
+    }
+
+    fn replace_handler(&self, handle: ControllerHandleId, handler: Arc<dyn Handler>) -> bool {
+        <HotSwapController as Controller>::replace_handler(self.as_ref(), handle, handler)
+    }
+}
+
 /// 针对 Middleware 场景的链路装配适配器。
 ///
 /// # 教案式说明
@@ -1013,7 +1135,7 @@ impl ChainBuilder for HotSwapMiddlewareBuilder<'_> {
 
 /// 事件调度时注入 Handler 的上下文实现。
 struct HotSwapContext {
-    controller: *const HotSwapController,
+    controller: Arc<HotSwapController>,
     channel: Arc<dyn Channel>,
     services: CoreServices,
     call_context: CallContext,
@@ -1025,7 +1147,7 @@ struct HotSwapContext {
 
 impl HotSwapContext {
     fn new(
-        controller: &HotSwapController,
+        controller: Arc<HotSwapController>,
         channel: Arc<dyn Channel>,
         services: &CoreServices,
         call_context: &CallContext,
@@ -1035,7 +1157,7 @@ impl HotSwapContext {
     ) -> Self {
         let logger = InstrumentedLogger::new(Arc::clone(&services.logger), trace_context.clone());
         Self {
-            controller: controller as *const _,
+            controller,
             channel,
             services: services.clone(),
             call_context: call_context.clone(),
@@ -1050,12 +1172,11 @@ impl HotSwapContext {
 // SAFETY: HotSwapContext 内的字段满足以下条件：
 // - ## Why：为了让 Handler 在任意调度线程上复用上下文，该类型需实现 `Send`/`Sync`；
 // - ## How：除 `controller` 外，其余字段均为 `Arc`、`Clone` 或原子类型，天然线程安全。
-//   `controller` 指向 `HotSwapController`，其内部由 `Arc`、原子与 `Mutex` 组成，满足 Send/Sync
-//   的要求；外层通过 `Arc` 持有控制器实例，确保跨线程访问不会悬垂；
-// - ## What：调用者必须遵循“上下文仅在事件分发期间即时使用”的约定，不得缓存到异步任务中；
-// - ## Trade-offs：保留裸指针可避免额外 `Arc` 克隆，保持调度路径轻量，代价是需要人工证明其线程安全性。
-unsafe impl Send for HotSwapContext {}
-unsafe impl Sync for HotSwapContext {}
+// 教案级线程安全说明：HotSwapContext
+// - **Why**：Handler 需要在线程间安全地共享上下文，特别是在读/写事件穿梭时；
+// - **How**：`controller`、`channel` 等共享状态统一封装为 `Arc`，配合原子自增 `next_index` 保证并发调度一致性；
+// - **Contract**：上下文创建与释放由控制器掌握，调用者不得跨事件持久保存；
+// - **Trade-offs**：以 `Arc` 持有控制器略增引用计数开销，但完全避免了裸指针导致的 UB 风险。
 
 impl PipelineContext for HotSwapContext {
     fn channel(&self) -> &dyn Channel {
@@ -1063,11 +1184,7 @@ impl PipelineContext for HotSwapContext {
     }
 
     fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
-        // SAFETY: `controller` 源自 `HotSwapContext::new` 中的活跃引用，
-        // - ## 前提：上下文只在控制器持有 `Arc` 的生命周期内创建，指针不会被提前释放；
-        // - ## 逻辑：该方法仅在 Handler 调度时同步调用，无并发写入同一控制器指针；
-        // - ## 结果：返回的引用与 `HotSwapController` 原始借用等价，可安全作为只读接口使用。
-        unsafe { &*self.controller }
+        self.controller.as_ref()
     }
 
     fn executor(&self) -> &dyn crate::runtime::TaskExecutor {
@@ -1109,15 +1226,8 @@ impl PipelineContext for HotSwapContext {
     fn forward_read(&self, msg: PipelineMessage) {
         let index = self.next_index.fetch_add(1, Ordering::SeqCst);
         let trace = self.trace_context.clone();
-        // SAFETY: 此处复用与 `controller()` 相同的裸指针：
-        // - ## Why：需要将当前上下文传递给后续 Handler，实现 HotSwap 链继续前进；
-        // - ## How：指针操作仅在当前线程内执行，不与其他写操作并发；
-        // - ## What：`dispatch_inbound_from` 期望长期存活的控制器引用，且上下文保证 `snapshot`
-        //   与 `trace` 均为 `Arc`/clone，不会悬垂；
-        // - ## 风险：若未来允许异步延迟调用，需改为持有 `Arc<HotSwapController>`，当前同步模型下安全。
-        unsafe {
-            (*self.controller).dispatch_inbound_from(self.snapshot.clone(), index, msg, trace);
-        }
+        self.controller
+            .dispatch_inbound_from(self.snapshot.clone(), index, msg, trace);
     }
 
     fn write(&self, msg: PipelineMessage) -> crate::Result<WriteSignal, CoreError> {
@@ -1166,5 +1276,325 @@ impl ChainBuilder for dyn Controller<HandleId = ControllerHandleId> {
 
     fn register_outbound_static(&mut self, label: &str, handler: &'static dyn OutboundHandler) {
         Controller::register_outbound_handler_static(self, label, handler);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        buffer::{BufferPool, PipelineMessage, WritableBuffer},
+        contract::{CallContext, CloseReason, Deadline},
+        observability::{
+            EventPolicy, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
+            TraceContext, TraceFlags,
+        },
+        pipeline::{Channel, ChannelState, ExtensionsMap, WriteSignal},
+        runtime::{
+            AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
+            TaskError, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
+        },
+        test_stubs::observability::{NoopLogger, NoopMetricsProvider, StaticObservabilityFacade},
+    };
+    use alloc::{sync::Arc, vec::Vec};
+    use core::{
+        pin::Pin,
+        task::{Context, Poll},
+    };
+    use std::{
+        any::Any,
+        sync::{Mutex, OnceLock},
+        time::Duration,
+    };
+
+    /// 构建最小化运行环境，确保控制器在测试中具备完整依赖。
+    fn build_controller_fixture() -> (Arc<HotSwapController>, Arc<TestChannel>) {
+        let runtime = Arc::new(NoopRuntime::new());
+        let logger = Arc::new(NoopLogger);
+        let ops = Arc::new(NoopOpsBus::default());
+        let metrics = Arc::new(NoopMetricsProvider);
+
+        let services = CoreServices::with_observability_facade(
+            runtime as Arc<dyn AsyncRuntime>,
+            Arc::new(NoopBufferPool),
+            StaticObservabilityFacade::new(
+                logger as Arc<dyn Logger>,
+                metrics as Arc<dyn MetricsProvider>,
+                ops as Arc<dyn OpsEventBus>,
+                Arc::new(Vec::new()),
+            ),
+        );
+
+        let trace_context = TraceContext::new(
+            [0xAA; TraceContext::TRACE_ID_LENGTH],
+            [0xBB; TraceContext::SPAN_ID_LENGTH],
+            TraceFlags::new(TraceFlags::SAMPLED),
+        );
+        let call_context = CallContext::builder()
+            .with_trace_context(trace_context)
+            .build();
+
+        let channel = Arc::new(TestChannel::new("controller-unit"));
+        let controller =
+            HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
+        channel.bind_controller(
+            controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>
+        );
+
+        (controller, channel)
+    }
+
+    /// 验证 `self_ref` 弱引用已正确初始化并可升级为强引用。
+    #[test]
+    fn hot_swap_controller_self_upgrade_succeeds() {
+        let (controller, _channel) = build_controller_fixture();
+        let upgraded = controller
+            .self_ref
+            .load_full()
+            .upgrade()
+            .expect("weak self should upgrade to Arc");
+        assert!(Arc::ptr_eq(&controller, &upgraded));
+    }
+
+    /// 确认上下文在分发结束后不会额外持有控制器引用，避免泄漏。
+    #[test]
+    fn hot_swap_context_releases_controller_after_dispatch() {
+        let (controller, _channel) = build_controller_fixture();
+        controller.register_inbound_handler("passthrough", Box::new(PassthroughInbound));
+
+        let baseline = Arc::strong_count(&controller);
+        controller.emit_read(PipelineMessage::from_user(()));
+        assert_eq!(Arc::strong_count(&controller), baseline);
+    }
+
+    /// 测试用 Channel，实现核心接口以驱动控制器流程。
+    struct TestChannel {
+        id: &'static str,
+        controller: OnceLock<Arc<dyn Controller<HandleId = ControllerHandleId>>>,
+        extensions: TestExtensions,
+    }
+
+    impl TestChannel {
+        fn new(id: &'static str) -> Self {
+            Self {
+                id,
+                controller: OnceLock::new(),
+                extensions: TestExtensions,
+            }
+        }
+
+        fn bind_controller(&self, controller: Arc<dyn Controller<HandleId = ControllerHandleId>>) {
+            let _ = self.controller.set(controller);
+        }
+    }
+
+    impl Channel for TestChannel {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        fn state(&self) -> ChannelState {
+            ChannelState::Active
+        }
+
+        fn is_writable(&self) -> bool {
+            true
+        }
+
+        fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+            self.controller
+                .get()
+                .expect("controller must be bound")
+                .as_ref()
+        }
+
+        fn extensions(&self) -> &dyn ExtensionsMap {
+            &self.extensions
+        }
+
+        fn peer_addr(&self) -> Option<crate::transport::TransportSocketAddr> {
+            None
+        }
+
+        fn local_addr(&self) -> Option<crate::transport::TransportSocketAddr> {
+            None
+        }
+
+        fn close_graceful(&self, _reason: CloseReason, _deadline: Option<Deadline>) {}
+
+        fn close(&self) {}
+
+        fn closed(&self) -> crate::future::BoxFuture<'static, crate::Result<(), SparkError>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn write(&self, _msg: PipelineMessage) -> crate::Result<WriteSignal, CoreError> {
+            Ok(WriteSignal::Accepted)
+        }
+
+        fn flush(&self) {}
+    }
+
+    #[derive(Default)]
+    struct TestExtensions;
+
+    impl ExtensionsMap for TestExtensions {
+        fn insert(&self, _key: std::any::TypeId, _value: Box<dyn Any + Send + Sync>) {}
+
+        fn get<'a>(
+            &'a self,
+            _key: &std::any::TypeId,
+        ) -> Option<&'a (dyn Any + Send + Sync + 'static)> {
+            None
+        }
+
+        fn remove(&self, _key: &std::any::TypeId) -> Option<Box<dyn Any + Send + Sync>> {
+            None
+        }
+
+        fn contains_key(&self, _key: &std::any::TypeId) -> bool {
+            false
+        }
+
+        fn clear(&self) {}
+    }
+
+    #[derive(Default)]
+    struct NoopOpsBus {
+        events: Mutex<Vec<OpsEvent>>,
+        policies: Mutex<Vec<(OpsEventKind, EventPolicy)>>,
+    }
+
+    impl OpsEventBus for NoopOpsBus {
+        fn broadcast(&self, event: OpsEvent) {
+            self.events.lock().expect("ops events").push(event);
+        }
+
+        fn subscribe(&self) -> crate::BoxStream<'static, OpsEvent> {
+            Box::pin(EmptyStream)
+        }
+
+        fn set_event_policy(&self, kind: OpsEventKind, policy: EventPolicy) {
+            self.policies
+                .lock()
+                .expect("ops policies")
+                .push((kind, policy));
+        }
+    }
+
+    struct EmptyStream;
+
+    impl crate::Stream for EmptyStream {
+        type Item = OpsEvent;
+
+        fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            Poll::Ready(None)
+        }
+    }
+
+    struct NoopBufferPool;
+
+    impl BufferPool for NoopBufferPool {
+        fn acquire(
+            &self,
+            _min_capacity: usize,
+        ) -> crate::Result<Box<dyn WritableBuffer>, CoreError> {
+            Err(CoreError::new("test.buffer", "acquire unused in tests"))
+        }
+
+        fn shrink_to_fit(&self) -> crate::Result<usize, CoreError> {
+            Ok(0)
+        }
+
+        fn statistics(&self) -> crate::Result<crate::buffer::PoolStats, CoreError> {
+            Ok(Default::default())
+        }
+    }
+
+    #[derive(Default)]
+    struct NoopRuntime {
+        now: Mutex<Duration>,
+    }
+
+    impl NoopRuntime {
+        fn new() -> Self {
+            Self::default()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TaskExecutor for NoopRuntime {
+        fn spawn_dyn(
+            &self,
+            _ctx: &CallContext,
+            _fut: crate::future::BoxFuture<'static, TaskResult<Box<dyn Any + Send>>>,
+        ) -> JoinHandle<Box<dyn Any + Send>> {
+            JoinHandle::from_task_handle(Box::new(NoopHandle))
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TimeDriver for NoopRuntime {
+        fn now(&self) -> MonotonicTimePoint {
+            MonotonicTimePoint::from_offset(*self.now.lock().expect("time"))
+        }
+
+        async fn sleep(&self, duration: Duration) {
+            let mut guard = self.now.lock().expect("time");
+            *guard = guard.checked_add(duration).unwrap_or(Duration::MAX);
+        }
+    }
+
+    #[derive(Default)]
+    struct NoopHandle;
+
+    #[async_trait::async_trait]
+    impl TaskHandle for NoopHandle {
+        type Output = Box<dyn Any + Send>;
+
+        fn cancel(&self, _strategy: TaskCancellationStrategy) {}
+
+        fn is_finished(&self) -> bool {
+            true
+        }
+
+        fn is_cancelled(&self) -> bool {
+            false
+        }
+
+        fn id(&self) -> Option<&str> {
+            None
+        }
+
+        fn detach(self: Box<Self>) {}
+
+        async fn join(self: Box<Self>) -> TaskResult<Self::Output> {
+            Err(TaskError::ExecutorTerminated)
+        }
+    }
+
+    struct PassthroughInbound;
+
+    impl InboundHandler for PassthroughInbound {
+        fn on_channel_active(&self, _ctx: &dyn crate::pipeline::Context) {}
+
+        fn on_read(&self, ctx: &dyn crate::pipeline::Context, msg: PipelineMessage) {
+            ctx.forward_read(msg);
+        }
+
+        fn on_read_complete(&self, _ctx: &dyn crate::pipeline::Context) {}
+
+        fn on_writability_changed(&self, _ctx: &dyn crate::pipeline::Context, _is_writable: bool) {}
+
+        fn on_user_event(
+            &self,
+            _ctx: &dyn crate::pipeline::Context,
+            _event: crate::observability::CoreUserEvent,
+        ) {
+        }
+
+        fn on_exception_caught(&self, _ctx: &dyn crate::pipeline::Context, _error: CoreError) {}
+
+        fn on_channel_inactive(&self, _ctx: &dyn crate::pipeline::Context) {}
     }
 }

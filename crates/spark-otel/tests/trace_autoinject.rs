@@ -67,11 +67,8 @@ fn trace_context_auto_injected_and_spans_form_parent_child_tree() {
     let root_trace = call_context.trace_context().clone();
 
     let channel = Arc::new(TestChannel::new("trace-auto-inject"));
-    let controller = Arc::new(HotSwapController::new(
-        channel.clone() as Arc<dyn Channel>,
-        services,
-        call_context,
-    ));
+    let controller =
+        HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
     channel
         .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
 
