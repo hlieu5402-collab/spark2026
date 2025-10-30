@@ -6,8 +6,8 @@ use std::{
 use spark_core::{
     contract::CallContext,
     observability::{
-        AttributeSet, Counter, DefaultObservabilityFacade, Gauge, Histogram, InstrumentDescriptor,
-        LogRecord, LogSeverity, Logger, MetricAttributeValue, MetricsProvider, OpsEventBus,
+        AttributeSet, Counter, Gauge, Histogram, InstrumentDescriptor, LogRecord, LogSeverity,
+        Logger, MetricAttributeValue, MetricsProvider, OpsEventBus,
         metrics::contract::pipeline as pipeline_contract,
     },
     pipeline::{
@@ -16,7 +16,7 @@ use spark_core::{
         handler::InboundHandler,
     },
     runtime::{AsyncRuntime, CoreServices},
-    test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogram},
+    test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogram, StaticObservabilityFacade},
 };
 
 use super::hot_swap::{NoopBufferPool, NoopOpsBus, NoopRuntime, TestChannel};
@@ -41,7 +41,7 @@ fn pipeline_mutations_emit_epoch_metrics_and_logs() {
     let services = CoreServices::with_observability_facade(
         runtime as Arc<dyn AsyncRuntime>,
         Arc::new(NoopBufferPool),
-        DefaultObservabilityFacade::new(
+        StaticObservabilityFacade::new(
             logger.clone() as Arc<dyn Logger>,
             metrics.clone() as Arc<dyn MetricsProvider>,
             ops_bus as Arc<dyn OpsEventBus>,

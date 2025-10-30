@@ -17,7 +17,6 @@
 //! * **架构选择：** 通过模块化接口换取统一性，牺牲了直接操作底层 executor 的灵活性，却换来可测试性与跨平台部署能力。
 //! * **边界情况：** 合约作者需关注超时、重复调度、以及宿主拒绝服务等边界；本模块接口文档会明确每个 API 的退化行为，便于上层实现补偿逻辑。
 //!
-use crate::arc_swap::ArcSwap;
 use alloc::{borrow::Cow, sync::Arc};
 use core::{fmt, marker::PhantomData};
 

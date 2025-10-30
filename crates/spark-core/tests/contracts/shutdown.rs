@@ -16,15 +16,17 @@ use spark_core::future::{BoxFuture, Stream};
 use spark_core::host::{GracefulShutdownStatus, GracefulShutdownTarget};
 use spark_hosting::shutdown::GracefulShutdownCoordinator;
 use spark_core::observability::{
-    AttributeSet, Counter, DefaultObservabilityFacade, EventPolicy, Gauge, Histogram, LogRecord,
-    LogSeverity, Logger, MetricAttributeValue, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
+    AttributeSet, Counter, EventPolicy, Gauge, Histogram, LogRecord, LogSeverity, Logger,
+    MetricAttributeValue, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
 };
 use spark_core::runtime::{
     AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
     TaskError, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
 };
 use spark_core::{BoxStream, SparkError};
-use spark_core::test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogram};
+use spark_core::test_stubs::observability::{
+    NoopCounter, NoopGauge, NoopHistogram, StaticObservabilityFacade,
+};
 
 use super::support::{block_on, monotonic};
 
@@ -245,7 +247,8 @@ impl MetricsProvider for TestMetrics {
 ///   指标与事件句柄。
 /// - **逻辑 (How)**：
 ///   1. 调用 [`CoreServices::with_observability_facade`]，减少逐字段填写的重复；
-///   2. 使用 [`DefaultObservabilityFacade`] 组合传入句柄，保持旧代码与新 Facade 之间的一致语义；
+///   2. 使用 [`StaticObservabilityFacade`](spark_core::test_stubs::observability::StaticObservabilityFacade)
+///      组合传入句柄，保持旧代码与新 Facade 之间的一致语义；
 ///   3. 注入空的健康探针向量，突出该测试关注停机流程而非探针健康度。
 /// - **契约 (What)**：
 ///   - 输入：已经实现线程安全的运行时、日志、运维事件与指标桩对象；
@@ -262,7 +265,7 @@ fn build_core_services(
     CoreServices::with_observability_facade(
         runtime,
         Arc::new(TestBufferPool::default()),
-        DefaultObservabilityFacade::new(logger, metrics, ops, Arc::new(Vec::new())),
+        StaticObservabilityFacade::new(logger, metrics, ops, Arc::new(Vec::new())),
     )
 }
 

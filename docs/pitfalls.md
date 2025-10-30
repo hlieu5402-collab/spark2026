@@ -47,7 +47,7 @@
 ## 8. 忽视运行时观测性
 - **现象：** 发生背压或降级时无指标、无日志可查。
 - **根因：** 未通过 `CoreServices::observability_facade` 暴露统一观测接口。
-- **自检：** 检查各 Handler 是否注入 `DefaultObservabilityFacade`。
+- **自检：** 检查各 Handler 是否注入 `spark_otel::facade::DefaultObservabilityFacade`。
 - **进阶建议：** 在集成测试中模拟限流事件，确认指标与日志完整。
 
 ## 9. 传输协商矩阵未同步

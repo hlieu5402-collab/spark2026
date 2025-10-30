@@ -44,8 +44,8 @@ pub mod observability {
     use alloc::sync::Arc;
 
     use crate::observability::{
-        AttributeSet, Counter, Gauge, Histogram, InstrumentDescriptor, LogRecord, Logger,
-        MetricsProvider,
+        AttributeSet, Counter, Gauge, HealthChecks, Histogram, InstrumentDescriptor, LogRecord,
+        Logger, MetricsProvider, ObservabilityFacade, OpsEventBus,
     };
 
     /// `NoopMetricsProvider` 为度量系统提供统一的空实现，确保测试可以轻松满足依赖注入需求。
@@ -171,5 +171,64 @@ pub mod observability {
     /// - **后置条件**：返回的 `Arc` 可安全克隆并跨线程共享。
     pub fn shared_metrics_provider() -> Arc<dyn MetricsProvider> {
         Arc::new(NoopMetricsProvider)
+    }
+
+    /// 基于 `Arc` 组合的静态 Facade 实现，仅用于测试装配流程。
+    ///
+    /// # 设计说明（Why）
+    /// - 随着 `DefaultObservabilityFacade` 迁移至 `spark-otel`，核心测试仍需一个
+    ///   轻量的 Facade 来拼装日志、指标与运维事件句柄；
+    /// - 在契约测试中频繁手写 Facade 会造成样板代码和易错点，统一封装可提升维护性。
+    ///
+    /// # 执行逻辑（How）
+    /// - 结构体内部缓存传入的 `Arc` 与健康探针集合，所有 Trait 方法均简单克隆或引用；
+    /// - `new` 构造函数保持与旧实现一致的字段语义，便于迁移。
+    ///
+    /// # 契约约束（What）
+    /// - **前置条件**：传入的句柄必须满足 `Send + Sync + 'static`；
+    /// - **后置条件**：实现 [`ObservabilityFacade`]，适合作为
+    ///   [`crate::runtime::CoreServices::with_observability_facade`] 的便捷输入；
+    /// - **风险提示**：仅用于测试环境，不会执行能力探针或懒加载策略。
+    #[derive(Clone)]
+    pub struct StaticObservabilityFacade {
+        logger: Arc<dyn Logger>,
+        metrics: Arc<dyn MetricsProvider>,
+        ops_bus: Arc<dyn OpsEventBus>,
+        health_checks: HealthChecks,
+    }
+
+    impl StaticObservabilityFacade {
+        /// 以静态句柄集合构造 Facade。
+        pub fn new(
+            logger: Arc<dyn Logger>,
+            metrics: Arc<dyn MetricsProvider>,
+            ops_bus: Arc<dyn OpsEventBus>,
+            health_checks: HealthChecks,
+        ) -> Self {
+            Self {
+                logger,
+                metrics,
+                ops_bus,
+                health_checks,
+            }
+        }
+    }
+
+    impl ObservabilityFacade for StaticObservabilityFacade {
+        fn logger(&self) -> Arc<dyn Logger> {
+            Arc::clone(&self.logger)
+        }
+
+        fn metrics(&self) -> Arc<dyn MetricsProvider> {
+            Arc::clone(&self.metrics)
+        }
+
+        fn ops_bus(&self) -> Arc<dyn OpsEventBus> {
+            Arc::clone(&self.ops_bus)
+        }
+
+        fn health_checks(&self) -> &HealthChecks {
+            &self.health_checks
+        }
     }
 }

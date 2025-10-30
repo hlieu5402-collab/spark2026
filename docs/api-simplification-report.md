@@ -38,7 +38,7 @@
 ## 5. 本轮原型输出（2024-XX-XX）
 
 - **落地提案：T4 Observability Facade**
-  - 在 `spark-core::observability` 下新增 `facade` 子模块，定义 `ObservabilityFacade` 契约与 `DefaultObservabilityFacade` 参考实现，聚合日志、指标、运维事件与健康探针能力。
+- 在 `spark-otel::facade` 下提供 `DefaultObservabilityFacade` 参考实现，配合 `spark-core::observability` 中的 `ObservabilityFacade` 契约聚合日志、指标、运维事件与健康探针能力。
   - `runtime::CoreServices` 新增 `observability_facade` 便捷方法，以现有字段构造外观，验证“不破坏既有字段即可增量提供 Facade”的可行性。
   - Rustdoc 明确前置/后置条件与扩展点，为后续 Feature Gate 化或替换实现奠定文档基础。
 - **后续计划**

@@ -40,9 +40,7 @@ pub use events::{
     ApplicationEvent, CoreUserEvent, EventPolicy, IdleDirection, IdleTimeout, OpsEvent,
     OpsEventBus, OpsEventKind, RateDirection, RateLimited, TlsInfo,
 };
-#[allow(deprecated)]
-pub use facade::LegacyObservabilityHandles;
-pub use facade::{DefaultObservabilityFacade, ObservabilityFacade};
+pub use facade::ObservabilityFacade;
 pub use health::{ComponentHealth, HealthCheckProvider, HealthChecks, HealthState};
 pub use logging::{LogField, LogRecord, LogSeverity, Logger};
 pub use metrics::{Counter, Gauge, Histogram, InstrumentDescriptor, MetricsProvider};
