@@ -166,7 +166,7 @@ where
     /// 拆解路由决策，返回绑定与告警集合。
     ///
     /// # 设计动机（Why）
-    /// - 便于对象层适配器一次性取得所有权，将泛型绑定转换为 [`RouteBindingObject`](crate::router::traits::object::RouteBindingObject)。
+    /// - 便于对象层适配器一次性取得所有权，将泛型绑定转换为 [`RouteBindingObject`](crate::router::RouteBindingObject)。
     ///
     /// # 契约说明（What）
     /// - **前置条件**：调用方持有 `self` 的独占所有权；

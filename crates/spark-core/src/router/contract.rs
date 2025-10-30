@@ -2,10 +2,10 @@ use alloc::borrow::Cow;
 
 use crate::{Error, sealed::Sealed, service::Service};
 
-use super::super::binding::{RouteDecision, RouteValidation};
-use super::super::context::RoutingContext;
-use super::super::metadata::RouteMetadata;
-use super::super::route::{RouteId, RoutePattern};
+use super::binding::{RouteDecision, RouteValidation};
+use super::context::{RoutingContext, RoutingSnapshot};
+use super::metadata::RouteMetadata;
+use super::route::{RouteId, RoutePattern};
 
 /// 路由错误类型，统一表达多种失败场景。
 ///
@@ -41,8 +41,10 @@ where
 /// `Router` Trait 是路由子系统的泛型契约。
 ///
 /// # 契约维度速览
-/// - **语义**：`route` 基于 [`RoutingContext`] 选择目标 [`RouteDecision`]，`snapshot` 提供观测快照，`validate` 在配置写入前做语义检查。
-/// - **错误**：必须返回结构化 [`RouteError`] 或 [`CoreError`](crate::error::CoreError)，常见错误码：`router.not_found`、`router.policy_denied`、`router.service_unavailable`。
+/// - **语义**：`route` 基于 [`RoutingContext`] 选择目标 [`RouteDecision`]，`snapshot` 提供观测快照，`validate` 在配置写入前做语
+///   义检查。
+/// - **错误**：必须返回结构化 [`RouteError`] 或 [`CoreError`](crate::error::CoreError)，常见错误码：`router.not_found`、`router
+///   .policy_denied`、`router.service_unavailable`。
 /// - **并发**：要求 `Send + Sync`；实现应支持并发读（`route`）与写（热更新）操作，推荐使用读写锁或无锁快照结构。
 /// - **背压**：当后端服务繁忙时，`RouteDecision` 可附带 [`BusyReason`](crate::status::BusyReason) 供上层传播背压信号。
 /// - **超时**：路由过程通常应在微秒级完成；如需访问外部目录，应结合 `RoutingContext::call_context().deadline()` 限制耗时。
@@ -79,8 +81,8 @@ pub trait Router<Request>: Sealed {
     ) -> crate::Result<RouteDecision<Self::Service, Request>, RouteError<Self::Error>>;
 
     /// 返回当前路由快照。
-    fn snapshot(&self) -> super::super::context::RoutingSnapshot<'_>;
+    fn snapshot(&self) -> RoutingSnapshot<'_>;
 
     /// 对路由配置进行预检。
-    fn validate(&self, descriptor: &super::super::catalog::RouteDescriptor) -> RouteValidation;
+    fn validate(&self, descriptor: &super::catalog::RouteDescriptor) -> RouteValidation;
 }

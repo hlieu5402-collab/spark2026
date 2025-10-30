@@ -14,8 +14,7 @@ use spark_core::router::catalog::{RouteCatalog, RouteDescriptor};
 use spark_core::router::context::{RoutingContext, RoutingSnapshot};
 use spark_core::router::metadata::RouteMetadata;
 use spark_core::router::route::{RouteId, RoutePattern, RouteSegment};
-use spark_core::router::traits::generic::RouteError;
-use spark_core::router::traits::object::{DynRouter, RouteBindingObject, RouteDecisionObject};
+use spark_core::router::{DynRouter, RouteBindingObject, RouteDecisionObject, RouteError};
 use spark_core::service::BoxService;
 use spark_core::{SparkError, buffer::PipelineMessage};
 

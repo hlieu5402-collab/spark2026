@@ -10,12 +10,9 @@ use spark_core::{
         Context, InboundHandler, extensions::ExtensionsMap, middleware::MiddlewareDescriptor,
     },
     router::{
+        DynRouter, RouteDecisionObject, RouteError,
         context::{RoutingContext, RoutingIntent, RoutingSnapshot},
         metadata::RouteMetadata,
-        traits::{
-            generic::RouteError,
-            object::{DynRouter, RouteDecisionObject},
-        },
     },
     runtime::TaskExecutor,
     service::BoxService,
