@@ -8,7 +8,7 @@
 //! # 工作机制（How）
 //! - 构建两种场景：
 //!   1. `manual_call_context`：直接克隆 [`CallContext`] 并轮询取消标记；
-//!   2. `runtime_sugar_context`：通过 [`rt::CallContext`] 语法糖访问同一取消标记，覆盖 DX 包装层；
+//!   2. `runtime_sugar_context`：通过 [`spark_core::runtime::CallContext`] 语法糖访问同一取消标记，覆盖 DX 包装层；
 //! - 每轮基准都会：
 //!   - 创建带 50ms 截止时间的 `CallContext`；
 //!   - 生成 `concurrency` 份视图并同步触发 `cancel()`；
@@ -36,9 +36,8 @@ use core::{future::Future, hint::spin_loop};
 use serde::Serialize;
 use spark_core::{
     contract::{CallContext, Deadline},
-    rt,
-    rt::sugar::BorrowedRuntimeCaps,
-    runtime::MonotonicTimePoint,
+    runtime::sugar::BorrowedRuntimeCaps,
+    runtime::{self, MonotonicTimePoint},
 };
 use std::{env, error::Error, fmt, fs::File, io::Write, path::PathBuf, time::Instant};
 
@@ -398,7 +397,8 @@ fn run_scenario(kind: ScenarioKind, config: &Config) -> ScenarioReport {
                 let cancelled = call.cancellation().cancel();
                 debug_assert!(cancelled, "新建上下文的 cancel() 应首次返回 true");
                 for _ in 0..concurrency {
-                    let view = rt::CallContext::new(&call, BorrowedRuntimeCaps::new(&runtime_caps));
+                    let view =
+                        runtime::CallContext::new(&call, BorrowedRuntimeCaps::new(&runtime_caps));
                     let call_ref = view.call();
                     while !call_ref.cancellation().is_cancelled() {
                         spin_loop();
@@ -431,7 +431,7 @@ fn run_scenario(kind: ScenarioKind, config: &Config) -> ScenarioReport {
 /// 不执行任何实际调度的运行时能力桩，满足语法糖引用要求。
 struct NoopRuntimeCaps;
 
-impl rt::RuntimeCaps for NoopRuntimeCaps {
+impl runtime::RuntimeCaps for NoopRuntimeCaps {
     type Join<T: Send + 'static> = ();
 
     fn spawn_with<F>(&self, _ctx: &CallContext, _fut: F) -> Self::Join<F::Output>

@@ -15,9 +15,9 @@ mod tests {
             use spark_core::{
                 async_trait,
                 contract::CallContext,
-                rt::{self, spawn_in},
                 runtime::{
-                    JoinHandle, TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle, TaskResult,
+                    self, spawn_in, JoinHandle, TaskCancellationStrategy, TaskError, TaskExecutor,
+                    TaskHandle, TaskResult,
                 },
                 with_ctx,
             };
@@ -199,7 +199,7 @@ mod tests {
             fn spawn_in_dispatches_future() {
                 let executor = ImmediateExecutor::default();
                 let call_ctx = CallContext::builder().build();
-                let sugar_ctx = rt::CallContext::borrowed(&call_ctx, &executor);
+                let sugar_ctx = runtime::CallContext::borrowed(&call_ctx, &executor);
 
                 let join = spawn_in(&sugar_ctx, async move { 42usize });
                 let output = block_on(join.join()).expect("任务应成功完成");

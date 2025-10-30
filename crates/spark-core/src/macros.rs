@@ -8,12 +8,12 @@
 /// # 设计动机（Why）
 /// - 在 Handler/Middleware 中，常见模式是先从 `Context` 取出 [`CallContext`](crate::contract::CallContext)
 ///   与执行器，再构造异步任务。这段样板既冗长又容易遗漏克隆操作。
-/// - 宏通过重绑定局部变量，将同名标识符替换为 [`crate::rt::CallContext`] 视图，从而与
-///   [`crate::rt::spawn_in`] 等语法糖 API 协同。
+/// - 宏通过重绑定局部变量，将同名标识符替换为 [`crate::runtime::CallContext`] 视图，从而与
+///   [`crate::runtime::spawn_in`] 等语法糖 API 协同。
 ///
 /// # 展开逻辑（How）
 /// - 保存对原始 `Context` 的引用，避免移动所有权；
-/// - 使用 [`crate::rt::PipelineContextCaps`]（兼容别名 [`crate::rt::ContextCaps`]）适配执行器能力；
+/// - 使用 [`crate::runtime::PipelineContextCaps`]（兼容别名 [`crate::runtime::ContextCaps`]）适配执行器能力；
 /// - 构造语法糖上下文并以同名变量绑定，再返回调用方提供的表达式。
 ///
 /// # 契约说明（What）
@@ -23,14 +23,14 @@
 ///
 /// # 风险提示（Trade-offs）
 /// - 宏不会自动克隆 [`CallContext`](crate::contract::CallContext)；若异步任务需要持有所有权，请在
-///   任务体内调用 [`crate::rt::CallContext::clone_call`]；
+///   任务体内调用 [`crate::runtime::CallContext::clone_call`]；
 /// - 若传入的标识符未实现 `Context`，编译器将给出常规的 trait 约束错误，方便定位问题。
 #[macro_export]
 macro_rules! with_ctx {
     ($ctx:ident, $body:expr) => {{
         let __spark_ctx_ref = &$ctx;
-        let __spark_caps = $crate::rt::PipelineContextCaps::new(__spark_ctx_ref);
-        let $ctx = $crate::rt::CallContext::new(__spark_ctx_ref.call_context(), __spark_caps);
+        let __spark_caps = $crate::runtime::PipelineContextCaps::new(__spark_ctx_ref);
+        let $ctx = $crate::runtime::CallContext::new(__spark_ctx_ref.call_context(), __spark_caps);
         $body
     }};
 }

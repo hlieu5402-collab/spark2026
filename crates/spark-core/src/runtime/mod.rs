@@ -28,6 +28,7 @@
 //! - `executor`：封装运行时代办的任务提交流程与优先级调度参数。
 //! - `timer`：统一时间原语，支持单调时间点与延迟等待。
 //! - `services`：声明运行时向上层暴露的依赖注入集合。
+//! - `sugar`：提供语法糖层，帮助业务以零样板方式绑定 [`contract::CallContext`](crate::contract::CallContext) 与运行时能力。
 //!
 //! # 使用契约（What）
 //! - 宿主需实现 [`TaskExecutor`] 与 [`TimeDriver`]，并通过 [`AsyncRuntime`] 聚合。
@@ -42,6 +43,7 @@ mod executor;
 mod hotreload;
 mod services;
 mod slo;
+pub mod sugar;
 mod task;
 mod timeouts;
 mod timer;
@@ -54,6 +56,9 @@ pub use slo::{
     SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
     SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger, slo_policy_table_key,
 };
+#[allow(deprecated)]
+pub use sugar::ContextCaps;
+pub use sugar::{CallContext, PipelineContextCaps, RuntimeCaps, spawn_in};
 pub use task::{
     BlockingTaskSubmission, JoinHandle, LocalTaskSubmission, ManagedBlockingTask, ManagedLocalTask,
     ManagedSendTask, SendTaskSubmission, TaskCancellationStrategy, TaskError, TaskHandle,
