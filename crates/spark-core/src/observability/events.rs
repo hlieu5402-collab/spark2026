@@ -4,11 +4,11 @@ use crate::{
     sealed::Sealed,
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
+use core::time::Duration;
 use core::{
     any::Any,
     fmt,
     num::{NonZeroU32, NonZeroUsize},
-    time::Duration,
 };
 
 /// `ApplicationEvent` 为 `CoreUserEvent::ApplicationSpecific` 提供的类型安全扩展契约。

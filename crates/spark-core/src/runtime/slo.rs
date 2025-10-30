@@ -30,11 +30,10 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::{
-    cmp, fmt,
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
+use core::cmp;
+use core::fmt;
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::time::Duration;
 use spin::RwLock;
 
 /// 返回 SLO 策略映射表对应的配置键。

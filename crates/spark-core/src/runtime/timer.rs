@@ -64,7 +64,7 @@ impl MonotonicTimePoint {
 /// `TimeDriver` 定义统一的计时与延时接口。
 ///
 /// # 设计背景（Why）
-/// - 吸收 Tokio `time::Driver`、Quiche `Timer` 等成熟实现，结合实时调度研究中的精确计时需求，
+/// - 吸收 Tokio 定时驱动（time driver）、Quiche `Timer` 等成熟实现，结合实时调度研究中的精确计时需求，
 ///   提供最小但可组合的时间原语。
 ///
 /// # 逻辑解析（How）

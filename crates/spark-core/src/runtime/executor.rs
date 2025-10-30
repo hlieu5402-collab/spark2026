@@ -39,7 +39,7 @@ use crate::{BoxFuture, contract::CallContext, sealed::Sealed};
 /// - **后置条件**：运行时应保证 `JoinHandle::join` 完成时任务已经结束，且若实现了取消协作，`ctx.cancellation()` 的状态与任务执行相互一致。
 ///
 /// # 风险提示（Trade-offs）
-/// - 强制要求上下文引用意味着无法再直接调用诸如 `tokio::spawn` 的裸接口，宿主实现需要在内部处理上下文传播；
+/// - 强制要求上下文引用意味着无法再直接调用诸如 Tokio 提供的裸 `spawn` 接口，宿主实现需要在内部处理上下文传播；
 /// - 若执行器选择忽略 `ctx`，虽然编译通过，但将违背契约预期，应在实现层提供合规的传播策略（例如克隆取消令牌、继承预算等）。
 pub trait TaskExecutor: Send + Sync + 'static + Sealed {
     /// 对象安全的任务提交接口，使用类型擦除后的 `Box<dyn Any + Send>` 承载返回值。
