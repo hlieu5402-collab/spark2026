@@ -113,7 +113,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for spark_hosting::MiddlewareRegist
 impl core::panic::unwind_safe::UnwindSafe for spark_hosting::MiddlewareRegistrationError
 pub enum spark_hosting::ServiceEntry
 pub spark_hosting::ServiceEntry::Factory(alloc::sync::Arc<dyn spark_hosting::ServiceFactory>)
-pub spark_hosting::ServiceEntry::Instance(spark_core::service::traits::object::BoxService)
+pub spark_hosting::ServiceEntry::Instance(spark_core::service::object::BoxService)
 impl core::clone::Clone for spark_hosting::ServiceEntry
 pub fn spark_hosting::ServiceEntry::clone(&self) -> spark_hosting::ServiceEntry
 impl core::fmt::Debug for spark_hosting::ServiceEntry
@@ -200,7 +200,7 @@ pub fn spark_hosting::ServiceRegistry::into_entries(self) -> alloc::vec::Vec<(al
 pub fn spark_hosting::ServiceRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&alloc::string::String, &spark_hosting::ServiceEntry)>
 pub fn spark_hosting::ServiceRegistry::new() -> Self
 pub fn spark_hosting::ServiceRegistry::register_factory(&mut self, name: impl core::convert::Into<alloc::string::String>, factory: alloc::sync::Arc<dyn spark_hosting::ServiceFactory>) -> spark_core::error::Result<(), spark_hosting::ServiceRegistrationError>
-pub fn spark_hosting::ServiceRegistry::register_instance(&mut self, name: impl core::convert::Into<alloc::string::String>, service: spark_core::service::traits::object::BoxService) -> spark_core::error::Result<(), spark_hosting::ServiceRegistrationError>
+pub fn spark_hosting::ServiceRegistry::register_instance(&mut self, name: impl core::convert::Into<alloc::string::String>, service: spark_core::service::object::BoxService) -> spark_core::error::Result<(), spark_hosting::ServiceRegistrationError>
 impl core::clone::Clone for spark_hosting::ServiceRegistry
 pub fn spark_hosting::ServiceRegistry::clone(&self) -> spark_hosting::ServiceRegistry
 impl core::default::Default for spark_hosting::ServiceRegistry
@@ -214,4 +214,4 @@ impl core::marker::Unpin for spark_hosting::ServiceRegistry
 impl !core::panic::unwind_safe::RefUnwindSafe for spark_hosting::ServiceRegistry
 impl !core::panic::unwind_safe::UnwindSafe for spark_hosting::ServiceRegistry
 pub trait spark_hosting::ServiceFactory: core::marker::Send + core::marker::Sync + 'static
-pub fn spark_hosting::ServiceFactory::create(&self) -> spark_core::error::Result<spark_core::service::traits::object::BoxService, spark_core::error::SparkError>
+pub fn spark_hosting::ServiceFactory::create(&self) -> spark_core::error::Result<spark_core::service::object::BoxService, spark_core::error::SparkError>

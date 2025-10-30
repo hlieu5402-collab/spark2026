@@ -275,11 +275,8 @@ fn build_hot_swap_controller(channel_id: &str) -> (Arc<TestChannel>, Arc<HotSwap
         .build();
 
     let channel = Arc::new(TestChannel::new(channel_id));
-    let controller = Arc::new(HotSwapController::new(
-        channel.clone() as Arc<dyn Channel>,
-        services,
-        call_context,
-    ));
+    let controller =
+        HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
     channel
         .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
 

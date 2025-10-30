@@ -56,11 +56,8 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
         .build();
 
     let channel = Arc::new(TestChannel::new("hot-swap-channel"));
-    let controller = Arc::new(HotSwapController::new(
-        channel.clone() as Arc<dyn Channel>,
-        services,
-        call_context,
-    ));
+    let controller =
+        HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
     channel
         .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
 
@@ -144,11 +141,8 @@ mod loom_tests {
                 .build();
 
             let channel = Arc::new(TestChannel::new("loom-channel"));
-            let controller = Arc::new(HotSwapController::new(
-                channel.clone() as Arc<dyn Channel>,
-                services,
-                call_context,
-            ));
+            let controller =
+                HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
             channel.bind_controller(
                 controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>
             );

@@ -13,7 +13,7 @@ bench = false
 [features]
 default = ["std"]
 std = ["spark-core/std"]
-alloc = ["spark-core/alloc", "std"]
+alloc = ["spark-core/alloc"]
 
 [dependencies]
 bytes = { workspace = true }

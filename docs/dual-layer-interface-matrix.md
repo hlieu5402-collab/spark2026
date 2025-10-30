@@ -7,7 +7,7 @@
 
 | 域 | 泛型接口 | 对象接口/适配器 | 适配器入口 |
 | --- | --- | --- | --- |
-| Service | [`service::traits::generic::Service`]【F:crates/spark-core/src/service/traits/generic.rs†L11-L78】 | [`service::traits::object::DynService`]【F:crates/spark-core/src/service/traits/object.rs†L15-L68】 / [`ServiceObject`]【F:crates/spark-core/src/service/traits/object.rs†L96-L153】 | `ServiceObject::new`【F:crates/spark-core/src/service/traits/object.rs†L114-L139】 |
+| Service | [`service::generic::Service`]【F:crates/spark-core/src/service/generic.rs†L6-L102】 | [`service::object::DynService`]【F:crates/spark-core/src/service/object.rs†L15-L60】 / [`ServiceObject`]【F:crates/spark-core/src/service/object.rs†L65-L162】 | `ServiceObject::new`【F:crates/spark-core/src/service/object.rs†L102-L110】 |
 | Codec | [`codec::traits::generic::Codec`]【F:crates/spark-core/src/codec/traits/generic.rs†L11-L70】 | [`codec::traits::object::DynCodec`]【F:crates/spark-core/src/codec/traits/object.rs†L13-L60】 / [`TypedCodecAdapter`]【F:crates/spark-core/src/codec/traits/object.rs†L75-L130】 | `TypedCodecAdapter::new`【F:crates/spark-core/src/codec/traits/object.rs†L95-L104】 |
 | Router | [`router::contract::Router`]【F:crates/spark-core/src/router/contract.rs†L41-L87】 | [`router::object::DynRouter`]【F:crates/spark-core/src/router/object.rs†L99-L121】 / [`RouterObject`]【F:crates/spark-core/src/router/object.rs†L133-L193】 | `RouterObject::new`【F:crates/spark-core/src/router/object.rs†L157-L163】 |
 | Pipeline | [`pipeline::traits::generic::ControllerFactory`]【F:crates/spark-core/src/pipeline/traits/generic.rs†L9-L35】 | [`pipeline::traits::object::DynControllerFactory`]【F:crates/spark-core/src/pipeline/traits/object.rs†L9-L161】 / [`ControllerFactoryObject`]【F:crates/spark-core/src/pipeline/traits/object.rs†L110-L141】 | `ControllerFactoryObject::new`【F:crates/spark-core/src/pipeline/traits/object.rs†L122-L140】 |
@@ -34,7 +34,7 @@
 ## 4. 语义等价说明
 
 - 泛型接口均返回业务特定类型，调用前需通过 `poll_ready` 等机制完成背压检查；对象层通过 `PipelineMessage`/`Any` 保留相同语义，
-  并在类型不匹配时返回结构化 `CoreError`。【F:crates/spark-core/src/service/traits/generic.rs†L33-L78】【F:crates/spark-core/src/codec/contract.rs†L34-L64】
+  并在类型不匹配时返回结构化 `CoreError`。【F:crates/spark-core/src/service/generic.rs†L6-L74】【F:crates/spark-core/src/codec/contract.rs†L34-L64】
 - 适配器在错误路径上保留统一错误码：`TypedCodecAdapter` 使用 `protocol.type_mismatch`，`RouterObject` 透传 [`RouteError<SparkError>`]。
 - 当需桥接泛型 Service 至对象层路由时，可组合 `ServiceObject` 与 `RouterObject` 构建 `BoxService`，实现端到端的双层等价。【F:crates/spark-core/src/router/object.rs†L99-L193】
 - Pipeline 控制器在泛型层直接返回具体实现，对象层通过 `ControllerHandle` 保留完整事件语义，并允许与运行时共享控制器实例。【F:crates/spark-core/src/pipeline/traits/generic.rs†L29-L35】【F:crates/spark-core/src/pipeline/traits/object.rs†L32-L161】
