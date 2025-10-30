@@ -28,20 +28,19 @@ pub mod handler;
 pub mod instrument;
 mod internal;
 pub mod middleware;
-pub mod traits;
 
 pub use channel::{Channel, ChannelState, WriteSignal};
 pub use context::Context;
 pub use controller::{Controller, ControllerEvent, ControllerEventKind, HandlerRegistry};
 pub use default_handlers::{ExceptionAutoResponder, ReadyStateEvent};
 pub use extensions::ExtensionsMap;
+pub use factory::ControllerFactory as PipelineFactory;
+pub use factory::{
+    ControllerFactory, ControllerFactoryObject, ControllerHandle, DynControllerFactory,
+    DynControllerFactoryAdapter,
+};
 pub use handler::{DuplexHandler, InboundHandler, OutboundHandler};
 pub use middleware::{ChainBuilder, Middleware, MiddlewareDescriptor};
-pub use traits::generic::ControllerFactory;
-pub use traits::generic::ControllerFactory as PipelineFactory;
-pub use traits::object::{
-    ControllerFactoryObject, ControllerHandle, DynControllerFactory, DynControllerFactoryAdapter,
-};
 
 /// 为兼容旧版 API，保留 `Pipeline` 名称映射至新的 [`Controller`] 概念。
 pub use controller::Controller as Pipeline;

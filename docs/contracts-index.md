@@ -308,16 +308,6 @@ covers = [
   "spark_core::pipeline::middleware::ChainBuilder",
   "spark_core::pipeline::middleware::Middleware",
   "spark_core::pipeline::middleware::MiddlewareDescriptor",
-  "spark_core::pipeline::traits::ControllerFactory",
-  "spark_core::pipeline::traits::ControllerFactoryObject",
-  "spark_core::pipeline::traits::ControllerHandle",
-  "spark_core::pipeline::traits::DynControllerFactory",
-  "spark_core::pipeline::traits::DynControllerFactoryAdapter",
-  "spark_core::pipeline::traits::generic::ControllerFactory",
-  "spark_core::pipeline::traits::object::ControllerFactoryObject",
-  "spark_core::pipeline::traits::object::ControllerHandle",
-  "spark_core::pipeline::traits::object::DynControllerFactory",
-  "spark_core::pipeline::traits::object::DynControllerFactoryAdapter",
 ]
 
 [[contract]]

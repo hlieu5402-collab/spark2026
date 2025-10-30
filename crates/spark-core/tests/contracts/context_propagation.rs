@@ -705,7 +705,7 @@ impl TransportFactory for RecordingTransportFactory {
     type BindFuture<'a, P> = core::future::Ready<spark_core::Result<Self::Server, CoreError>>
     where
         Self: 'a,
-        P: spark_core::pipeline::traits::generic::ControllerFactory + Send + Sync + 'static;
+        P: spark_core::pipeline::ControllerFactory + Send + Sync + 'static;
 
     type ConnectFuture<'a> = core::future::Ready<spark_core::Result<Self::Channel, CoreError>> where Self: 'a;
 
@@ -724,7 +724,7 @@ impl TransportFactory for RecordingTransportFactory {
         _pipeline_factory: Arc<P>,
     ) -> Self::BindFuture<'_, P>
     where
-        P: spark_core::pipeline::traits::generic::ControllerFactory + Send + Sync + 'static,
+        P: spark_core::pipeline::ControllerFactory + Send + Sync + 'static,
         P::Controller: Controller,
     {
         self.events
@@ -1061,7 +1061,7 @@ fn noop_waker() -> Waker {
 /// 空控制器工厂，仅用于满足 trait 约束。
 struct DummyControllerFactory;
 
-impl spark_core::pipeline::traits::generic::ControllerFactory for DummyControllerFactory {
+impl spark_core::pipeline::ControllerFactory for DummyControllerFactory {
     type Controller = NoopController;
 
     fn build(&self, _: &spark_core::runtime::CoreServices) -> spark_core::Result<Self::Controller, CoreError> {
