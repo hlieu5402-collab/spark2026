@@ -33,6 +33,6 @@
 - 若未来引入 GAT 返回类型，可将基准扩展为比较三种实现（Box、`impl Trait`、GAT），持续监控差异。
 
 ## 7. T06：热路径移除 `async_trait` 的效果验证
-- **目标**：T06 要求在数据平面热路径改用关联 Future + 显式 `poll_*`，仅在对象层/控制面保留 `async_trait`。本轮改动完成后，`rg -n "async_trait"` 仅在对象层 (`service::traits::object`, `transport::traits::object`) 与控制面（集群、观测、运行时）出现。
+- **目标**：T06 要求在数据平面热路径改用关联 Future + 显式 `poll_*`，仅在对象层/控制面保留 `async_trait`。本轮改动完成后，`rg -n "async_trait"` 仅在对象层 (`service::object`, `transport::traits::object`) 与控制面（集群、观测、运行时）出现。
 - **验证方法**：在迁移后执行 `cargo bench --workspace -- --quick`，比较 `async_contract_overhead` 输出，确保 `future_overhead_ratio` 与 `stream_overhead_ratio` 未恶化。【090813†L1-L12】
 - **结论**：迁移后基准与 T05 数据一致，Future/Stream 的额外开销仍维持在 ±1% 范围内，证明热路径移除 `async_trait` 不会引入性能退化，同时对象层可继续使用属性宏以降低实现复杂度。

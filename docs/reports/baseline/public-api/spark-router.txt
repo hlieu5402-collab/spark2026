@@ -208,6 +208,6 @@ pub fn spark_router::RoutingContextBuilder::build(&self, ctx: &dyn spark_core::p
 impl spark_router::pipeline::RoutingContextBuilder for spark_router::pipeline::ExtensionsRoutingContextBuilder
 pub fn spark_router::pipeline::ExtensionsRoutingContextBuilder::build(&self, ctx: &dyn spark_core::pipeline::context::Context, _msg: &spark_core::buffer::message::PipelineMessage, _snapshot: spark_core::router::context::RoutingSnapshot<'_>) -> spark_core::error::Result<spark_router::pipeline::RoutingContextParts, spark_core::error::SparkError>
 pub trait spark_router::ServiceFactory: core::marker::Send + core::marker::Sync + 'static
-pub fn spark_router::ServiceFactory::create(&self) -> spark_core::error::Result<spark_core::service::traits::object::BoxService, spark_core::error::SparkError>
+pub fn spark_router::ServiceFactory::create(&self) -> spark_core::error::Result<spark_core::service::object::BoxService, spark_core::error::SparkError>
 pub fn spark_router::load_router_context(extensions: &dyn spark_core::pipeline::extensions::ExtensionsMap) -> core::option::Option<alloc::sync::Arc<spark_router::pipeline::RouterContextState>>
 pub fn spark_router::store_router_context(extensions: &dyn spark_core::pipeline::extensions::ExtensionsMap, state: spark_router::pipeline::RouterContextState)

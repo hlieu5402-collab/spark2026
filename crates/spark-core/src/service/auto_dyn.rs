@@ -35,8 +35,7 @@ use crate::buffer::PipelineMessage;
 use crate::context::Context;
 use crate::contract::CallContext;
 use crate::error::codes;
-use crate::service::traits::object::ServiceObject;
-use crate::service::{BoxService, Service};
+use crate::service::{BoxService, Service, ServiceObject};
 use crate::status::PollReady;
 
 /// 描述“从 [`PipelineMessage`] 解码为具体业务类型”的契约。
