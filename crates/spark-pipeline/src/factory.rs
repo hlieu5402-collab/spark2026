@@ -85,7 +85,7 @@ impl DefaultControllerFactory {
 }
 
 impl CoreControllerFactory for DefaultControllerFactory {
-    type Controller = PipelineController;
+    type Controller = Arc<PipelineController>;
 
     /// 装配带有中间件链路的 [`PipelineController`] 并返回。
     ///
