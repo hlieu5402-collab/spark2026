@@ -162,6 +162,34 @@ impl PipelineMessage {
         Self::User(Box::new(message))
     }
 
+    /// 构造 `Buffer` 变体的便捷函数。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：与 [`PipelineMessage::from_user`] 对称，减少调用方直接匹配枚举时遗忘零拷贝语义的风险。
+    /// - **逻辑 (How)**：简单地包装传入的 [`ErasedSparkBuf`](crate::buffer::ErasedSparkBuf)，保证缓冲在 Pipeline 内按对象安全接口传递。
+    /// - **契约 (What)**：
+    ///   - **输入**：已冻结的只读缓冲，调用方需保证读指针指向有效数据；
+    ///   - **前置条件**：缓冲的实现必须满足 [`ReadableBuffer`] 合同，尤其是线程安全与 `remaining/advance` 语义；
+    ///   - **后置条件**：返回值为 [`PipelineMessage::Buffer`]，在后续 Handler 中无需再做模式匹配即可继续转发。
+    pub fn from_buffer(buffer: Box<dyn ReadableBuffer>) -> Self {
+        Self::Buffer(buffer)
+    }
+
+    /// 将编码后的负载直接转换为 Pipeline 消息。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：提供从 [`crate::codec::EncodedPayload`] 到 Pipeline 的官方桥接，避免各 Handler 手动调用
+    ///   [`EncodedPayload::into_buffer`](crate::codec::EncodedPayload::into_buffer) 时遗漏附加上下文或错用枚举变体。
+    /// - **逻辑 (How)**：消耗 `payload` 所有权，取回底层只读缓冲并委派给 [`Self::from_buffer`]；
+    ///   若未来 `EncodedPayload` 附带元数据，可在此统一扩展。
+    /// - **契约 (What)**：
+    ///   - **输入**：`payload` 必须来源于有效的编码流程，内部缓冲应保证 `remaining() > 0` 或明确表示空帧；
+    ///   - **后置条件**：生成的消息必定是 `Buffer` 变体，零拷贝沿管道传播；
+    ///   - **风险提示**：若业务需追加内容类型、压缩算法等上下文，请在调用前先行封装到 `EncodedPayload`。
+    pub fn from_encoded_payload(payload: crate::codec::EncodedPayload) -> Self {
+        Self::from_buffer(payload.into_buffer())
+    }
+
     /// 查询 `User` 变体的消息类别标识。
     ///
     /// # 使用说明
@@ -209,6 +237,11 @@ impl PipelineMessage {
     /// # 返回值契约
     /// - 成功时返回 `Ok(T)`，调用者即可获得具体类型的所有权继续处理；
     /// - 失败时返回原封不动的 `PipelineMessage`，确保不会丢失消息，便于调用方走兜底逻辑（例如记录错误后回退到泛型处理）。
+    ///
+    /// # 推荐兜底策略
+    /// - 捕获 `Err(original)` 时，可通过 [`PipelineMessage::user_kind`] 记录原类型，再调用 [`Self::from_buffer`] 或
+    ///   `Self::from_encoded_payload` 将其回退到字节通道；
+    /// - 若业务需将失败视为协议错误，请结合返回的 `original` 继续向上传播，避免静默丢弃消息。
     pub fn try_into_user<T>(self) -> crate::Result<T, Self>
     where
         T: UserMessage,

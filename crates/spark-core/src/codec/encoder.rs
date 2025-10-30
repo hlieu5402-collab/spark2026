@@ -321,6 +321,10 @@ impl EncodedPayload {
     }
 
     /// 取回底层缓冲。
+    ///
+    /// # 使用指引
+    /// - 常见用法是结合 [`crate::buffer::PipelineMessage::from_encoded_payload`]，确保编码结果以零拷贝方式进入 Pipeline；
+    /// - 若需直接交付传输层，也可手动调用此方法再传入 `TransportConnection::write`。
     pub fn into_buffer(self) -> Box<ErasedSparkBuf> {
         self.buffer
     }

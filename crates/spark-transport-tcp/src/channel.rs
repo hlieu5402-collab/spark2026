@@ -25,6 +25,7 @@ use std::{
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::{net::TcpStream as TokioTcpStream, sync::Mutex as AsyncMutex};
+use tracing::warn;
 
 /// TCP 套接字级配置项，实现对内核行为的显式控制。
 ///
@@ -233,6 +234,11 @@ impl TcpChannel {
             let mut guard = self.inner.stream.lock().await;
             let chunk = buf.chunk_mut();
             if chunk.len() == 0 {
+                warn!(
+                    target: "spark_transport::tcp",
+                    connection = %self.id(),
+                    "TransportConnection::read detected zero writable capacity; 上层需扩容或重新租借缓冲以避免空转"
+                );
                 return Ok(0);
             }
             let raw =

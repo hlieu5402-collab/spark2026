@@ -108,6 +108,7 @@ covers = [
   "spark_core::buffer::BufView",
   "spark_core::buffer::BufferAllocator",
   "spark_core::buffer::pool::BufferAllocator",
+  "spark_core::buffer::pool::BufferPoolAllocatorAdapter",
   "spark_core::buffer::BufferPool",
   "spark_core::buffer::Chunks",
   "spark_core::buffer::PoolStatDimension",

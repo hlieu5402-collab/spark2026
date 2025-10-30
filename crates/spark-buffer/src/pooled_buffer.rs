@@ -196,6 +196,20 @@ impl BufferState {
     }
 
     /// 返回当前剩余可写区域的裸视图。
+    ///
+    /// # 安全约束说明（Why & Gotchas）
+    /// - 仅当状态为 `Writable` 时才会暴露实际切片；调用前必须通过上层的
+    ///   `PooledBuffer::is_writable` 或 `require_writable` 完成校验。
+    /// - 我们在调试模式下依赖 [`debug_assert!`] 捕捉误用，防止在冻结后仍走写路径导致未定义行为。
+    ///
+    /// # 逻辑概览（How）
+    /// 1. 读取 `BytesMut::chunk_mut` 的 `UninitSlice`；
+    /// 2. 通过指针转换为 `&mut [MaybeUninit<u8>]`，保持“尚未初始化”语义；
+    /// 3. 该转换不修改所有权，也不延长借用生命周期，符合 `bytes` 文档约束。
+    ///
+    /// # 契约定义（What）
+    /// - **前置条件**：必须持有写态独占访问；若存在其它引用，`bytes` 将返回长度为 0 的切片。
+    /// - **后置条件**：返回切片的生命周期与 `&mut self` 一致，调用方需在写入后立刻调用 `advance_mut`。
     fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
         match self {
             BufferState::Writable(buf) => {
@@ -489,6 +503,10 @@ impl WritableBuffer for PooledBuffer {
     }
 
     fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        debug_assert!(
+            self.is_writable(),
+            "PooledBuffer::chunk_mut 只应在可写态调用；若已冻结请重新租借缓冲"
+        );
         if self.is_writable() {
             self.state.chunk_mut()
         } else {
@@ -498,7 +516,16 @@ impl WritableBuffer for PooledBuffer {
 
     fn advance_mut(&mut self, len: usize) -> Result<(), CoreError> {
         self.require_writable("advance_mut")?;
-        self.state.advance_mut(len)
+        let before = self.state.len();
+        let result = self.state.advance_mut(len);
+        if result.is_ok() {
+            debug_assert_eq!(
+                self.state.len(),
+                before + len,
+                "PooledBuffer::advance_mut 后写入指针应推进 len 字节"
+            );
+        }
+        result
     }
 
     fn clear(&mut self) {

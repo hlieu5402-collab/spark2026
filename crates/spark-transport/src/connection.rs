@@ -70,6 +70,10 @@ pub trait TransportConnection: Send + Sync + 'static {
     fn local_addr(&self) -> Option<TransportSocketAddr>;
 
     /// 读取数据到缓冲区。
+    ///
+    /// # 重要提示（Teach-out）
+    /// - 若 `buf.chunk_mut()` 长度为 0，则实现应返回 `Ok(0)` 并提醒调用方扩容；
+    ///   Pipeline 需要在进入传输层前确保缓冲具备剩余空间，避免空转循环。
     fn read<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::CallCtx<'ctx>,

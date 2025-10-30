@@ -101,6 +101,7 @@ pub trait WritableBuffer: Send + Sync + 'static + Sealed {
     fn freeze(self: Box<Self>) -> crate::Result<Box<dyn ReadableBuffer>, CoreError>;
 }
 
+#[cfg(feature = "std")]
 #[allow(unsafe_code)]
 unsafe impl bytes::BufMut for dyn WritableBuffer + Send + Sync + 'static {
     fn remaining_mut(&self) -> usize {
@@ -115,14 +116,64 @@ unsafe impl bytes::BufMut for dyn WritableBuffer + Send + Sync + 'static {
         if cnt == 0 {
             return;
         }
+        let remaining = WritableBuffer::remaining_mut(self);
+        if cnt > remaining {
+            let io_err = std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!(
+                    "bytes::BufMut::advance_mut requested {cnt} bytes but only {remaining} writable bytes remain; caller must ensure chunk_mut len matches advance"
+                ),
+            );
+            panic!(
+                "WritableBuffer::advance_mut preflight failed: {io_err}. 该异常提示调用方先扩容或重新租借缓冲"
+            );
+        }
+
         if let Err(err) = WritableBuffer::advance_mut(self, cnt) {
-            panic!("WritableBuffer::advance_mut failed: {:?}", err);
+            let io_err = std::io::Error::other(format!(
+                "WritableBuffer::advance_mut returned CoreError(code={}, message={})",
+                err.code(),
+                err.message()
+            ));
+            panic!(
+                "WritableBuffer::advance_mut reported CoreError: {io_err}. 请在缓冲实现内部转换错误或在调用前保证写入合法"
+            );
         }
     }
 
     fn put_slice(&mut self, src: &[u8]) {
-        WritableBuffer::put_slice(self, src)
-            .unwrap_or_else(|err| panic!("WritableBuffer::put_slice failed: {:?}", err));
+        if src.is_empty() {
+            return;
+        }
+
+        let remaining = WritableBuffer::remaining_mut(self);
+        if src.len() > remaining {
+            let deficit = src.len() - remaining;
+            if let Err(err) = WritableBuffer::reserve(self, deficit) {
+                let io_err = std::io::Error::new(
+                    std::io::ErrorKind::OutOfMemory,
+                    format!(
+                        "WritableBuffer::reserve({deficit}) failed with CoreError(code={}, message={})",
+                        err.code(),
+                        err.message()
+                    ),
+                );
+                panic!(
+                    "WritableBuffer::put_slice 无法确保可写空间：{io_err}. 建议上层提前评估批量写入容量或改用分片策略"
+                );
+            }
+        }
+
+        if let Err(err) = WritableBuffer::put_slice(self, src) {
+            let io_err = std::io::Error::other(format!(
+                "WritableBuffer::put_slice failed with CoreError(code={}, message={})",
+                err.code(),
+                err.message()
+            ));
+            panic!(
+                "WritableBuffer::put_slice 抛出 CoreError：{io_err}. 请检查缓冲实现或在写入前加装错误兜底"
+            );
+        }
     }
 }
 
