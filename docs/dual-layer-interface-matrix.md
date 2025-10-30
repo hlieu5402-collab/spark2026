@@ -10,7 +10,7 @@
 | Service | [`service::traits::generic::Service`]【F:crates/spark-core/src/service/traits/generic.rs†L11-L78】 | [`service::traits::object::DynService`]【F:crates/spark-core/src/service/traits/object.rs†L15-L68】 / [`ServiceObject`]【F:crates/spark-core/src/service/traits/object.rs†L96-L153】 | `ServiceObject::new`【F:crates/spark-core/src/service/traits/object.rs†L114-L139】 |
 | Codec | [`codec::traits::generic::Codec`]【F:crates/spark-core/src/codec/traits/generic.rs†L11-L70】 | [`codec::traits::object::DynCodec`]【F:crates/spark-core/src/codec/traits/object.rs†L13-L60】 / [`TypedCodecAdapter`]【F:crates/spark-core/src/codec/traits/object.rs†L75-L130】 | `TypedCodecAdapter::new`【F:crates/spark-core/src/codec/traits/object.rs†L95-L104】 |
 | Router | [`router::traits::generic::Router`]【F:crates/spark-core/src/router/traits/generic.rs†L33-L62】 | [`router::traits::object::DynRouter`]【F:crates/spark-core/src/router/traits/object.rs†L61-L93】 / [`RouterObject`]【F:crates/spark-core/src/router/traits/object.rs†L103-L141】 | `RouterObject::new`【F:crates/spark-core/src/router/traits/object.rs†L129-L135】 |
-| Pipeline | [`pipeline::traits::generic::ControllerFactory`]【F:crates/spark-core/src/pipeline/traits/generic.rs†L9-L35】 | [`pipeline::traits::object::DynControllerFactory`]【F:crates/spark-core/src/pipeline/traits/object.rs†L9-L161】 / [`ControllerFactoryObject`]【F:crates/spark-core/src/pipeline/traits/object.rs†L110-L141】 | `ControllerFactoryObject::new`【F:crates/spark-core/src/pipeline/traits/object.rs†L122-L140】 |
+| Pipeline | [`pipeline::factory::ControllerFactory`]【F:crates/spark-core/src/pipeline/factory.rs†L31-L68】 | [`pipeline::factory::DynControllerFactory`]【F:crates/spark-core/src/pipeline/factory.rs†L71-L105】 / [`ControllerFactoryObject`]【F:crates/spark-core/src/pipeline/factory.rs†L266-L317】 | `ControllerFactoryObject::new`【F:crates/spark-core/src/pipeline/factory.rs†L289-L295】 |
 | Transport | [`transport::traits::generic::TransportFactory`]【F:crates/spark-core/src/transport/traits/generic.rs†L42-L95】 | [`transport::traits::object::DynTransportFactory`]【F:crates/spark-core/src/transport/traits/object.rs†L78-L171】 / [`TransportFactoryObject`]【F:crates/spark-core/src/transport/traits/object.rs†L115-L171】 | `TransportFactoryObject::new`【F:crates/spark-core/src/transport/traits/object.rs†L123-L135】 |
 
 ## 2. 选择矩阵
@@ -20,7 +20,7 @@
 | Service | 热路径业务、内建 Handler 与控制器 | 多语言插件、脚本化扩展 | ≈0%（基线） | 编译期内联，二进制最小 | 编译期绑定，实现需与宿主同编译单元 |
 | Codec | 高吞吐编解码、内建协议适配器 | 运行时协商、脚本化协议适配 | +0.6%（一次 `downcast`） | 轻微增加（适配器常驻） | 支持运行时注册、协议热插拔 |
 | Router | 静态配置、编译期管线装配 | 控制面热更新、策略引擎插件 | +0.8%（一次 `BoxService` 克隆 + 虚表） | 适配器增加少量闭包 | 支持运行时替换、脚本策略 |
-| Pipeline | 内建控制器、静态中间件装配 | 插件化 Pipeline、脚本控制面实验 | ≈0%（返回具体类型无堆分配） | 与泛型 Controller 同编译单元，额外体积可忽略 | 对象层 `ControllerHandle` 支持 `Arc` 共享，便于运行时注入【F:crates/spark-core/src/pipeline/traits/object.rs†L32-L161】 |
+| Pipeline | 内建控制器、静态中间件装配 | 插件化 Pipeline、脚本控制面实验 | ≈0%（返回具体类型无堆分配） | 与泛型 Controller 同编译单元，额外体积可忽略 | 对象层 `ControllerHandle` 支持 `Arc` 共享，便于运行时注入【F:crates/spark-core/src/pipeline/factory.rs†L107-L263】 |
 | Transport | 极限低延迟建连、内建传输驱动 | 自定义协议、仿真网络、脚本监听器 | +0.9%（一次 `BoxFuture` 调度）【F:crates/spark-core/src/transport/traits/object.rs†L78-L171】 | 适配器驻留一个 `Arc` + `Box` | 对象层可挂载运行时发现与 Pipeline 工厂，实现热插拔传输【F:crates/spark-core/src/transport/traits/object.rs†L146-L170】 |
 
 ## 3. 性能注记
@@ -37,6 +37,6 @@
   并在类型不匹配时返回结构化 `CoreError`。【F:crates/spark-core/src/service/traits/generic.rs†L33-L78】【F:crates/spark-core/src/codec/traits/generic.rs†L33-L70】
 - 适配器在错误路径上保留统一错误码：`TypedCodecAdapter` 使用 `protocol.type_mismatch`，`RouterObject` 透传 [`RouteError<SparkError>`]。
 - 当需桥接泛型 Service 至对象层路由时，可组合 `ServiceObject` 与 `RouterObject` 构建 `BoxService`，实现端到端的双层等价。【F:crates/spark-core/src/router/traits/object.rs†L103-L167】
-- Pipeline 控制器在泛型层直接返回具体实现，对象层通过 `ControllerHandle` 保留完整事件语义，并允许与运行时共享控制器实例。【F:crates/spark-core/src/pipeline/traits/generic.rs†L29-L35】【F:crates/spark-core/src/pipeline/traits/object.rs†L32-L161】
+- Pipeline 控制器在泛型层直接返回具体实现，对象层通过 `ControllerHandle` 保留完整事件语义，并允许与运行时共享控制器实例。【F:crates/spark-core/src/pipeline/factory.rs†L31-L68】【F:crates/spark-core/src/pipeline/factory.rs†L107-L263】
 - Transport 域的泛型与对象接口共同维护监听关闭/建连语义，适配器在桥接 Pipeline 工厂时保持同一背压与错误契约。【F:crates/spark-core/src/transport/traits/generic.rs†L42-L95】【F:crates/spark-core/src/transport/traits/object.rs†L78-L171】
 

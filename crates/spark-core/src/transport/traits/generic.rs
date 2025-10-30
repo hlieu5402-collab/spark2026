@@ -5,7 +5,7 @@ use crate::{
     CoreError, cluster::ServiceDiscovery, context::Context, pipeline::Channel, sealed::Sealed,
 };
 
-use crate::pipeline::traits::generic::ControllerFactory as GenericControllerFactory;
+use crate::pipeline::factory::ControllerFactory as GenericControllerFactory;
 
 use super::super::{
     TransportSocketAddr, factory::ListenerConfig, intent::ConnectionIntent,
@@ -132,7 +132,7 @@ pub trait ServerTransport: Send + Sync + 'static + Sealed {
 /// - **错误处理**：失败需返回 [`CoreError`]，并填写错误码提示运维动作。
 ///
 /// # 风险提示（Trade-offs）
-/// - 泛型层 Future 类型通常较复杂，若需在对象层复用，请结合 [`crate::pipeline::traits::object::DynControllerFactoryAdapter`] 等适配器做类型擦除；
+/// - 泛型层 Future 类型通常较复杂，若需在对象层复用，请结合 [`crate::pipeline::factory::DynControllerFactoryAdapter`] 等适配器做类型擦除；
 /// - 建连过程若依赖 `ServiceDiscovery`，应处理网络分区、陈旧快照等异常并返回语义化错误。
 pub trait TransportFactory: Send + Sync + 'static + Sealed {
     /// 客户端通道类型。
