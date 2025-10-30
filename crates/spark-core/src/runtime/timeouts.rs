@@ -1,16 +1,22 @@
-use crate::arc_swap::ArcSwap;
-use alloc::{borrow::Cow, sync::Arc};
-use core::{
-    fmt,
-    sync::atomic::{AtomicU64, Ordering},
-    time::Duration,
-};
+// 教案级说明：运行时超时模块现阶段仅保留类型与函数签名。
+//
+// - **意图 (Why)**：为“纯契约”阶段提供最小可编译接口，约束调用方如何与超时设置交互，
+//   同时彻底移除 `ArcSwap`、原子计数器等具体实现，避免隐含的时间或调度行为。
+// - **契约 (What)**：暴露 `TimeoutSettings` 数据结构、`TimeoutRuntimeConfig` 管理器以及相关
+//   错误与解析函数的签名，使未来真实实现能够无缝衔接；当前所有行为性方法均触发
+//   `unimplemented!()` 以提醒调用方注入运行时实现。
+// - **架构位置 (How)**：该文件由 `runtime::mod` 公开，依赖配置子系统 (`ResolvedConfiguration`)
+//   与热更新抽象 (`HotReload*`) 的类型定义，用于描述交互契约但不承担任何逻辑。
 
-use crate::configuration::{ConfigKey, ConfigScope, ConfigValue, ResolvedConfiguration};
+use alloc::{borrow::Cow, sync::Arc};
+use core::{fmt, marker::PhantomData};
+
+type Duration = core::time::Duration;
+
+use crate::configuration::ResolvedConfiguration;
 use crate::observability::MetricsProvider;
 use crate::runtime::{
-    HotReloadApplyTimer, HotReloadFence, HotReloadObservability, HotReloadReadGuard,
-    HotReloadWriteGuard,
+    HotReloadApplyTimer, HotReloadFence, HotReloadReadGuard, HotReloadWriteGuard,
 };
 
 /// 描述运行时关键超时阈值。
@@ -52,33 +58,23 @@ impl TimeoutSettings {
     pub fn from_configuration(
         config: &ResolvedConfiguration,
     ) -> crate::Result<Self, TimeoutConfigError> {
-        let mut settings = Self::default();
-
-        if let Some(value) = config.values.get(&request_timeout_key()) {
-            settings.request_timeout = parse_duration(value, TimeoutField::Request)?;
-        }
-
-        if let Some(value) = config.values.get(&idle_timeout_key()) {
-            settings.idle_timeout = parse_duration(value, TimeoutField::Idle)?;
-        }
-
-        Ok(settings)
+        let _ = config;
+        unimplemented!(
+            "TimeoutSettings::from_configuration 在纯契约阶段不可用；请由配置解析层提供实现"
+        )
     }
 }
 
 impl Default for TimeoutSettings {
     fn default() -> Self {
-        Self {
-            request_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-        }
+        Self::new(Duration::from_secs(5), Duration::from_secs(60))
     }
 }
 
 /// 热更新友好的超时配置容器。
 ///
 /// ### 设计目的（Why）
-/// - 结合 [`ArcSwap`] 与纪元计数，实现“读无锁、写常数时间”的动态超时分发机制。
+/// - 历史实现依赖 ArcSwap 与纪元计数，实现“读无锁、写常数时间”的动态超时分发机制；纯契约阶段保留该交互设想以指导未来实现。
 /// - 通过 `config_epoch()` 提供与观测面对齐的指标，便于确认配置是否生效。
 ///
 /// ### 契约说明（What）
@@ -88,26 +84,20 @@ impl Default for TimeoutSettings {
 /// - `update_from_configuration`：解析 [`ResolvedConfiguration`] 并在成功后递增纪元；
 /// - 所有更新均原子生效，读者不需要额外同步原语。
 pub struct TimeoutRuntimeConfig {
-    epoch: AtomicU64,
-    settings: ArcSwap<TimeoutSettings>,
-    fence: HotReloadFence,
-    observability: HotReloadObservability,
+    _marker: PhantomData<()>,
 }
 
 impl TimeoutRuntimeConfig {
     /// 创建新的运行时配置容器。
     pub fn new(initial: TimeoutSettings) -> Self {
-        Self::with_shared_fence(initial, HotReloadFence::new())
+        let _ = initial;
+        Self::default()
     }
 
     /// 使用共享栅栏构造运行时配置，支持跨组件同步切换。
     pub fn with_shared_fence(initial: TimeoutSettings, fence: HotReloadFence) -> Self {
-        Self {
-            epoch: AtomicU64::new(0),
-            settings: ArcSwap::new(Arc::new(initial)),
-            fence,
-            observability: HotReloadObservability::new(),
-        }
+        let _ = (initial, fence);
+        Self::default()
     }
 
     /// 构造具备指标上报能力的运行时配置容器。
@@ -117,43 +107,42 @@ impl TimeoutRuntimeConfig {
         metrics: Arc<dyn MetricsProvider>,
         component: impl Into<Cow<'static, str>>,
     ) -> Self {
-        let observability = HotReloadObservability::with_component(metrics, component.into());
-        observability.record(0, None);
-        Self {
-            epoch: AtomicU64::new(0),
-            settings: ArcSwap::new(Arc::new(initial)),
-            fence,
-            observability,
-        }
+        let _ = (initial, fence, metrics, component.into());
+        Self::default()
     }
 
     /// 返回当前使用的热更新栅栏。
     pub fn fence(&self) -> HotReloadFence {
-        self.fence.clone()
+        let _ = self;
+        unimplemented!("TimeoutRuntimeConfig::fence 在纯契约阶段不可用；请由运行时提供具体实现")
     }
 
     /// 返回当前配置快照，并在内部获取读锁以保证一致性。
     pub fn snapshot(&self) -> Arc<TimeoutSettings> {
-        let guard = self.fence.read();
-        self.snapshot_with_fence(&guard)
+        let _ = self;
+        unimplemented!("TimeoutRuntimeConfig::snapshot 在纯契约阶段不可用；请由运行时提供具体实现")
     }
 
     /// 在调用方已持有读锁的情况下返回快照，避免重复加锁。
-    pub fn snapshot_with_fence(&self, _guard: &HotReloadReadGuard<'_>) -> Arc<TimeoutSettings> {
-        self.settings.load_full()
+    pub fn snapshot_with_fence(&self, guard: &HotReloadReadGuard<'_>) -> Arc<TimeoutSettings> {
+        let _ = (self, guard);
+        unimplemented!(
+            "TimeoutRuntimeConfig::snapshot_with_fence 在纯契约阶段不可用；请由运行时提供具体实现"
+        )
     }
 
     /// 查询配置纪元（从 0 开始），可用于导出指标或调试日志。
     pub fn config_epoch(&self) -> u64 {
-        self.epoch.load(Ordering::SeqCst)
+        let _ = self;
+        unimplemented!(
+            "TimeoutRuntimeConfig::config_epoch 在纯契约阶段不可用；请由运行时提供具体实现"
+        )
     }
 
     /// 直接替换为新的设置。
     pub fn replace(&self, settings: TimeoutSettings) {
-        let timer = HotReloadApplyTimer::start();
-        let guard = self.fence.write();
-        let epoch = self.commit_with_guard(&guard, settings);
-        self.observability.record(epoch, timer.elapsed());
+        let _ = (self, settings);
+        unimplemented!("TimeoutRuntimeConfig::replace 在纯契约阶段不可用；请由运行时提供具体实现")
     }
 
     /// 在共享写锁的上下文中替换配置。
@@ -163,8 +152,10 @@ impl TimeoutRuntimeConfig {
         settings: TimeoutSettings,
         timer: HotReloadApplyTimer,
     ) {
-        let epoch = self.commit_with_guard(guard, settings);
-        self.observability.record(epoch, timer.elapsed());
+        let _ = (self, guard, settings, timer);
+        unimplemented!(
+            "TimeoutRuntimeConfig::replace_with_fence 在纯契约阶段不可用；请由运行时提供具体实现"
+        )
     }
 
     /// 解析并更新配置。
@@ -172,12 +163,10 @@ impl TimeoutRuntimeConfig {
         &self,
         config: &ResolvedConfiguration,
     ) -> crate::Result<(), TimeoutConfigError> {
-        let timer = HotReloadApplyTimer::start();
-        let parsed = TimeoutSettings::from_configuration(config)?;
-        let guard = self.fence.write();
-        let epoch = self.commit_with_guard(&guard, parsed);
-        self.observability.record(epoch, timer.elapsed());
-        Ok(())
+        let _ = (self, config);
+        unimplemented!(
+            "TimeoutRuntimeConfig::update_from_configuration 在纯契约阶段不可用；请由运行时提供具体实现"
+        )
     }
 
     /// 在共享写锁的上下文中解析并更新配置。
@@ -187,25 +176,18 @@ impl TimeoutRuntimeConfig {
         config: &ResolvedConfiguration,
         timer: HotReloadApplyTimer,
     ) -> crate::Result<(), TimeoutConfigError> {
-        let parsed = TimeoutSettings::from_configuration(config)?;
-        let epoch = self.commit_with_guard(guard, parsed);
-        self.observability.record(epoch, timer.elapsed());
-        Ok(())
-    }
-
-    fn commit_with_guard(
-        &self,
-        _guard: &HotReloadWriteGuard<'_>,
-        settings: TimeoutSettings,
-    ) -> u64 {
-        self.settings.store(Arc::new(settings));
-        self.epoch.fetch_add(1, Ordering::SeqCst) + 1
+        let _ = (self, guard, config, timer);
+        unimplemented!(
+            "TimeoutRuntimeConfig::update_from_configuration_with_fence 在纯契约阶段不可用；请由运行时提供具体实现"
+        )
     }
 }
 
 impl Default for TimeoutRuntimeConfig {
     fn default() -> Self {
-        Self::new(TimeoutSettings::default())
+        Self {
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -224,20 +206,14 @@ pub enum TimeoutConfigError {
 
 impl fmt::Display for TimeoutConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TimeoutConfigError::InvalidValueType { field, expected } => {
-                write!(f, "invalid {} value, expected {}", field, expected)
-            }
-            TimeoutConfigError::NonPositiveDuration { field, provided } => {
-                write!(f, "{} duration must be > 0, got {}", field, provided)
-            }
-        }
+        let _ = (self, f);
+        unimplemented!("TimeoutConfigError::fmt 在纯契约阶段不可用；请由错误呈现层提供具体实现")
     }
 }
 
 impl crate::Error for TimeoutConfigError {
-    #[allow(unused_parens)]
     fn source(&self) -> Option<&(dyn crate::Error + 'static)> {
+        let _ = self;
         None
     }
 }
@@ -254,85 +230,5 @@ impl fmt::Display for TimeoutField {
             TimeoutField::Request => f.write_str("timeouts.request"),
             TimeoutField::Idle => f.write_str("timeouts.idle"),
         }
-    }
-}
-
-fn parse_duration(
-    value: &ConfigValue,
-    field: TimeoutField,
-) -> crate::Result<Duration, TimeoutConfigError> {
-    match value {
-        ConfigValue::Integer(v, _) => {
-            if *v <= 0 {
-                return Err(TimeoutConfigError::NonPositiveDuration {
-                    field,
-                    provided: *v,
-                });
-            }
-            Ok(Duration::from_millis(*v as u64))
-        }
-        ConfigValue::Duration(duration, _) => {
-            if duration.is_zero() {
-                return Err(TimeoutConfigError::NonPositiveDuration { field, provided: 0 });
-            }
-            Ok(*duration)
-        }
-        _ => Err(TimeoutConfigError::InvalidValueType {
-            field,
-            expected: "integer milliseconds or duration",
-        }),
-    }
-}
-
-fn request_timeout_key() -> ConfigKey {
-    ConfigKey::new(
-        "runtime",
-        "timeouts.request_ms",
-        ConfigScope::Runtime,
-        "maximum duration for a single request in milliseconds",
-    )
-}
-
-fn idle_timeout_key() -> ConfigKey {
-    ConfigKey::new(
-        "runtime",
-        "timeouts.idle_ms",
-        ConfigScope::Runtime,
-        "idle connection timeout in milliseconds",
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::configuration::{ConfigMetadata, ResolvedConfiguration};
-    use alloc::collections::BTreeMap;
-
-    #[test]
-    fn parsing_accepts_integer_and_duration_values() {
-        let mut values = BTreeMap::new();
-        values.insert(
-            request_timeout_key(),
-            ConfigValue::Integer(1500, ConfigMetadata::default()),
-        );
-        values.insert(
-            idle_timeout_key(),
-            ConfigValue::Duration(Duration::from_secs(10), ConfigMetadata::default()),
-        );
-        let resolved = ResolvedConfiguration { values, version: 1 };
-        let parsed = TimeoutSettings::from_configuration(&resolved).expect("parse");
-        assert_eq!(parsed.request_timeout(), Duration::from_millis(1500));
-        assert_eq!(parsed.idle_timeout(), Duration::from_secs(10));
-    }
-
-    #[test]
-    fn runtime_config_updates_epoch() {
-        let cfg = TimeoutRuntimeConfig::default();
-        assert_eq!(cfg.config_epoch(), 0);
-        cfg.replace(TimeoutSettings::new(
-            Duration::from_secs(2),
-            Duration::from_secs(3),
-        ));
-        assert_eq!(cfg.config_epoch(), 1);
     }
 }

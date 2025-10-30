@@ -7,7 +7,8 @@
 //! - **扩展（How）**：宿主方可在 `spark-hosting` 或自定义扩展中组合这些类型构建关闭协调器。
 
 use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
-use core::{fmt, time::Duration};
+use core::fmt;
+use core::time::Duration;
 
 use crate::SparkError;
 use crate::contract::{CloseReason, Deadline};

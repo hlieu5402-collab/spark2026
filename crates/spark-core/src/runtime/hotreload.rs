@@ -1,5 +1,6 @@
 use alloc::{borrow::Cow, sync::Arc};
-use core::{fmt, time::Duration};
+use core::fmt;
+use core::time::Duration;
 
 use crate::observability::{
     MetricsProvider, OwnedAttributeSet, metrics::contract::hot_reload as contract,
