@@ -53,6 +53,22 @@ pub trait ReadableBuffer: Send + Sync + 'static + Sealed {
     }
 }
 
+/// 面向跨模块共享的只读缓冲类型擦除别名。
+///
+/// ## 教案式说明
+/// - **意图 (Why)**：
+///   - 让传输、编解码、执行计划等子系统可以通过 `Box<ErasedSparkBuf>` 传递缓冲，而无需了解底层类型，完成运行时时序上的“读端合同”。
+///   - 作为 `buffer` 模块对外暴露的统一入口，保持与 [`ReadableBuffer`] trait 的一一对应关系，避免额外包装导致的调用栈膨胀。
+/// - **逻辑 (How)**：
+///   - 直接将 trait 对象别名化，复用 Rust 对象安全语义；配合 [`crate::buffer::ErasedSparkBufMut`] 的冻结转换即可完成“写 → 读”的生命周期转换。
+/// - **契约 (What)**：
+///   - **输入/前置**：使用方必须确保被装箱的实例满足 [`ReadableBuffer`] 的所有约束（线程安全、remaining/advance 语义等）。
+///   - **输出/后置**：从 `Box<ErasedSparkBuf>` 解包后，调用方可以安全地调用 trait 上定义的任一读取方法，且这些操作的可见性应与原始实现一致。
+/// - **权衡与注意事项 (Trade-offs & Gotchas)**：
+///   - 采用动态分发会带来轻微的虚调用开销，但换取跨语言 FFI、插件式扩展的灵活性。
+///   - 若需要静态泛型优化，可在具体组件内另行定义泛型约束；别名本身不提供额外的生命周期或容量保证。
+pub type ErasedSparkBuf = dyn ReadableBuffer;
+
 #[cfg(feature = "std")]
 impl bytes::Buf for dyn ReadableBuffer + Send + Sync + 'static {
     fn remaining(&self) -> usize {
