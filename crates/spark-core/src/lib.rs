@@ -79,7 +79,6 @@ pub mod prelude;
 pub mod protocol;
 pub mod retry;
 pub mod router;
-pub mod rt;
 pub mod runtime;
 pub mod security;
 pub mod service;
