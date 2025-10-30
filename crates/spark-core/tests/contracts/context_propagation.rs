@@ -29,7 +29,7 @@ use spark_core::router::catalog::{RouteCatalog, RouteDescriptor};
 use spark_core::router::context::{RoutingContext, RoutingIntent, RoutingSnapshot};
 use spark_core::router::metadata::{MetadataKey, MetadataValue, RouteMetadata};
 use spark_core::router::route::{RouteId, RouteKind, RoutePattern, RouteSegment};
-use spark_core::router::traits::generic::{RouteError, Router};
+use spark_core::router::{RouteError, Router};
 use spark_core::service::Service;
 use spark_core::status::{ReadyCheck, ReadyState};
 use spark_core::transport::factory::ListenerConfig;

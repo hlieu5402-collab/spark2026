@@ -2,11 +2,11 @@ use alloc::{borrow::Cow, sync::Arc, vec::Vec};
 
 use crate::{SparkError, buffer::PipelineMessage, sealed::Sealed, service::BoxService};
 
-use super::super::binding::{RouteBinding, RouteValidation};
-use super::super::context::{RoutingContext, RoutingSnapshot};
-use super::super::metadata::RouteMetadata;
-use super::super::route::RouteId;
-use super::generic::{RouteError, Router};
+use super::binding::{RouteBinding, RouteValidation};
+use super::context::{RoutingContext, RoutingSnapshot};
+use super::contract::{RouteError, Router};
+use super::metadata::RouteMetadata;
+use super::route::RouteId;
 use crate::transport::{QualityOfService, SecurityMode};
 
 /// `RouteBindingObject` 表示对象层的路由绑定结果。
@@ -117,7 +117,7 @@ pub trait DynRouter: Send + Sync + Sealed {
     fn snapshot(&self) -> RoutingSnapshot<'_>;
 
     /// 预检路由配置。
-    fn validate(&self, descriptor: &super::super::catalog::RouteDescriptor) -> RouteValidation;
+    fn validate(&self, descriptor: &super::catalog::RouteDescriptor) -> RouteValidation;
 }
 
 /// `RouterObject` 将泛型 [`Router`] 适配为对象层 [`DynRouter`]。
@@ -187,7 +187,7 @@ where
         self.inner.snapshot()
     }
 
-    fn validate(&self, descriptor: &super::super::catalog::RouteDescriptor) -> RouteValidation {
+    fn validate(&self, descriptor: &super::catalog::RouteDescriptor) -> RouteValidation {
         self.inner.validate(descriptor)
     }
 }

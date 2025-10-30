@@ -50,7 +50,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RouterC
 impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RouterContextState
 pub struct spark_router::pipeline::RouterHandler
 impl spark_router::pipeline::RouterHandler
-pub fn spark_router::pipeline::RouterHandler::new(router: alloc::sync::Arc<dyn spark_core::router::traits::object::DynRouter>, context_builder: alloc::sync::Arc<dyn spark_router::pipeline::RoutingContextBuilder>, descriptor: spark_core::pipeline::middleware::MiddlewareDescriptor) -> Self
+pub fn spark_router::pipeline::RouterHandler::new(router: alloc::sync::Arc<dyn spark_core::router::DynRouter>, context_builder: alloc::sync::Arc<dyn spark_router::pipeline::RoutingContextBuilder>, descriptor: spark_core::pipeline::middleware::MiddlewareDescriptor) -> Self
 impl spark_core::pipeline::handler::InboundHandler for spark_router::pipeline::RouterHandler
 pub fn spark_router::pipeline::RouterHandler::describe(&self) -> spark_core::pipeline::middleware::MiddlewareDescriptor
 pub fn spark_router::pipeline::RouterHandler::on_channel_active(&self, _ctx: &dyn spark_core::pipeline::context::Context)
@@ -96,8 +96,8 @@ pub fn spark_router::DefaultRouter::remove_route(&self, pattern: &spark_core::ro
 pub fn spark_router::DefaultRouter::update<I>(&self, revision: u64, entries: I) where I: core::iter::traits::collect::IntoIterator<Item = spark_router::RouteRegistration>
 impl core::default::Default for spark_router::DefaultRouter
 pub fn spark_router::DefaultRouter::default() -> Self
-impl spark_core::router::traits::object::DynRouter for spark_router::DefaultRouter
-pub fn spark_router::DefaultRouter::route_dyn(&self, context: spark_core::router::context::RoutingContext<'_, spark_core::buffer::message::PipelineMessage>) -> spark_core::error::Result<spark_core::router::traits::object::RouteDecisionObject, spark_core::router::traits::generic::RouteError<spark_core::error::SparkError>>
+impl spark_core::router::DynRouter for spark_router::DefaultRouter
+pub fn spark_router::DefaultRouter::route_dyn(&self, context: spark_core::router::context::RoutingContext<'_, spark_core::buffer::message::PipelineMessage>) -> spark_core::error::Result<spark_core::router::RouteDecisionObject, spark_core::router::RouteError<spark_core::error::SparkError>>
 pub fn spark_router::DefaultRouter::snapshot(&self) -> spark_core::router::context::RoutingSnapshot<'_>
 pub fn spark_router::DefaultRouter::validate(&self, _descriptor: &spark_core::router::catalog::RouteDescriptor) -> spark_core::router::binding::RouteValidation
 impl !core::marker::Freeze for spark_router::DefaultRouter
@@ -171,7 +171,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for spark_router::pipeline::RouterC
 impl core::panic::unwind_safe::UnwindSafe for spark_router::pipeline::RouterContextState
 pub struct spark_router::RouterHandler
 impl spark_router::pipeline::RouterHandler
-pub fn spark_router::pipeline::RouterHandler::new(router: alloc::sync::Arc<dyn spark_core::router::traits::object::DynRouter>, context_builder: alloc::sync::Arc<dyn spark_router::pipeline::RoutingContextBuilder>, descriptor: spark_core::pipeline::middleware::MiddlewareDescriptor) -> Self
+pub fn spark_router::pipeline::RouterHandler::new(router: alloc::sync::Arc<dyn spark_core::router::DynRouter>, context_builder: alloc::sync::Arc<dyn spark_router::pipeline::RoutingContextBuilder>, descriptor: spark_core::pipeline::middleware::MiddlewareDescriptor) -> Self
 impl spark_core::pipeline::handler::InboundHandler for spark_router::pipeline::RouterHandler
 pub fn spark_router::pipeline::RouterHandler::describe(&self) -> spark_core::pipeline::middleware::MiddlewareDescriptor
 pub fn spark_router::pipeline::RouterHandler::on_channel_active(&self, _ctx: &dyn spark_core::pipeline::context::Context)

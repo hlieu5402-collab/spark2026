@@ -14,7 +14,8 @@
 //! - [`catalog`]：描述可发现的路由条目，为管理平面与观测平台提供统一视图。
 //! - [`context`]：将请求、传输意图、观测信息等抽象为路由判定上下文。
 //! - [`binding`]：约束路由决策的产出，包括选定的服务实例与附带属性。
-//! - [`traits`]：定义泛型层 [`Router`] 与对象层 [`DynRouter`] 的双层契约。
+//! - [`contract`]：定义泛型层 [`Router`] 与对象层 [`DynRouter`] 的双层契约。
+//! - [`object`]：提供对象安全的路由接口与适配器桥接。
 //!
 //! # 命名约定（What）
 //! - 避免使用 `Spark*` 前缀，选择业界广泛认同的术语（`RouteId`、`RoutingContext` 等）。
@@ -26,13 +27,14 @@ pub mod catalog;
 pub mod context;
 pub mod metadata;
 pub mod route;
-pub mod traits;
+
+pub mod contract;
+pub mod object;
 
 pub use binding::{RouteBinding, RouteDecision, RouteValidation};
 pub use catalog::{RouteCatalog, RouteDescriptor};
 pub use context::{RoutingContext, RoutingIntent, RoutingSnapshot};
+pub use contract::{RouteError, Router};
 pub use metadata::{MetadataKey, MetadataValue, RouteMetadata};
+pub use object::{DynRouter, RouteBindingObject, RouteDecisionObject, RouterObject};
 pub use route::{RouteId, RouteKind, RoutePattern, RouteSegment};
-pub use traits::{
-    DynRouter, RouteBindingObject, RouteDecisionObject, RouteError, Router, RouterObject,
-};
