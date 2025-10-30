@@ -1,2 +1,0 @@
-pub mod spark_macros
-pub proc macro spark_macros::#[service]
