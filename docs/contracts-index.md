@@ -107,6 +107,7 @@ tck = [
 covers = [
   "spark_core::buffer::BufView",
   "spark_core::buffer::BufferAllocator",
+  "spark_core::buffer::pool::BufferAllocator",
   "spark_core::buffer::BufferPool",
   "spark_core::buffer::Chunks",
   "spark_core::buffer::PoolStatDimension",
@@ -174,12 +175,6 @@ covers = [
   "spark_core::codec::TypedCodecFactory",
   "spark_core::codec::metrics::CodecMetricsHook",
   "spark_core::codec::metrics::CodecPhase",
-  "spark_core::codec::traits::Codec",
-  "spark_core::codec::traits::DynCodec",
-  "spark_core::codec::traits::TypedCodecAdapter",
-  "spark_core::codec::traits::generic::Codec",
-  "spark_core::codec::traits::object::DynCodec",
-  "spark_core::codec::traits::object::TypedCodecAdapter",
 ]
 
 [[contract]]
@@ -313,16 +308,6 @@ covers = [
   "spark_core::pipeline::middleware::ChainBuilder",
   "spark_core::pipeline::middleware::Middleware",
   "spark_core::pipeline::middleware::MiddlewareDescriptor",
-  "spark_core::pipeline::traits::ControllerFactory",
-  "spark_core::pipeline::traits::ControllerFactoryObject",
-  "spark_core::pipeline::traits::ControllerHandle",
-  "spark_core::pipeline::traits::DynControllerFactory",
-  "spark_core::pipeline::traits::DynControllerFactoryAdapter",
-  "spark_core::pipeline::traits::generic::ControllerFactory",
-  "spark_core::pipeline::traits::object::ControllerFactoryObject",
-  "spark_core::pipeline::traits::object::ControllerHandle",
-  "spark_core::pipeline::traits::object::DynControllerFactory",
-  "spark_core::pipeline::traits::object::DynControllerFactoryAdapter",
 ]
 
 [[contract]]

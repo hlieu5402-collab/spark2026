@@ -20,7 +20,7 @@
 | Service | 热路径业务、内建 Handler 与控制器 | 多语言插件、脚本化扩展 | ≈0%（基线） | 编译期内联，二进制最小 | 编译期绑定，实现需与宿主同编译单元 |
 | Codec | 高吞吐编解码、内建协议适配器 | 运行时协商、脚本化协议适配 | +0.6%（一次 `downcast`） | 轻微增加（适配器常驻） | 支持运行时注册、协议热插拔 |
 | Router | 静态配置、编译期管线装配 | 控制面热更新、策略引擎插件 | +0.8%（一次 `BoxService` 克隆 + 虚表） | 适配器增加少量闭包 | 支持运行时替换、脚本策略 |
-| Pipeline | 内建控制器、静态中间件装配 | 插件化 Pipeline、脚本控制面实验 | ≈0%（返回具体类型无堆分配） | 与泛型 Controller 同编译单元，额外体积可忽略 | 对象层 `ControllerHandle` 支持 `Arc` 共享，便于运行时注入【F:crates/spark-core/src/pipeline/traits/object.rs†L32-L161】 |
+| Pipeline | 内建控制器、静态中间件装配 | 插件化 Pipeline、脚本控制面实验 | ≈0%（返回具体类型无堆分配） | 与泛型 Controller 同编译单元，额外体积可忽略 | 对象层 `ControllerHandle` 支持 `Arc` 共享，便于运行时注入【F:crates/spark-core/src/pipeline/factory.rs†L107-L263】 |
 | Transport | 极限低延迟建连、内建传输驱动 | 自定义协议、仿真网络、脚本监听器 | +0.9%（一次 `BoxFuture` 调度）【F:crates/spark-core/src/transport/traits/object.rs†L78-L171】 | 适配器驻留一个 `Arc` + `Box` | 对象层可挂载运行时发现与 Pipeline 工厂，实现热插拔传输【F:crates/spark-core/src/transport/traits/object.rs†L146-L170】 |
 
 ## 3. 性能注记
@@ -34,7 +34,7 @@
 ## 4. 语义等价说明
 
 - 泛型接口均返回业务特定类型，调用前需通过 `poll_ready` 等机制完成背压检查；对象层通过 `PipelineMessage`/`Any` 保留相同语义，
-  并在类型不匹配时返回结构化 `CoreError`。【F:crates/spark-core/src/service/traits/generic.rs†L33-L78】【F:crates/spark-core/src/codec/traits/generic.rs†L33-L70】
+  并在类型不匹配时返回结构化 `CoreError`。【F:crates/spark-core/src/service/traits/generic.rs†L33-L78】【F:crates/spark-core/src/codec/contract.rs†L34-L64】
 - 适配器在错误路径上保留统一错误码：`TypedCodecAdapter` 使用 `protocol.type_mismatch`，`RouterObject` 透传 [`RouteError<SparkError>`]。
 - 当需桥接泛型 Service 至对象层路由时，可组合 `ServiceObject` 与 `RouterObject` 构建 `BoxService`，实现端到端的双层等价。【F:crates/spark-core/src/router/object.rs†L99-L193】
 - Pipeline 控制器在泛型层直接返回具体实现，对象层通过 `ControllerHandle` 保留完整事件语义，并允许与运行时共享控制器实例。【F:crates/spark-core/src/pipeline/traits/generic.rs†L29-L35】【F:crates/spark-core/src/pipeline/traits/object.rs†L32-L161】

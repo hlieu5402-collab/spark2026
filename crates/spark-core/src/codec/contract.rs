@@ -1,12 +1,13 @@
 use crate::buffer::ErasedSparkBuf;
 use crate::codec::decoder::{DecodeContext, DecodeOutcome, Decoder as DecoderTrait};
 use crate::codec::encoder::{EncodeContext, EncodedPayload, Encoder};
+use crate::codec::metadata::CodecDescriptor;
 use crate::{CoreError, sealed::Sealed};
 
 /// `Codec` 统一封装编码与解码逻辑，是泛型层的零成本编解码契约。
 ///
 /// # 契约维度速览
-/// - **语义**：以单一 Trait 同时描述 `encode`/`decode`，配合 [`CodecDescriptor`](super::super::metadata::CodecDescriptor) 揭示内容类型、压缩、schema。
+/// - **语义**：以单一 Trait 同时描述 `encode`/`decode`，配合 [`CodecDescriptor`] 揭示内容类型、压缩、schema。
 /// - **错误**：所有失败返回 [`CoreError`]；常见码值包含 `protocol.decode`、`protocol.encode`、`protocol.type_mismatch`。
 /// - **并发**：实现需 `Send + Sync`，允许多个协程并发调用；若内部缓存状态，请使用原子或锁保护。
 /// - **背压**：编码/解码上下文暴露预算接口；当 `ctx.budget(BudgetKind::Flow)` 耗尽时，应返回 `CoreError` 并附带 `BusyReason`。
@@ -23,7 +24,7 @@ use crate::{CoreError, sealed::Sealed};
 /// # 设计初衷（Why）
 /// - 借鉴 `tokio-util::codec::Decoder + Encoder` 的组合模式，以单一 trait 同时表达双向能力；
 /// - 通过关联类型区分入站/出站业务对象，保证静态类型安全；
-/// - 作为对象层 [`super::object::DynCodec`] 的泛型基线，支撑 T05“二层 API”在编解码域的等价实现。
+/// - 作为对象层 [`crate::codec::DynCodec`] 的泛型基线，支撑 T05“二层 API”在编解码域的等价实现。
 ///
 /// # 行为逻辑（How）
 /// 1. `descriptor` 返回实现所支持的内容类型与压缩信息；
@@ -46,7 +47,7 @@ pub trait Codec: Send + Sync + 'static + Sealed {
     type Outgoing: Send + Sync + 'static;
 
     /// 返回编解码器描述符。
-    fn descriptor(&self) -> &super::super::metadata::CodecDescriptor;
+    fn descriptor(&self) -> &CodecDescriptor;
 
     /// 编码业务对象。
     fn encode(
@@ -69,7 +70,7 @@ where
 {
     type Item = T::Outgoing;
 
-    fn descriptor(&self) -> &super::super::metadata::CodecDescriptor {
+    fn descriptor(&self) -> &CodecDescriptor {
         Codec::descriptor(self)
     }
 
@@ -88,7 +89,7 @@ where
 {
     type Item = T::Incoming;
 
-    fn descriptor(&self) -> &super::super::metadata::CodecDescriptor {
+    fn descriptor(&self) -> &CodecDescriptor {
         Codec::descriptor(self)
     }
 

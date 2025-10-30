@@ -10,5 +10,5 @@ impl core::marker::Sync for spark_examples::ExamplesServer
 impl core::marker::Unpin for spark_examples::ExamplesServer
 impl !core::panic::unwind_safe::RefUnwindSafe for spark_examples::ExamplesServer
 impl !core::panic::unwind_safe::UnwindSafe for spark_examples::ExamplesServer
-pub trait spark_examples::ControllerFactory: spark_core::pipeline::traits::object::DynControllerFactory
-impl<T> spark_examples::ControllerFactory for T where T: spark_core::pipeline::traits::object::DynControllerFactory
+pub trait spark_examples::ControllerFactory: spark_core::pipeline::factory::DynControllerFactory
+impl<T> spark_examples::ControllerFactory for T where T: spark_core::pipeline::factory::DynControllerFactory

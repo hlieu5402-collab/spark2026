@@ -1,7 +1,7 @@
 use crate::{CoreError, sealed::Sealed};
 use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 
-use super::WritableBuffer;
+use super::{WritableBuffer, writable::ErasedSparkBufMut};
 
 /// `BufferPool` 规定缓冲区租借与回收的统一接口。
 ///
@@ -194,6 +194,35 @@ pub trait BufferPool: Send + Sync + 'static + Sealed {
 
     /// 返回池当前的核心统计指标（例如 `usage_bytes`、`lease_count`）。
     fn statistics(&self) -> crate::Result<PoolStats, CoreError>;
+}
+
+/// 高阶缓冲租借契约，面向运行时统一分配入口。
+///
+/// ## 教案式说明
+/// - **意图 (Why)**：
+///   - 充当 `buffer` 模块对外暴露的“工厂接口”，让执行计划、网络栈、存储日志等子系统能够以统一入口租借 [`WritableBuffer`]，避免直接依赖具体池实现带来的耦合。
+///   - 将 Netty `ByteBufAllocator`、Envoy `Buffer::Factory` 等行业实践迁移到 Spark Core，以支撑 NUMA 感知、零拷贝或自适应池策略的扩展。
+/// - **逻辑 (How)**：
+///   - trait 仅定义单一方法 [`BufferAllocator::acquire`]，内部委派给具体的 [`BufferPool`] 实现；
+///   - 通过对象安全（`Box<ErasedSparkBufMut>`）返回写端缓冲，上层在完成写入后可调用 `freeze()` 转换为只读视图。
+/// - **契约 (What)**：
+///   - **输入/前置**：`min_capacity` 指明调用方至少需要的可写字节数；实现需保证线程安全并遵循池的生命周期管理（通常为 `'static`）。
+///   - **输出/后置**：成功时返回的缓冲需满足 `remaining_mut() >= min_capacity`，且具备 [`WritableBuffer`] 的全部语义；失败时返回 [`CoreError`]，建议带有资源类错误码。
+/// - **权衡与注意事项 (Trade-offs & Gotchas)**：
+///   - 保持接口最小化可让不同池实现（预分配、按需增长、分级分配）自由选择内部策略；
+///   - trait 本身不提供归还接口，约定通过 `Drop`、引用计数或池内部回收完成资源释放，上层在热路径中需谨慎处理泄漏风险。
+pub trait BufferAllocator: Send + Sync + 'static + Sealed {
+    /// 租借满足最小容量的缓冲。
+    fn acquire(&self, min_capacity: usize) -> crate::Result<Box<ErasedSparkBufMut>, CoreError>;
+}
+
+impl<T> BufferAllocator for T
+where
+    T: BufferPool,
+{
+    fn acquire(&self, min_capacity: usize) -> crate::Result<Box<ErasedSparkBufMut>, CoreError> {
+        BufferPool::acquire(self, min_capacity)
+    }
 }
 
 /// 池统计快照，帮助调用方观测内存行为并执行自适应调度。

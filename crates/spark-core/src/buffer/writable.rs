@@ -125,3 +125,20 @@ unsafe impl bytes::BufMut for dyn WritableBuffer + Send + Sync + 'static {
             .unwrap_or_else(|err| panic!("WritableBuffer::put_slice failed: {:?}", err));
     }
 }
+
+/// 面向跨阶段写入管线的可写缓冲类型擦除别名。
+///
+/// ## 教案式说明
+/// - **意图 (Why)**：
+///   - 统一执行计划、传输、协议编解码等组件的“写端合同”，使其能够在不知道具体实现类型的情况下交换缓冲并完成数据生产。
+///   - 为 [`crate::buffer::ErasedSparkBuf`] 的冻结转换提供写侧起点，维持缓冲生命周期的清晰分界。
+/// - **逻辑 (How)**：
+///   - 将 [`WritableBuffer`] 的 trait 对象直接别名化；调用方通过 `Box<ErasedSparkBufMut>` 进行动态分发，并结合 [`WritableBuffer::freeze`] 完成写入→只读的转换。
+///   - 常见调用顺序可概括为：`pool.acquire()` → `put_slice/write_from` → `freeze()`，整个流程均依赖该别名实现对象安全调度。
+/// - **契约 (What)**：
+///   - **前置条件**：所有装箱的类型必须遵循 [`WritableBuffer`] 对容量、写指针推进的完整语义，并满足 `Send + Sync + 'static` 约束。
+///   - **后置条件**：通过该别名返回给上层后，所有写入与冻结操作都应与原始实现保持一致，不得出现部分写入或可见性缺失。
+/// - **权衡与注意事项 (Trade-offs & Gotchas)**：
+///   - 使用动态分发会产生微小的虚表开销，但在需要热插拔缓冲实现（如共享内存、RDMA、自定义池）的场景下显著降低耦合度。
+///   - 若上层希望采用泛型内联优化，可直接约束在 `T: WritableBuffer` 上；别名本身不提供额外的容量或生命周期静态检查。
+pub type ErasedSparkBufMut = dyn WritableBuffer;

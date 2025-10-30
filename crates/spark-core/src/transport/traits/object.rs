@@ -5,7 +5,7 @@ use crate::{
     sealed::Sealed,
 };
 
-use crate::pipeline::traits::object::{DynControllerFactory, DynControllerFactoryAdapter};
+use crate::pipeline::factory::{DynControllerFactory, DynControllerFactoryAdapter};
 
 use super::super::{
     TransportSocketAddr, factory::ListenerConfig, intent::ConnectionIntent,

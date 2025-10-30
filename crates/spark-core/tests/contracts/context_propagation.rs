@@ -11,7 +11,7 @@ use spark_core::buffer::{
 use spark_core::codec::decoder::{DecodeContext, DecodeOutcome};
 use spark_core::codec::encoder::{EncodeContext, EncodedPayload};
 use spark_core::codec::metadata::{CodecDescriptor, ContentEncoding, ContentType};
-use spark_core::codec::traits::generic::Codec;
+use spark_core::codec::Codec;
 use spark_core::contract::{
     Budget, BudgetKind, CallContext, Cancellation, Deadline, SecurityContextSnapshot,
     DEFAULT_OBSERVABILITY_CONTRACT,
@@ -705,7 +705,7 @@ impl TransportFactory for RecordingTransportFactory {
     type BindFuture<'a, P> = core::future::Ready<spark_core::Result<Self::Server, CoreError>>
     where
         Self: 'a,
-        P: spark_core::pipeline::traits::generic::ControllerFactory + Send + Sync + 'static;
+        P: spark_core::pipeline::ControllerFactory + Send + Sync + 'static;
 
     type ConnectFuture<'a> = core::future::Ready<spark_core::Result<Self::Channel, CoreError>> where Self: 'a;
 
@@ -724,7 +724,7 @@ impl TransportFactory for RecordingTransportFactory {
         _pipeline_factory: Arc<P>,
     ) -> Self::BindFuture<'_, P>
     where
-        P: spark_core::pipeline::traits::generic::ControllerFactory + Send + Sync + 'static,
+        P: spark_core::pipeline::ControllerFactory + Send + Sync + 'static,
         P::Controller: Controller,
     {
         self.events
@@ -1061,7 +1061,7 @@ fn noop_waker() -> Waker {
 /// 空控制器工厂，仅用于满足 trait 约束。
 struct DummyControllerFactory;
 
-impl spark_core::pipeline::traits::generic::ControllerFactory for DummyControllerFactory {
+impl spark_core::pipeline::ControllerFactory for DummyControllerFactory {
     type Controller = NoopController;
 
     fn build(&self, _: &spark_core::runtime::CoreServices) -> spark_core::Result<Self::Controller, CoreError> {

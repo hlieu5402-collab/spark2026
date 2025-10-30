@@ -2,10 +2,10 @@ use alloc::{boxed::Box, format};
 use core::any::Any;
 
 use crate::buffer::ErasedSparkBuf;
+use crate::codec::contract::Codec;
 use crate::codec::decoder::{DecodeContext, DecodeOutcome};
 use crate::codec::encoder::{EncodeContext, EncodedPayload};
 use crate::codec::metadata::CodecDescriptor;
-use crate::codec::traits::generic::Codec;
 use crate::error::codes;
 use crate::{CoreError, sealed::Sealed};
 
