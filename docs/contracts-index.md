@@ -17,7 +17,7 @@
 | 维度 | 链接 |
 | --- | --- |
 | Rustdoc | [`spark_core::protocol::Frame`](https://docs.rs/spark-core/latest/spark_core/protocol/struct.Frame.html) |
-| 示例 | [`Frame::try_new` 单元测试](../crates/spark-core/src/protocol/frame.rs) |
+| 示例 | [`Frame::try_new` 单元测试](../crates/spark-core/src/data_plane/protocol/frame.rs) |
 | TCK | [`spark-impl-tck::ws_sip::frame_text_binary`](../crates/spark-impl-tck/tests/ws_sip/frame_text_binary.rs#L8-L155) |
 
 ## Codec（编解码）
@@ -31,7 +31,7 @@
 | 维度 | 链接 |
 | --- | --- |
 | Rustdoc | [`spark_core::transport`](https://docs.rs/spark-core/latest/spark_core/transport/index.html) · [`spark-transport`](https://docs.rs/spark-transport/latest/spark_transport/) |
-| 示例 | [`TransportParams`](../crates/spark-core/src/transport/params.rs#L20-L136) |
+| 示例 | [`TransportParams`](../crates/spark-core/src/data_plane/transport/params.rs#L20-L136) |
 | TCK | [`graceful_shutdown::draining_connections_respect_fin`](../crates/spark-contract-tests/src/graceful_shutdown.rs#L640-L796) |
 
 ## Pipeline（处理链）
@@ -45,28 +45,28 @@
 | 维度 | 链接 |
 | --- | --- |
 | Rustdoc | [`spark_core::pipeline::middleware`](https://docs.rs/spark-core/latest/spark_core/pipeline/middleware/index.html) |
-| 示例 | [`ChainBuilder::register_inbound`](../crates/spark-core/src/pipeline/middleware.rs#L52-L118) |
+| 示例 | [`ChainBuilder::register_inbound`](../crates/spark-core/src/data_plane/pipeline/middleware.rs#L52-L118) |
 | TCK | [`observability::middleware_emits_expected_attributes`](../crates/spark-contract-tests/src/observability.rs#L210-L332) |
 
 ## Service（服务接口）
 | 维度 | 链接 |
 | --- | --- |
 | Rustdoc | [`spark_core::service`](https://docs.rs/spark-core/latest/spark_core/service/index.html) · [`spark-middleware`](https://docs.rs/spark-middleware/latest/spark_middleware/) |
-| 示例 | [`ServiceLogic::call`](../crates/spark-core/src/service/simple.rs#L120-L210) |
+| 示例 | [`ServiceLogic::call`](../crates/spark-core/src/data_plane/service/simple.rs#L120-L210) |
 | TCK | [`graceful_shutdown::coordinator_waits_for_service_draining`](../crates/spark-contract-tests/src/graceful_shutdown.rs#L820-L1012) |
 
 ## Router（路由控制）
 | 维度 | 链接 |
 | --- | --- |
 | Rustdoc | [`spark_core::router`](https://docs.rs/spark-core/latest/spark_core/router/index.html) · [`spark-router`](https://docs.rs/spark-router/latest/spark_router/) |
-| 示例 | [`RoutingContext::new`](../crates/spark-core/src/router/context.rs#L138-L199) |
+| 示例 | [`RoutingContext::new`](../crates/spark-core/src/data_plane/router/context.rs#L138-L199) |
 | TCK | [`state_machine::context_propagates_routing_snapshot`](../crates/spark-contract-tests/src/state_machine.rs#L240-L368) |
 
 ## Context（调用上下文）
 | 维度 | 链接 |
 | --- | --- |
 | Rustdoc | [`spark_core::context`](https://docs.rs/spark-core/latest/spark_core/context/index.html) · [`spark_core::contract`](https://docs.rs/spark-core/latest/spark_core/contract/index.html) |
-| 示例 | [`CallContext::with_deadline`](../crates/spark-core/src/contract.rs#L120-L198) |
+| 示例 | [`CallContext::with_deadline`](../crates/spark-core/src/kernel/contract.rs#L120-L198) |
 | TCK | [`state_machine::child_context_inherits_cancellation`](../crates/spark-contract-tests/src/state_machine.rs#L60-L214) |
 
 ## Error（错误语义）
@@ -80,7 +80,7 @@
 | 维度 | 链接 |
 | --- | --- |
 | Rustdoc | [`spark_core::model`](https://docs.rs/spark-core/latest/spark_core/model/index.html) · [`spark_core::status`](https://docs.rs/spark-core/latest/spark_core/status/index.html) |
-| 示例 | [`RetryAdvice`](../crates/spark-core/src/status/retry.rs#L15-L140) |
+| 示例 | [`RetryAdvice`](../crates/spark-core/src/kernel/status/retry.rs#L15-L140) |
 | TCK | [`backpressure::channel_queue_exhaustion_emits_busy_then_retry_after`](../crates/spark-contract-tests/src/backpressure.rs#L60-L198) |
 
 ## Backpressure·Budget·Shutdown（统一信号骨架）
@@ -132,7 +132,7 @@ rustdoc = [
   { name = "spark_core::protocol::Frame", url = "https://docs.rs/spark-core/latest/spark_core/protocol/struct.Frame.html" },
 ]
 examples = [
-  { name = "Frame::try_new", path = "../crates/spark-core/src/protocol/frame.rs" },
+  { name = "Frame::try_new", path = "../crates/spark-core/src/data_plane/protocol/frame.rs" },
 ]
 tck = [
   { name = "spark-impl-tck::ws_sip::frame_text_binary", path = "../crates/spark-impl-tck/tests/ws_sip/frame_text_binary.rs#L8-L155" },
@@ -185,7 +185,7 @@ rustdoc = [
   { name = "spark-transport", url = "https://docs.rs/spark-transport/latest/spark_transport/" },
 ]
 examples = [
-  { name = "TransportParams", path = "../crates/spark-core/src/transport/params.rs#L20-L136" },
+  { name = "TransportParams", path = "../crates/spark-core/src/data_plane/transport/params.rs#L20-L136" },
 ]
 tck = [
   { name = "graceful_shutdown::draining_connections_respect_fin", path = "../crates/spark-contract-tests/src/graceful_shutdown.rs#L640-L796" },
@@ -317,7 +317,7 @@ rustdoc = [
   { name = "spark_core::pipeline::middleware", url = "https://docs.rs/spark-core/latest/spark_core/pipeline/middleware/index.html" },
 ]
 examples = [
-  { name = "ChainBuilder::register_inbound", path = "../crates/spark-core/src/pipeline/middleware.rs#L52-L118" },
+  { name = "ChainBuilder::register_inbound", path = "../crates/spark-core/src/data_plane/pipeline/middleware.rs#L52-L118" },
 ]
 tck = [
   { name = "observability::middleware_emits_expected_attributes", path = "../crates/spark-contract-tests/src/observability.rs#L210-L332" },
@@ -337,7 +337,7 @@ rustdoc = [
   { name = "spark-middleware", url = "https://docs.rs/spark-middleware/latest/spark_middleware/" },
 ]
 examples = [
-  { name = "ServiceLogic::call", path = "../crates/spark-core/src/service/simple.rs#L120-L210" },
+  { name = "ServiceLogic::call", path = "../crates/spark-core/src/data_plane/service/simple.rs#L120-L210" },
 ]
 tck = [
   { name = "graceful_shutdown::coordinator_waits_for_service_draining", path = "../crates/spark-contract-tests/src/graceful_shutdown.rs#L820-L1012" },
@@ -386,7 +386,7 @@ rustdoc = [
   { name = "spark-router", url = "https://docs.rs/spark-router/latest/spark_router/" },
 ]
 examples = [
-  { name = "RoutingContext::new", path = "../crates/spark-core/src/router/context.rs#L138-L199" },
+  { name = "RoutingContext::new", path = "../crates/spark-core/src/data_plane/router/context.rs#L138-L199" },
 ]
 tck = [
   { name = "state_machine::context_propagates_routing_snapshot", path = "../crates/spark-contract-tests/src/state_machine.rs#L240-L368" },
@@ -441,7 +441,7 @@ rustdoc = [
   { name = "spark_core::contract", url = "https://docs.rs/spark-core/latest/spark_core/contract/index.html" },
 ]
 examples = [
-  { name = "CallContext::with_deadline", path = "../crates/spark-core/src/contract.rs#L120-L198" },
+  { name = "CallContext::with_deadline", path = "../crates/spark-core/src/kernel/contract.rs#L120-L198" },
 ]
 tck = [
   { name = "state_machine::child_context_inherits_cancellation", path = "../crates/spark-contract-tests/src/state_machine.rs#L60-L214" },
@@ -489,7 +489,7 @@ rustdoc = [
   { name = "spark_core::status", url = "https://docs.rs/spark-core/latest/spark_core/status/index.html" },
 ]
 examples = [
-  { name = "RetryAdvice", path = "../crates/spark-core/src/status/retry.rs#L15-L140" },
+  { name = "RetryAdvice", path = "../crates/spark-core/src/kernel/status/retry.rs#L15-L140" },
 ]
 tck = [
   { name = "backpressure::channel_queue_exhaustion_emits_busy_then_retry_after", path = "../crates/spark-contract-tests/src/backpressure.rs#L60-L198" },

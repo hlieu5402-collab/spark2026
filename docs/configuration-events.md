@@ -3,7 +3,7 @@
 - 合约版本：`1.0.0`。
 - 总览：配置控制面与审计事件的统一契约：覆盖自动校准、漂移检测与一致性恢复信号。
 - 单一事实来源（SOT）：`schemas/configuration-events.schema.json` 与 `schemas/configuration-events.asyncapi.json`（由 `contracts/config_events.toml` 驱动生成）。
-- 生成产物：`crates/spark-core/src/configuration/events.rs`、`docs/configuration-events.md`。
+- 生成产物：`crates/spark-core/src/governance/configuration/events.rs`、`docs/configuration-events.md`。
 
 ## 事件总览
 

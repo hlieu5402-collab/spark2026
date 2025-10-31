@@ -84,8 +84,8 @@ pub use crate::{
     observability::{CoreUserEvent, LogRecord, Logger, TraceContext},
     runtime::{CoreServices, JoinHandle, MonotonicTimePoint},
     service::{
-        AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,
-        type_mismatch_error,
+        type_mismatch_error, AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service,
+        ServiceObject,
     },
     status::ready::{BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice},
     transport::{ShutdownDirection, TransportSocketAddr},

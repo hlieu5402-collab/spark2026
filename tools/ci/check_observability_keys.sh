@@ -2,7 +2,7 @@
 # 教案级注释：可观测性键名 SOT 同步守门脚本
 #
 # 目标（Why）：
-# - 保证 `contracts/observability_keys.toml` 与生成产物 `crates/spark-core/src/observability/keys.rs`、
+# - 保证 `contracts/observability_keys.toml` 与生成产物 `crates/spark-core/src/governance/observability/keys.rs`、
 #   `docs/observability-contract.md` 时刻保持一致，避免指标/日志/追踪键名出现多处漂移；
 # - 在 CI 阶段及早阻断“只改合约未生成代码/文档”的情况，减轻评审与回滚成本；
 # - 为后续仪表盘治理提供稳定约束，确保所有引用均来自单一事实来源（Single Source of Truth）。
@@ -31,11 +31,11 @@ cargo run --quiet -p spark-core --bin gen_observability_doc \
   --features std,observability_contract_doc
 cargo build --quiet -p spark-core
 cargo fmt --quiet -- \
-  crates/spark-core/src/configuration/events.rs \
-  crates/spark-core/src/observability/keys.rs
+  crates/spark-core/src/governance/configuration/events.rs \
+  crates/spark-core/src/governance/observability/keys.rs
 
-if ! git diff --quiet -- crates/spark-core/src/observability/keys.rs; then
-  echo "可观测性键名生成文件与合约不同步：请运行构建并提交 \"crates/spark-core/src/observability/keys.rs\"。" >&2
+if ! git diff --quiet -- crates/spark-core/src/governance/observability/keys.rs; then
+  echo "可观测性键名生成文件与合约不同步：请运行构建并提交 \"crates/spark-core/src/governance/observability/keys.rs\"。" >&2
   exit 1
 fi
 

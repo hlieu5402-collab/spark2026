@@ -52,37 +52,27 @@ pub mod spark {
     pub use spark_macros::service;
 }
 
-mod sealed;
+pub mod kernel;
+pub use kernel::{arc_swap, common, context, contract, future, ids, model, sealed, status, types};
 
-pub mod arc_swap;
-pub mod audit;
-pub mod buffer;
-pub mod cluster;
-pub mod codec;
-pub mod common;
+pub mod governance;
+pub use governance::timeout::profile as config;
+pub use governance::{
+    audit, configuration, deprecation, limits, observability, retry, security, timeout,
+};
+
+pub mod data_plane;
+pub use data_plane::{buffer, codec, pipeline, protocol, router, service, transport};
+
+pub mod platform;
+#[cfg(feature = "std")]
+pub use platform::time;
+pub use platform::{cluster, host, runtime};
+
 #[cfg(feature = "compat_v0")]
 pub mod compat;
-pub mod config;
-pub mod configuration;
-pub mod context;
-pub mod contract;
-pub mod deprecation;
 pub mod error;
-pub mod future;
-pub mod host;
-pub mod ids;
-pub mod limits;
-pub mod model;
-pub mod observability;
-pub mod pipeline;
 pub mod prelude;
-pub mod protocol;
-pub mod retry;
-pub mod router;
-pub mod runtime;
-pub mod security;
-pub mod service;
-pub mod status;
 /// 测试桩命名空间，集中暴露框架官方维护的 `Noop`/`Mock` 实现，供集成测试与示例复用。
 ///
 /// # 设计背景（Why）
@@ -93,10 +83,6 @@ pub mod status;
 /// - 通过 `use spark_core::test_stubs::observability::*;` 等语句引入需要的桩类型；
 /// - 所有桩对象在 `no_std + alloc` 环境同样可用，便于运行最小化集成测试。
 pub mod test_stubs;
-#[cfg(feature = "std")]
-pub mod time;
-pub mod transport;
-pub mod types;
 
 pub use audit::{
     AuditActor, AuditChangeEntry, AuditChangeSet, AuditContext, AuditDeletedEntry, AuditEntityRef,
@@ -124,7 +110,7 @@ pub use codec::{
 /// - `legacy_loopback_outbound` 已进入弃用流程，但在两版过渡期内仍需暴露；
 ///   因此使用 `#[allow(deprecated)]` 抑制内部警告，保留对外提示能力。
 #[allow(deprecated)]
-pub use common::{Empty, IntoEmpty, Loopback, legacy_loopback_outbound};
+pub use common::{legacy_loopback_outbound, Empty, IntoEmpty, Loopback};
 pub use config::{Timeout, TimeoutProfile};
 pub use configuration::{
     BuildError, BuildErrorKind, BuildErrorStage, BuildOutcome, BuildReport, ChangeEvent,
@@ -141,8 +127,8 @@ pub use context::Context;
 pub use context::ExecutionContext;
 pub use contract::{
     BackpressureSignal, CallContext, CallContextBuilder, Cancellation, ContractStateMachine,
-    DEFAULT_OBSERVABILITY_CONTRACT, Deadline, ObservabilityContract, SecurityContextSnapshot,
-    ShutdownGraceful, ShutdownImmediate, StateAdvance,
+    Deadline, ObservabilityContract, SecurityContextSnapshot, ShutdownGraceful, ShutdownImmediate,
+    StateAdvance, DEFAULT_OBSERVABILITY_CONTRACT,
 };
 pub use error::{
     CoreError, DomainError, DomainErrorKind, ErrorCategory, ErrorCause, ImplError, ImplErrorKind,
@@ -158,8 +144,8 @@ pub use host::{
 };
 pub use ids::{CorrelationId, IdempotencyKey, RequestId};
 pub use limits::{
-    LimitAction, LimitConfigError, LimitDecision, LimitMetricsHook, LimitPlan, LimitSettings,
-    ResourceKind, config_error_to_spark, decision_queue_snapshot,
+    config_error_to_spark, decision_queue_snapshot, LimitAction, LimitConfigError, LimitDecision,
+    LimitMetricsHook, LimitPlan, LimitSettings, ResourceKind,
 };
 pub use model::{State, Status};
 pub use observability::{
@@ -184,12 +170,12 @@ pub use router::{
     RouteValidation, Router, RouterObject, RoutingContext, RoutingIntent, RoutingSnapshot,
 };
 pub use runtime::{
-    AsyncRuntime, BlockingTaskSubmission, CoreServices, JoinHandle, LocalTaskSubmission,
-    ManagedBlockingTask, ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
-    SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
-    SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger, TaskCancellationStrategy, TaskError,
-    TaskExecutor, TaskHandle, TaskLaunchOptions, TaskPriority, TaskResult, TimeDriver,
-    TimeoutConfigError, TimeoutRuntimeConfig, TimeoutSettings, slo_policy_table_key,
+    slo_policy_table_key, AsyncRuntime, BlockingTaskSubmission, CoreServices, JoinHandle,
+    LocalTaskSubmission, ManagedBlockingTask, ManagedLocalTask, ManagedSendTask,
+    MonotonicTimePoint, SendTaskSubmission, SloPolicyAction, SloPolicyConfigError,
+    SloPolicyDirective, SloPolicyManager, SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger,
+    TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle, TaskLaunchOptions, TaskPriority,
+    TaskResult, TimeDriver, TimeoutConfigError, TimeoutRuntimeConfig, TimeoutSettings,
 };
 pub use security::{
     Credential, CredentialDescriptor, CredentialMaterial, CredentialScope, CredentialState,
@@ -200,8 +186,8 @@ pub use security::{
     SecurityProtocol, SecurityProtocolOffer, SubjectMatcher,
 };
 pub use service::{
-    AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,
-    type_mismatch_error,
+    type_mismatch_error, AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service,
+    ServiceObject,
 };
 pub use types::{
     Budget, BudgetDecision, BudgetKind, BudgetSet, BudgetSnapshot, CloseReason, NonEmptyStr,
@@ -219,13 +205,12 @@ pub use status::{
 #[cfg(feature = "std")]
 pub use status::RetryAfterThrottle;
 pub use transport::{
-    AvailabilityRequirement, Capability, CapabilityBitmap, ConnectionIntent, DowngradeReport,
-    DynServerTransport, DynTransportFactory, Endpoint, EndpointKind, HandshakeError,
-    HandshakeErrorKind, HandshakeOffer, HandshakeOutcome, ListenerConfig, ListenerShutdown,
-    NegotiationAuditContext, QualityOfService, SecurityMode, ServerTransport,
-    ServerTransportObject, SessionLifecycle, TransportBuilder, TransportFactory,
+    describe_shutdown_target, negotiate, AvailabilityRequirement, Capability, CapabilityBitmap,
+    ConnectionIntent, DowngradeReport, DynServerTransport, DynTransportFactory, Endpoint,
+    EndpointKind, HandshakeError, HandshakeErrorKind, HandshakeOffer, HandshakeOutcome,
+    ListenerConfig, ListenerShutdown, NegotiationAuditContext, QualityOfService, SecurityMode,
+    ServerTransport, ServerTransportObject, SessionLifecycle, TransportBuilder, TransportFactory,
     TransportFactoryObject, TransportParams, TransportSocketAddr, Version,
-    describe_shutdown_target, negotiate,
 };
 
 use alloc::boxed::Box;
