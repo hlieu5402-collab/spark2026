@@ -123,8 +123,6 @@ pub use configuration::{
     ValidationFinding, ValidationReport, ValidationState,
 };
 pub use context::Context;
-#[allow(deprecated)]
-pub use context::ExecutionContext;
 pub use contract::{
     BackpressureSignal, CallContext, CallContextBuilder, Cancellation, ContractStateMachine,
     Deadline, ObservabilityContract, SecurityContextSnapshot, ShutdownGraceful, ShutdownImmediate,

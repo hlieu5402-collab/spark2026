@@ -59,8 +59,6 @@ pub use slo::{
     slo_policy_table_key, SloPolicyAction, SloPolicyConfigError, SloPolicyDirective,
     SloPolicyManager, SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger,
 };
-#[allow(deprecated)]
-pub use sugar::ContextCaps;
 pub use sugar::{spawn_in, CallContext, PipelineContextCaps, RuntimeCaps};
 pub use task::{
     BlockingTaskSubmission, JoinHandle, LocalTaskSubmission, ManagedBlockingTask, ManagedLocalTask,
