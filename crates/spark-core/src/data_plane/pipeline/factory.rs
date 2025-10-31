@@ -22,10 +22,10 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use crate::{
-    pipeline::{controller::ControllerHandleId, Controller},
+    CoreError,
+    pipeline::{Controller, controller::ControllerHandleId},
     runtime::CoreServices,
     sealed::Sealed,
-    CoreError,
 };
 
 /// 泛型层的控制器工厂合约，提供零虚分派的装配路径。
@@ -101,7 +101,7 @@ pub trait DynControllerFactory: Send + Sync + Sealed {
     /// - **前置条件**：调用发生在 Pipeline 事件循环启动前；
     /// - **后置条件**：若成功返回句柄，则内部控制器应符合 [`Controller`] 线程安全要求。
     fn build_dyn(&self, core_services: &CoreServices)
-        -> crate::Result<ControllerHandle, CoreError>;
+    -> crate::Result<ControllerHandle, CoreError>;
 }
 
 /// `ControllerHandle` 持有对象层控制器，实现 [`Controller`] 以便在泛型上下文复用。

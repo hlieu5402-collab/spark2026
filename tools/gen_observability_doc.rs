@@ -121,7 +121,9 @@ fn render_markdown(contract: &ObservabilityKeysContract) -> String {
     buf.push_str("# 可观测性键名契约（Observability Keys Contract）\n\n");
     buf.push_str("> 目标：指标/日志/追踪键名统一管理，避免代码与仪表盘漂移。\n");
     buf.push_str("> 来源：`contracts/observability_keys.toml`（单一事实来源）。\n");
-    buf.push_str("> 产物：生成 `crates/spark-core/src/governance/observability/keys.rs` 与本文档。\n\n");
+    buf.push_str(
+        "> 产物：生成 `crates/spark-core/src/governance/observability/keys.rs` 与本文档。\n\n",
+    );
 
     buf.push_str("## 阅读指引\n\n");
     buf.push_str("- **键类型**：区分指标/日志键、标签枚举值、日志字段与追踪字段；\n");

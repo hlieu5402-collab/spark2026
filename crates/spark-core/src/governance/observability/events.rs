@@ -1,7 +1,7 @@
 use crate::{
-    cluster::{flow_control::OverflowPolicy, ClusterMembershipEvent, DiscoveryEvent},
-    sealed::Sealed,
     BoxStream,
+    cluster::{ClusterMembershipEvent, DiscoveryEvent, flow_control::OverflowPolicy},
+    sealed::Sealed,
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::time::Duration;

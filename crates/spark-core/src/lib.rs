@@ -110,7 +110,7 @@ pub use codec::{
 /// - `legacy_loopback_outbound` 已进入弃用流程，但在两版过渡期内仍需暴露；
 ///   因此使用 `#[allow(deprecated)]` 抑制内部警告，保留对外提示能力。
 #[allow(deprecated)]
-pub use common::{legacy_loopback_outbound, Empty, IntoEmpty, Loopback};
+pub use common::{Empty, IntoEmpty, Loopback, legacy_loopback_outbound};
 pub use config::{Timeout, TimeoutProfile};
 pub use configuration::{
     BuildError, BuildErrorKind, BuildErrorStage, BuildOutcome, BuildReport, ChangeEvent,
@@ -125,8 +125,8 @@ pub use configuration::{
 pub use context::Context;
 pub use contract::{
     BackpressureSignal, CallContext, CallContextBuilder, Cancellation, ContractStateMachine,
-    Deadline, ObservabilityContract, SecurityContextSnapshot, ShutdownGraceful, ShutdownImmediate,
-    StateAdvance, DEFAULT_OBSERVABILITY_CONTRACT,
+    DEFAULT_OBSERVABILITY_CONTRACT, Deadline, ObservabilityContract, SecurityContextSnapshot,
+    ShutdownGraceful, ShutdownImmediate, StateAdvance,
 };
 pub use error::{
     CoreError, DomainError, DomainErrorKind, ErrorCategory, ErrorCause, ImplError, ImplErrorKind,
@@ -142,8 +142,8 @@ pub use host::{
 };
 pub use ids::{CorrelationId, IdempotencyKey, RequestId};
 pub use limits::{
-    config_error_to_spark, decision_queue_snapshot, LimitAction, LimitConfigError, LimitDecision,
-    LimitMetricsHook, LimitPlan, LimitSettings, ResourceKind,
+    LimitAction, LimitConfigError, LimitDecision, LimitMetricsHook, LimitPlan, LimitSettings,
+    ResourceKind, config_error_to_spark, decision_queue_snapshot,
 };
 pub use model::{State, Status};
 pub use observability::{
@@ -168,12 +168,12 @@ pub use router::{
     RouteValidation, Router, RouterObject, RoutingContext, RoutingIntent, RoutingSnapshot,
 };
 pub use runtime::{
-    slo_policy_table_key, AsyncRuntime, BlockingTaskSubmission, CoreServices, JoinHandle,
-    LocalTaskSubmission, ManagedBlockingTask, ManagedLocalTask, ManagedSendTask,
-    MonotonicTimePoint, SendTaskSubmission, SloPolicyAction, SloPolicyConfigError,
-    SloPolicyDirective, SloPolicyManager, SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger,
-    TaskCancellationStrategy, TaskError, TaskExecutor, TaskHandle, TaskLaunchOptions, TaskPriority,
-    TaskResult, TimeDriver, TimeoutConfigError, TimeoutRuntimeConfig, TimeoutSettings,
+    AsyncRuntime, BlockingTaskSubmission, CoreServices, JoinHandle, LocalTaskSubmission,
+    ManagedBlockingTask, ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
+    SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
+    SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger, TaskCancellationStrategy, TaskError,
+    TaskExecutor, TaskHandle, TaskLaunchOptions, TaskPriority, TaskResult, TimeDriver,
+    TimeoutConfigError, TimeoutRuntimeConfig, TimeoutSettings, slo_policy_table_key,
 };
 pub use security::{
     Credential, CredentialDescriptor, CredentialMaterial, CredentialScope, CredentialState,
@@ -184,8 +184,8 @@ pub use security::{
     SecurityProtocol, SecurityProtocolOffer, SubjectMatcher,
 };
 pub use service::{
-    type_mismatch_error, AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service,
-    ServiceObject,
+    AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,
+    type_mismatch_error,
 };
 pub use types::{
     Budget, BudgetDecision, BudgetKind, BudgetSet, BudgetSnapshot, CloseReason, NonEmptyStr,
@@ -203,12 +203,14 @@ pub use status::{
 #[cfg(feature = "std")]
 pub use status::RetryAfterThrottle;
 pub use transport::{
-    describe_shutdown_target, negotiate, AvailabilityRequirement, Capability, CapabilityBitmap,
-    ConnectionIntent, DowngradeReport, DynServerTransport, DynTransportFactory, Endpoint,
-    EndpointKind, HandshakeError, HandshakeErrorKind, HandshakeOffer, HandshakeOutcome,
-    ListenerConfig, ListenerShutdown, NegotiationAuditContext, QualityOfService, SecurityMode,
-    ServerTransport, ServerTransportObject, SessionLifecycle, TransportBuilder, TransportFactory,
-    TransportFactoryObject, TransportParams, TransportSocketAddr, Version,
+    AddressFamily, AvailabilityRequirement, BackpressureDecision, BackpressureMetrics, Capability,
+    CapabilityBitmap, ConnectionIntent, DatagramEndpoint, DowngradeReport, DynServerTransport,
+    DynTransportFactory, Endpoint, EndpointKind, HandshakeError, HandshakeErrorKind,
+    HandshakeOffer, HandshakeOutcome, ListenerConfig, ListenerShutdown, NegotiationAuditContext,
+    QualityOfService, SecurityMode, ServerTransport, ServerTransportObject, SessionLifecycle,
+    TransportBuilder, TransportConnection, TransportFactory, TransportFactoryObject,
+    TransportListener, TransportParams, TransportSocketAddr, Version, describe_shutdown_target,
+    negotiate,
 };
 
 use alloc::boxed::Box;

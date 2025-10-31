@@ -21,7 +21,7 @@ use alloc::{borrow::Cow, boxed::Box};
 use core::{any::Any, future::Future};
 
 use super::task::{JoinHandle, TaskError, TaskResult};
-use crate::{contract::CallContext, sealed::Sealed, BoxFuture};
+use crate::{BoxFuture, contract::CallContext, sealed::Sealed};
 
 /// `TaskExecutor` 定义运行时的任务调度契约。
 ///

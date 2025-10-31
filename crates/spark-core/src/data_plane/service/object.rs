@@ -2,13 +2,12 @@ use alloc::{boxed::Box, sync::Arc};
 use core::fmt;
 
 use crate::{
-    async_trait,
+    SparkError, async_trait,
     buffer::PipelineMessage,
     context::Context,
     contract::{CallContext, CloseReason},
     sealed::Sealed,
     status::PollReady,
-    SparkError,
 };
 
 use super::generic::Service;

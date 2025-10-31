@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use crate::observability::{
-    metrics::contract::transport as contract, AttributeSet, InstrumentDescriptor, MetricsProvider,
+    AttributeSet, InstrumentDescriptor, MetricsProvider, metrics::contract::transport as contract,
 };
 
 /// 传输层字节方向。

@@ -1,7 +1,7 @@
-use crate::{sealed::Sealed, CoreError};
+use crate::{CoreError, sealed::Sealed};
 use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 
-use super::{writable::ErasedSparkBufMut, WritableBuffer};
+use super::{WritableBuffer, writable::ErasedSparkBufMut};
 
 /// `BufferPool` 规定缓冲区租借与回收的统一接口。
 ///

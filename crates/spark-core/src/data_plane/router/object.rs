@@ -1,6 +1,6 @@
 use alloc::{borrow::Cow, sync::Arc, vec::Vec};
 
-use crate::{buffer::PipelineMessage, sealed::Sealed, service::BoxService, SparkError};
+use crate::{SparkError, buffer::PipelineMessage, sealed::Sealed, service::BoxService};
 
 use super::binding::{RouteBinding, RouteValidation};
 use super::context::{RoutingContext, RoutingSnapshot};

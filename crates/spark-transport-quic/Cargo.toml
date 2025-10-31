@@ -12,7 +12,6 @@ bench = false
 
 [dependencies]
 spark-core = { workspace = true, features = ["std"] }
-spark-transport = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"], optional = true }
 quinn = { workspace = true, optional = true }

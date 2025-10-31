@@ -1195,8 +1195,8 @@ mod tests {
     #[cfg(feature = "std")]
     use crate::audit::InMemoryAuditRecorder;
     use crate::audit::{AuditActor, AuditContext, AuditError, AuditPipeline, AuditRecorder};
-    use crate::configuration::error::ConfigurationErrorKind;
     use crate::configuration::ConfigurationSource;
+    use crate::configuration::error::ConfigurationErrorKind;
     use crate::configuration::{
         ConfigKey, ConfigMetadata, ConfigScope, ConfigValue, ProfileId, SourceMetadata,
     };

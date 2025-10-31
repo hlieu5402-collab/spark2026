@@ -19,7 +19,7 @@ default = ["std"]
 compat_v0 = []
 # `alloc` Feature 作为向下游传播的标记：核心始终依赖堆，但允许调用方通过 Feature 显式声明需求。
 alloc = []
-std = ["alloc", "spark-transport/std"]
+std = ["alloc"]
 loom-model = ["dep:loom", "std"]
 std_json = ["std", "dep:serde_json"]
 error_contract_doc = ["std", "dep:toml"]
@@ -29,7 +29,6 @@ configuration_event_doc = ["std", "dep:toml"]
 [dependencies]
 async-trait = { workspace = true, default-features = false }
 spark-macros = { workspace = true }
-spark-transport = { workspace = true, default-features = false, features = ["alloc"] }
 serde = { workspace = true, features = ["derive", "alloc"] }
 sha2 = { workspace = true, default-features = false }
 loom = { workspace = true, default-features = false, optional = true }

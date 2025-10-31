@@ -1,4 +1,4 @@
-use crate::{sealed::Sealed, CoreError};
+use crate::{CoreError, sealed::Sealed};
 use alloc::{boxed::Box, vec::Vec};
 
 /// `ReadableBuffer` 定义了对象安全的只读缓冲契约。

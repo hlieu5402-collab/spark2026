@@ -20,7 +20,7 @@
 //! - 常量配置在编译期固定；若需热更新请改用宿主侧配置文件。
 
 use crate::observability::{
-    keys::logging::deprecation as deprecation_fields, Logger, OwnedAttributeSet,
+    Logger, OwnedAttributeSet, keys::logging::deprecation as deprecation_fields,
 };
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -249,14 +249,18 @@ mod tests {
             record.message,
             "调用了已弃用 API：请按照迁移指引尽快完成升级。"
         );
-        assert!(record
-            .attributes
-            .iter()
-            .any(|(k, v)| k == deprecation_fields::FIELD_SYMBOL && v == "demo::symbol"));
-        assert!(record
-            .attributes
-            .iter()
-            .any(|(k, v)| k == deprecation_fields::FIELD_REMOVAL && v == "0.3.0"));
+        assert!(
+            record
+                .attributes
+                .iter()
+                .any(|(k, v)| k == deprecation_fields::FIELD_SYMBOL && v == "demo::symbol")
+        );
+        assert!(
+            record
+                .attributes
+                .iter()
+                .any(|(k, v)| k == deprecation_fields::FIELD_REMOVAL && v == "0.3.0")
+        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use super::{attributes::AttributeSet, trace::TraceContext};
-use crate::{sealed::Sealed, Error};
+use crate::{Error, sealed::Sealed};
 use alloc::borrow::Cow;
 
 /// 日志级别枚举，参考 OpenTelemetry `SeverityNumber` 与 `tracing` crate 的交集。

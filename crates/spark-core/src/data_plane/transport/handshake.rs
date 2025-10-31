@@ -24,13 +24,13 @@
 //! - 所有 `custom` 能力索引约定 `< 128`，若越界会触发 panic；请在注册表中统一分配编号。
 
 use crate::{
+    SparkError,
     audit::{
         AuditActor, AuditChangeEntry, AuditChangeSet, AuditEntityRef, AuditError, AuditEventV1,
         AuditRecorder, TsaEvidence,
     },
     configuration::{ConfigKey, ConfigMetadata, ConfigScope, ConfigValue},
     error::codes,
-    SparkError,
 };
 use alloc::{
     borrow::Cow,

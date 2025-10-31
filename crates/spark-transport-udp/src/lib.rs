@@ -38,11 +38,11 @@ mod runtime_impl {
         time::Duration,
     };
 
+    use spark_core::transport::{DatagramEndpoint, TransportSocketAddr};
     use spark_core::{
         CoreError, context::Context, error::ErrorCategory, status::RetryAdvice,
         transport::TransportBuilder,
     };
-    use spark_transport::{DatagramEndpoint, TransportSocketAddr};
     use thiserror::Error;
     use tokio::net::UdpSocket;
 
@@ -515,8 +515,6 @@ mod runtime_impl {
             TransportSocketAddr::V6 { addr, port } => {
                 SocketAddr::new(IpAddr::V6(Ipv6Addr::from(addr)), port)
             }
-            // 采用 panic 明确提示：若 `TransportSocketAddr` 扩展新变体，应在此补充转换逻辑。
-            _ => panic!("未支持的 TransportSocketAddr 变体，请补齐 UDP 转换实现"),
         }
     }
 
@@ -672,11 +670,11 @@ mod runtime_stub {
     use core::future::Future;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
+    use spark_core::transport::{DatagramEndpoint, TransportSocketAddr};
     use spark_core::{
         CoreError, context::Context, error::ErrorCategory, prelude::Result,
         transport::TransportBuilder,
     };
-    use spark_transport::{DatagramEndpoint, TransportSocketAddr};
     use thiserror::Error;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -894,7 +892,6 @@ mod runtime_stub {
             TransportSocketAddr::V6 { addr, port } => {
                 SocketAddr::new(IpAddr::V6(Ipv6Addr::from(addr)), port)
             }
-            _ => todo!("unsupported address variant in stub"),
         }
     }
 }
@@ -905,8 +902,10 @@ pub use runtime_stub::*;
 #[cfg(all(test, feature = "runtime-tokio"))]
 mod tests {
     use super::*;
-    use spark_core::{contract::CallContext, transport::TransportBuilder};
-    use spark_transport::TransportSocketAddr;
+    use spark_core::{
+        contract::CallContext,
+        transport::{TransportBuilder, TransportSocketAddr},
+    };
     use std::net::SocketAddr;
 
     /// 验证 `UdpEndpointBuilder` 可以将选项写入监听器。

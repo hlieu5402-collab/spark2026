@@ -1,7 +1,7 @@
 # spark-transport-tcp
 
 ## 职责边界
-- 提供基于 Tokio 的 TCP 传输通道，实现 `spark-core::transport::channel` 契约，支持 `no_std + alloc` 环境下的宿主抽象。
+- 提供基于 Tokio 的 TCP 传输通道，实现 `spark-core::transport::connection` 契约，支持 `no_std + alloc` 环境下的宿主抽象。
 - 负责连接建立、半关闭、背压与错误分类，将 socket 状态转换为 `ReadyState` 与 `CloseReason`。
 - 作为其他传输实现（TLS、QUIC）的基线，输出统一的调度与观测指标。
 

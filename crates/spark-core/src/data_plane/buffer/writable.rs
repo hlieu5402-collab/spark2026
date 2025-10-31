@@ -1,4 +1,4 @@
-use crate::{sealed::Sealed, CoreError};
+use crate::{CoreError, sealed::Sealed};
 use alloc::boxed::Box;
 use core::mem::MaybeUninit;
 

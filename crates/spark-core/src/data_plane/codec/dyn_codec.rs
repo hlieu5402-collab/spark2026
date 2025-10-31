@@ -7,7 +7,7 @@ use crate::codec::decoder::{DecodeContext, DecodeOutcome};
 use crate::codec::encoder::{EncodeContext, EncodedPayload};
 use crate::codec::metadata::CodecDescriptor;
 use crate::error::codes;
-use crate::{sealed::Sealed, CoreError};
+use crate::{CoreError, sealed::Sealed};
 
 /// `DynCodec` 为对象层提供编解码能力的对象安全接口。
 ///

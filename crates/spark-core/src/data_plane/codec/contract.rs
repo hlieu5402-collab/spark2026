@@ -2,7 +2,7 @@ use crate::buffer::ErasedSparkBuf;
 use crate::codec::decoder::{DecodeContext, DecodeOutcome, Decoder as DecoderTrait};
 use crate::codec::encoder::{EncodeContext, EncodedPayload, Encoder};
 use crate::codec::metadata::CodecDescriptor;
-use crate::{sealed::Sealed, CoreError};
+use crate::{CoreError, sealed::Sealed};
 
 /// `Codec` 统一封装编码与解码逻辑，是泛型层的零成本编解码契约。
 ///

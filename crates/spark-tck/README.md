@@ -18,7 +18,7 @@
 
 ## 关联契约与测试
 - 与 [`crates/spark-contract-tests`](../spark-contract-tests) 紧耦合：此 crate 的每个主题均调用核心 Runner 以共享断言逻辑。
-- 默认测试拓扑由 [`crates/spark-transport`](../spark-transport) 下的实现提供；若替换传输实现，请确保 README 与索引指向新的路径。
+- 默认测试拓扑由各传输实现（如 [`crates/spark-transport-tcp`](../spark-transport-tcp)、[`tls`](../spark-transport-tls)、[`quic`](../spark-transport-quic)、[`udp`](../spark-transport-udp)）提供；若替换传输实现，请同步更新 README 与索引路径。
 - 性能冒烟数据会反馈到 [`docs/async-contract-performance.md`](../../docs/async-contract-performance.md)，用于追踪回归。
 
 ## 集成注意事项

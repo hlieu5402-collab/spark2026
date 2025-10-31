@@ -1,29 +1,40 @@
-//! `spark-transport` 中半关闭语义的向后兼容层。
-//!
-//! # 教案级说明
-//! - **Why**：维持既有路径 `spark_core::transport::ShutdownDirection`，同时让真正的定义归属
-//!   独立的接口 crate，便于多种传输实现共享。
-//! - **How**：直接 re-export [`spark_transport::ShutdownDirection`]；调用方无需更新导入路径。
-//! - **What**：不再承载任何实现细节，仅作别名桥接。
-//! - **Trade-offs**：新增方向时需先更新 `spark-transport`，再同步本模块，确保文档一致。
-//! # 教案级注释
-//! - **定位（Why）**
-//!   - TCP、QUIC 等传输协议都支持“半关闭”操作：调用方仅停止读或写方向，以实现半双工收尾或优雅退场。
-//!   - 过往各传输 crate 各自定义枚举，导致上层业务要为不同协议写重复的匹配逻辑。
-//!   - 将抽象上移到 `spark-core` 后，所有实现仅需复用同一语义，可集中约束文档与测试。
-//! - **协作方式（How）**
-//!   - 该模块仅暴露一个枚举 [`ShutdownDirection`]，配合 `transport` 模块中的连接/监听接口使用。
-//!   - 具体传输实现（例如 `spark-transport-tcp`、`spark-transport-quic`）在执行半关闭时匹配该枚举，以协议特定 API 完成操作。
-//!   - 若某协议不支持半关闭，可在实现层将 `Both` 分支映射为全关闭或返回自定义错误。
-//! - **契约说明（What）**
-//!   - 输入：调用方在发起关闭前必须根据业务约定选择枚举变体；不存在默认值，必须显式传递。
-//!   - 输出：类型本身不携带副作用，仅作为意图描述，所有副作用由协议实现承担。
-//! - **权衡与风险（Trade-offs）**
-//!   - 统一抽象牺牲了一定的协议细节（例如某些协议区分优雅/强制关闭），但换取 API 的一致性。
-//!   - 调用方需要了解：部分底层实现可能将 `Both` 解释为顺序的“先写后读”关闭；若需要更精细控制，请在协议层扩展额外 API。
-//!
-//! ## 互操作提示
-//! - 当类型用于 `std` 世界时，可通过 `From<ShutdownDirection>` 为标准库网络栈中的 `Shutdown` 类型实现转换（见 TCP 模块示例）。
-//! - 在 `no_std` 环境下，该类型可直接被 `alloc` 工程使用，不依赖任何运行时能力。
+/// 半关闭方向描述。
+///
+/// # 教案级说明
+///
+/// ## 意图（Why）
+/// - 统一 TCP、TLS、QUIC 等协议在优雅收尾阶段的方向控制语义；
+/// - 为 `TransportConnection::shutdown` 与上层调用者提供一致的枚举类型，
+///   避免业务侧直接依赖运行时特定的枚举（如 `std::net::Shutdown`）。
+///
+/// ## 契约（What）
+/// - `Read`：关闭读方向，继续允许写；
+/// - `Write`：关闭写方向，仍可读取对端数据；
+/// - `Both`：同时关闭读写，等价于连接终止；
+/// - **前置条件**：调用前需确认底层协议支持相应方向；
+/// - **后置条件**：具体副作用由传输实现负责，枚举本身不产生行为。
+///
+/// ## 解析逻辑（How）
+/// - 该类型仅作为意图描述，不存储额外状态；
+/// - 在启用 `std` 时，可转换为 `std::net::Shutdown` 以复用标准库 API。
+///
+/// ## 风险提示（Trade-offs）
+/// - 某些协议可能不支持精确的半关闭语义，应在实现层返回错误或退化为 `Both`；
+/// - 在 `no_std` 环境下不提供任何额外方法，保持最小依赖。
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum ShutdownDirection {
+    Read,
+    Write,
+    Both,
+}
 
-pub use spark_transport::ShutdownDirection;
+#[cfg(feature = "std")]
+impl From<ShutdownDirection> for std::net::Shutdown {
+    fn from(direction: ShutdownDirection) -> Self {
+        match direction {
+            ShutdownDirection::Read => std::net::Shutdown::Read,
+            ShutdownDirection::Write => std::net::Shutdown::Write,
+            ShutdownDirection::Both => std::net::Shutdown::Both,
+        }
+    }
+}

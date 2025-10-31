@@ -5,7 +5,7 @@
 //! - 提供最小可用的 `State`、`Status` 抽象，鼓励实现层通过组合而非重新定义枚举；
 //! - 让外部调用方可以基于 `spark-core` 的状态契约构建运维面板或回放工具。
 
-use crate::{types::CloseReason, CoreError};
+use crate::{CoreError, types::CloseReason};
 use alloc::sync::Arc;
 use core::fmt;
 

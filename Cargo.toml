@@ -18,7 +18,7 @@ members = [
     "crates/spark-pipeline",
     "crates/spark-tck",
     "crates/spark-macros",
-    "crates/spark-otel", "crates/spark-transport",
+    "crates/spark-otel",
     "crates/spark-transport-quic",
     "crates/spark-transport-tcp",
     "crates/spark-transport-tls",
@@ -77,7 +77,6 @@ spark-codec-sdp = { path = "crates/spark-codec-sdp" }
 spark-codec-sip = { path = "crates/spark-codec-sip" }
 spark-tck = { path = "crates/spark-tck" }
 spark-router = { path = "crates/spark-router", default-features = false }
-spark-transport = { path = "crates/spark-transport", default-features = false }
 spark-transport-quic = { path = "crates/spark-transport-quic" }
 spark-transport-tcp = { path = "crates/spark-transport-tcp" }
 spark-transport-tls = { path = "crates/spark-transport-tls" }

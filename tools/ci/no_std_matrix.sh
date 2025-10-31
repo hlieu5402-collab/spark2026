@@ -7,11 +7,11 @@
 #    - 架构位置：作为 CI guardrail 的子任务，被主工作流在 `no-default-alloc` 特性集下调度。
 #      它与 `feature_combos.sh` 输出的矩阵配合，覆盖 no_std 场景的最小可行集。
 #    - 设计思想：采用“目标清单 + 逐包检查”模式，通过环境变量可扩展目标集合，默认
-#      聚焦对无标准库要求最敏感的 crate（spark-core、spark-router、spark-transport）。
+#      聚焦对无标准库要求最敏感的 crate（spark-core、spark-router）。
 # 2. 契约定义（What，R3.1-R3.3）
 #    - 输入：
 #        * 环境变量 `NO_STD_MATRIX_PACKAGES`（空格分隔），默认值
-#          `"spark-core spark-router spark-transport"`。
+#          `"spark-core spark-router"`。
 #        * 环境变量 `CI_ARTIFACT_DIR` 指定日志输出目录，默认 `ci-artifacts`。
 #    - 输出：为每个包生成 `no-std-<pkg>.log`，记录 `cargo check` 过程。若任一包编译失败，
 #      脚本立即以相同的退出码失败。
@@ -77,7 +77,7 @@ run_for_package() {
 
 main() {
   mkdir -p -- "${ARTIFACT_DIR}"
-  local packages=( ${NO_STD_MATRIX_PACKAGES:-spark-core spark-router spark-transport} )
+  local packages=( ${NO_STD_MATRIX_PACKAGES:-spark-core spark-router} )
 
   local pkg
   for pkg in "${packages[@]}"; do

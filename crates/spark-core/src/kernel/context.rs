@@ -175,4 +175,3 @@ impl<'a> From<&'a CallContext> for Context<'a> {
         }
     }
 }
-

@@ -12,8 +12,8 @@ use serde::Deserialize;
 #[path = "../../tools/error_matrix_contract.rs"]
 mod error_matrix_contract;
 use error_matrix_contract::{
-    expand_entries, read_error_matrix_contract, BudgetDispositionSpec, BusyDispositionSpec,
-    CategoryTemplateSpec, ExpandedEntry, SecurityClassSpec,
+    BudgetDispositionSpec, BusyDispositionSpec, CategoryTemplateSpec, ExpandedEntry,
+    SecurityClassSpec, expand_entries, read_error_matrix_contract,
 };
 
 /// 构建脚本入口：读取 TOML 契约，生成 `crates/spark-core/src/error/generated/category_matrix.rs`。

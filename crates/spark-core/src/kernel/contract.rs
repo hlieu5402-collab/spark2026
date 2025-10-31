@@ -1,8 +1,8 @@
 use crate::{
+    SparkError,
     context::Context,
     observability::TraceContext,
     security::{IdentityDescriptor, SecurityPolicy},
-    SparkError,
 };
 use alloc::sync::Arc;
 use alloc::{format, string::ToString, vec, vec::Vec};

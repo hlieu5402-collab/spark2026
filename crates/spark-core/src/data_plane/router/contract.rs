@@ -1,6 +1,6 @@
 use alloc::borrow::Cow;
 
-use crate::{sealed::Sealed, service::Service, Error};
+use crate::{Error, sealed::Sealed, service::Service};
 
 use super::binding::{RouteDecision, RouteValidation};
 use super::context::{RoutingContext, RoutingSnapshot};

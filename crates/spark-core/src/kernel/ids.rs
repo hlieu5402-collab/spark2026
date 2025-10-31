@@ -9,7 +9,7 @@
 //! - 推荐通过 [`crate::prelude`] 一次性引入常见 ID 类型；
 //! - 生成 ID 时可复用现有 UUID/雪花算法，只需在落地前调用 `::parse` 进行契约校验。
 
-use crate::{types::NonEmptyStr, Result};
+use crate::{Result, types::NonEmptyStr};
 use alloc::sync::Arc;
 use core::fmt;
 

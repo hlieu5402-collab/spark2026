@@ -10,10 +10,10 @@
 //! - 接入侧在解码完成后将帧聚合为 `Event::Message` 或 `Event::Close` 交给上层处理。
 
 use crate::{
+    CoreError, Result,
     error::codes,
     ids::RequestId,
     types::{CloseReason, NonEmptyStr},
-    CoreError, Result,
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::fmt;

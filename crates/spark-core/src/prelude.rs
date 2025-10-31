@@ -65,7 +65,7 @@
 ///   [`crate::IdempotencyKey`]、[`crate::Timeout`] 维护状态机与请求追踪；
 /// - **观测与运行时**：[`crate::runtime::CoreServices`]、[`crate::runtime::MonotonicTimePoint`],
 ///   [`crate::observability::Logger`]、[`crate::observability::TraceContext`] 提供运行期调度与观测能力；
-/// - **传输抽象**：[`spark_transport::TransportSocketAddr`]、[`spark_transport::ShutdownDirection`] 让传输实现保持一致行为；
+/// - **传输抽象**：[`crate::transport::TransportSocketAddr`]、[`crate::transport::ShutdownDirection`] 让传输实现保持一致行为；
 /// - **缓冲与服务装配**：[`crate::buffer::PipelineMessage`]、[`crate::buffer::ReadableBuffer`],
 ///   [`crate::buffer::WritableBuffer`]、[`crate::service::BoxService`]、[`crate::service::Layer`] 等支撑流水线与服务组合。
 pub use crate::{
@@ -84,8 +84,8 @@ pub use crate::{
     observability::{CoreUserEvent, LogRecord, Logger, TraceContext},
     runtime::{CoreServices, JoinHandle, MonotonicTimePoint},
     service::{
-        type_mismatch_error, AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service,
-        ServiceObject,
+        AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,
+        type_mismatch_error,
     },
     status::ready::{BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice},
     transport::{ShutdownDirection, TransportSocketAddr},
@@ -93,7 +93,7 @@ pub use crate::{
 };
 
 pub use crate::{
-    CallContext, CallContextBuilder, Cancellation, CloseReason, Context, Deadline, Event, Frame,
+    CallContext, CallContextBuilder, Cancellation, CloseReason, Deadline, Event, Frame,
     IdempotencyKey, Message, NonEmptyStr, RequestId, State, Status, Timeout, TimeoutProfile,
 };
 

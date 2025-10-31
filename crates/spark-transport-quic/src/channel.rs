@@ -10,7 +10,7 @@ use spark_core::prelude::{
     CallContext, Context as ExecutionView, CoreError, PollReady, ReadyCheck, ReadyState,
     ShutdownDirection, TransportSocketAddr,
 };
-use spark_transport::{
+use spark_core::transport::{
     BackpressureDecision, BackpressureMetrics, TransportConnection as TransportConnectionTrait,
 };
 use std::borrow::Cow;

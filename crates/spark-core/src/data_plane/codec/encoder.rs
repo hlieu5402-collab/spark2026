@@ -2,7 +2,7 @@ use super::metadata::CodecDescriptor;
 use crate::buffer::{BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut};
 use crate::contract::{Budget, BudgetDecision};
 use crate::error::codes;
-use crate::{sealed::Sealed, CoreError};
+use crate::{CoreError, sealed::Sealed};
 use alloc::{boxed::Box, format};
 use core::{convert::TryFrom, fmt, num::NonZeroU16};
 

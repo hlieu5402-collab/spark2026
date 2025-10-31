@@ -26,8 +26,8 @@ use crate::audit::{AuditActor, AuditChangeSet, AuditEntityRef, AuditEventV1};
 use crate::configuration::ChangeSet;
 
 use super::events::{
-    ConfigurationDriftDetected, ConfigurationEventDescriptor, DriftNodeSnapshot,
-    CONFIGURATION_DRIFT_DETECTED,
+    CONFIGURATION_DRIFT_DETECTED, ConfigurationDriftDetected, ConfigurationEventDescriptor,
+    DriftNodeSnapshot,
 };
 
 /// 漂移节点上报数据。

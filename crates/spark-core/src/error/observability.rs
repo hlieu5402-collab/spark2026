@@ -1,13 +1,13 @@
 use crate::{
+    CoreError,
     error::{self, ErrorCategory},
     observability::{
+        OwnedAttributeSet,
         keys::{
             attributes::error as attr_keys, labels::error_kind as error_kind_labels,
             metrics::service as service_labels,
         },
-        OwnedAttributeSet,
     },
-    CoreError,
 };
 use alloc::borrow::Cow;
 use core::time::Duration;

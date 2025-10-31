@@ -13,7 +13,6 @@ bench = false
 [dependencies]
 spark-core = { workspace = true, features = ["std"] }
 spark-transport-tcp = { workspace = true }
-spark-transport = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"], optional = true }
 rustls = { workspace = true, default-features = false, features = ["std"], optional = true }
 tokio-rustls = { workspace = true, optional = true }

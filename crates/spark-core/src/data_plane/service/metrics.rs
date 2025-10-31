@@ -1,8 +1,8 @@
 use core::time::Duration;
 
 use crate::observability::{
-    metrics::contract::service as contract, AttributeSet, InstrumentDescriptor, MetricsProvider,
-    OwnedAttributeSet,
+    AttributeSet, InstrumentDescriptor, MetricsProvider, OwnedAttributeSet,
+    metrics::contract::service as contract,
 };
 use crate::status::{BusyReason, ReadyState, RetryAdvice};
 

@@ -10,10 +10,10 @@ use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
 use core::fmt;
 use core::time::Duration;
 
+use crate::SparkError;
 use crate::contract::{CloseReason, Deadline};
 use crate::future::BoxFuture;
 use crate::pipeline::Channel;
-use crate::SparkError;
 
 type TriggerFn = dyn Fn(&CloseReason, Option<Deadline>) + Send + Sync + 'static;
 type AwaitFn =
@@ -206,9 +206,9 @@ impl GracefulShutdownTarget {
         label: impl Into<Cow<'static, str>>,
         trigger_graceful: impl Fn(&CloseReason, Option<Deadline>) + Send + Sync + 'static,
         await_closed: impl Fn() -> BoxFuture<'static, crate::Result<(), SparkError>>
-            + Send
-            + Sync
-            + 'static,
+        + Send
+        + Sync
+        + 'static,
         force_close: impl Fn() + Send + Sync + 'static,
     ) -> Self {
         Self {

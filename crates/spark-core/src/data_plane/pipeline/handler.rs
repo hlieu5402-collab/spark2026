@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::{sealed::Sealed, CoreError};
+use crate::{CoreError, sealed::Sealed};
 
 use super::{context::Context, middleware::MiddlewareDescriptor};
 
