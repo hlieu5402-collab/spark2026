@@ -13,7 +13,7 @@ use crate::{
     error::{self, FLUSH},
     util::run_with_context,
 };
-use spark_transport::{
+use spark_core::transport::{
     BackpressureDecision, BackpressureMetrics, ShutdownDirection,
     TransportConnection as TransportConnectionTrait,
 };

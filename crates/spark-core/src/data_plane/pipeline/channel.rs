@@ -7,7 +7,7 @@ use crate::{
     transport::TransportSocketAddr,
 };
 
-use super::{controller::ControllerHandleId, Controller};
+use super::{Controller, controller::ControllerHandleId};
 
 /// 通道生命周期状态机，统一约束不同传输协议的状态转换。
 ///

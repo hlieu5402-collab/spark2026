@@ -13,7 +13,7 @@ use core::{
 use crate::configuration::{ConfigKey, ConfigScope, ConfigValue, ResolvedConfiguration};
 use crate::error::SparkError;
 use crate::observability::{
-    metrics::contract::limits as metrics_contract, AttributeSet, MetricsProvider, OwnedAttributeSet,
+    AttributeSet, MetricsProvider, OwnedAttributeSet, metrics::contract::limits as metrics_contract,
 };
 use crate::runtime::{
     HotReloadApplyTimer, HotReloadFence, HotReloadObservability, HotReloadReadGuard,

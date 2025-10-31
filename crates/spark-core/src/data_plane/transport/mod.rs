@@ -19,30 +19,36 @@
 
 pub mod address;
 pub mod builder;
+pub mod connection;
+pub mod datagram;
 pub mod endpoint;
 pub mod factory;
 pub mod handshake;
 pub mod intent;
+pub mod listener;
 pub mod metrics;
 pub mod params;
 pub mod server;
 pub mod shutdown;
 pub mod traits;
 
-pub use address::TransportSocketAddr;
+pub use address::{AddressFamily, TransportSocketAddr};
 pub use builder::TransportBuilder;
+pub use connection::{BackpressureDecision, BackpressureMetrics, TransportConnection};
+pub use datagram::DatagramEndpoint;
 pub use endpoint::{Endpoint, EndpointKind};
 pub use factory::ListenerConfig;
 pub use handshake::{
-    negotiate, Capability, CapabilityBitmap, DowngradeReport, HandshakeError, HandshakeErrorKind,
-    HandshakeOffer, HandshakeOutcome, NegotiationAuditContext, Version,
+    Capability, CapabilityBitmap, DowngradeReport, HandshakeError, HandshakeErrorKind,
+    HandshakeOffer, HandshakeOutcome, NegotiationAuditContext, Version, negotiate,
 };
 pub use intent::{
     AvailabilityRequirement, ConnectionIntent, QualityOfService, SecurityMode, SessionLifecycle,
 };
+pub use listener::TransportListener;
 pub use metrics::{LinkDirection, TransportMetricsHook};
 pub use params::TransportParams;
-pub use server::{describe_shutdown_target, ListenerShutdown};
+pub use server::{ListenerShutdown, describe_shutdown_target};
 pub use shutdown::ShutdownDirection;
 pub use traits::generic::{ServerTransport, TransportFactory};
 pub use traits::object::{

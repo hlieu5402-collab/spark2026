@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::PhantomData;
 
-use crate::{sealed::Sealed, CoreError};
+use crate::{CoreError, sealed::Sealed};
 
 use super::contract::Codec;
 use super::dyn_codec::{DynCodec, TypedCodecAdapter};

@@ -38,11 +38,11 @@ use core::{
 use spin::Mutex;
 
 use crate::{
+    Error,
     context::Context,
     contract::CallContext,
     service::Service,
     status::{PollReady, ReadyCheck, ReadyState},
-    Error,
 };
 
 /// 将闭包直接适配为顺序执行的 [`Service`]，对过程宏与测试场景一视同仁。

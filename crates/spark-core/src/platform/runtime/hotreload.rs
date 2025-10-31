@@ -22,7 +22,7 @@ use core::fmt;
 use core::time::Duration;
 
 use crate::observability::{
-    metrics::contract::hot_reload as contract, MetricsProvider, OwnedAttributeSet,
+    MetricsProvider, OwnedAttributeSet, metrics::contract::hot_reload as contract,
 };
 
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};

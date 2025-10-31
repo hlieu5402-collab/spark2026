@@ -2,14 +2,14 @@ use alloc::sync::Arc;
 use core::future::Future;
 
 use crate::{
-    cluster::ServiceDiscovery, context::Context, pipeline::Channel, sealed::Sealed, CoreError,
+    CoreError, cluster::ServiceDiscovery, context::Context, pipeline::Channel, sealed::Sealed,
 };
 
 use crate::pipeline::factory::ControllerFactory as GenericControllerFactory;
 
 use super::super::{
-    factory::ListenerConfig, intent::ConnectionIntent, server::ListenerShutdown,
-    TransportSocketAddr,
+    TransportSocketAddr, factory::ListenerConfig, intent::ConnectionIntent,
+    server::ListenerShutdown,
 };
 
 /// 泛型层的监听器合约，描述服务端优雅关闭语义。

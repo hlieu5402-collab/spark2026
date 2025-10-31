@@ -15,7 +15,7 @@ pub mod object;
 pub mod simple;
 
 pub use auto_dyn::{
-    bridge_to_box_service, type_mismatch_error, AutoDynBridge, Decode, DynBridge, Encode,
+    AutoDynBridge, Decode, DynBridge, Encode, bridge_to_box_service, type_mismatch_error,
 };
 pub use generic::{Layer, Service};
 pub use metrics::{PayloadDirection, ServiceMetricsHook, ServiceOutcome};

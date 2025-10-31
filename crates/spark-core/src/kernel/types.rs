@@ -9,7 +9,7 @@
 //! - 推荐通过 [`crate::prelude`] 导入这些类型，或在模块内显式 `use crate::types::{..}`；
 //! - 若需要新增基础契约，必须在本模块完成定义并更新 `docs/ARCH-LAYERS.md` 的引入矩阵。
 
-use crate::{error::codes, CoreError, Result};
+use crate::{CoreError, Result, error::codes};
 use alloc::{borrow::Cow, sync::Arc, vec::Vec};
 use core::fmt;
 

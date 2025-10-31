@@ -1,6 +1,6 @@
 use alloc::{borrow::Cow, boxed::Box, format};
 
-use crate::{runtime::CoreServices, sealed::Sealed, CoreError};
+use crate::{CoreError, runtime::CoreServices, sealed::Sealed};
 
 use super::handler::{self, InboundHandler, OutboundHandler};
 

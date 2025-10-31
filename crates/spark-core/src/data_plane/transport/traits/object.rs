@@ -1,15 +1,15 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use crate::{
-    async_trait, cluster::ServiceDiscovery, context::Context, pipeline::Channel, sealed::Sealed,
-    CoreError,
+    CoreError, async_trait, cluster::ServiceDiscovery, context::Context, pipeline::Channel,
+    sealed::Sealed,
 };
 
 use crate::pipeline::factory::{DynControllerFactory, DynControllerFactoryAdapter};
 
 use super::super::{
-    factory::ListenerConfig, intent::ConnectionIntent, server::ListenerShutdown,
-    TransportSocketAddr,
+    TransportSocketAddr, factory::ListenerConfig, intent::ConnectionIntent,
+    server::ListenerShutdown,
 };
 use super::generic::{
     ServerTransport as GenericServerTransport, TransportFactory as GenericTransportFactory,

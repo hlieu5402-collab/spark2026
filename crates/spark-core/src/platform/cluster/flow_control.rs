@@ -17,7 +17,7 @@
 //! # 风险与扩展（Trade-offs）
 //! - 有界缓冲策略需要实现层配合，否则 `Bounded` 模式可能退化为无界缓存；若无法满足需求，建议通过队列探针在运行期及时捕获异常信号。
 //! - 队列探针通常以 `Arc` 包裹的轻量状态结构实现，若观测频率极高，应在实现中加入快照缓存以避免锁竞争。
-use crate::{sealed::Sealed, BoxStream};
+use crate::{BoxStream, sealed::Sealed};
 use alloc::sync::Arc;
 use core::{fmt, num::NonZeroUsize};
 

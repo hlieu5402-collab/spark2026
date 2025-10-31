@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use crate::observability::{
-    metrics::contract::codec as contract, AttributeSet, InstrumentDescriptor, MetricsProvider,
+    AttributeSet, InstrumentDescriptor, MetricsProvider, metrics::contract::codec as contract,
 };
 
 /// 编解码阶段枚举，区分 Encode 与 Decode。

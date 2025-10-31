@@ -18,7 +18,6 @@ pub(crate) fn to_socket_addr(addr: TransportSocketAddr) -> SocketAddr {
         TransportSocketAddr::V6 { addr, port } => {
             SocketAddr::new(IpAddr::from(Ipv6Addr::from(addr)), port)
         }
-        _ => todo!("unsupported transport address variant"),
     }
 }
 

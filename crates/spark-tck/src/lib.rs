@@ -55,7 +55,6 @@ pub mod udp {
             TransportSocketAddr::V6 { addr, port } => {
                 SocketAddr::new(std::net::IpAddr::V6(std::net::Ipv6Addr::from(addr)), port)
             }
-            _ => panic!("测试暂不支持额外的 TransportSocketAddr 变体"),
         }
     }
 

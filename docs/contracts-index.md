@@ -30,7 +30,7 @@
 ## Transport（传输与握手）
 | 维度 | 链接 |
 | --- | --- |
-| Rustdoc | [`spark_core::transport`](https://docs.rs/spark-core/latest/spark_core/transport/index.html) · [`spark-transport`](https://docs.rs/spark-transport/latest/spark_transport/) |
+| Rustdoc | [`spark_core::transport`](https://docs.rs/spark-core/latest/spark_core/transport/index.html) |
 | 示例 | [`TransportParams`](../crates/spark-core/src/data_plane/transport/params.rs#L20-L136) |
 | TCK | [`graceful_shutdown::draining_connections_respect_fin`](../crates/spark-contract-tests/src/graceful_shutdown.rs#L640-L796) |
 
@@ -182,7 +182,6 @@ covers = [
 term = "Transport"
 rustdoc = [
   { name = "spark_core::transport", url = "https://docs.rs/spark-core/latest/spark_core/transport/index.html" },
-  { name = "spark-transport", url = "https://docs.rs/spark-transport/latest/spark_transport/" },
 ]
 examples = [
   { name = "TransportParams", path = "../crates/spark-core/src/data_plane/transport/params.rs#L20-L136" },
@@ -206,11 +205,19 @@ covers = [
   "spark_core::transport::ListenerConfig",
   "spark_core::transport::ListenerShutdown",
   "spark_core::transport::NegotiationAuditContext",
-  "spark_core::transport::ServerTransport",
+  "spark_core::transport::ServerTransport", 
   "spark_core::transport::ServerTransportObject",
   "spark_core::transport::TransportBuilder",
+  "spark_core::transport::TransportConnection",
+  "spark_core::transport::TransportListener",
+  "spark_core::transport::DatagramEndpoint",
   "spark_core::transport::TransportFactory",
   "spark_core::transport::TransportFactoryObject",
+  "spark_core::transport::BackpressureDecision",
+  "spark_core::transport::BackpressureMetrics",
+  "spark_core::transport::ShutdownDirection",
+  "spark_core::transport::TransportSocketAddr",
+  "spark_core::transport::AddressFamily",
   "spark_core::transport::TransportMetricsHook",
   "spark_core::transport::TransportParams(_)",
   "spark_core::transport::Version",
@@ -230,6 +237,14 @@ covers = [
   "spark_core::transport::intent::ConnectionIntent",
   "spark_core::transport::metrics::LinkDirection",
   "spark_core::transport::metrics::TransportMetricsHook",
+  "spark_core::transport::connection::BackpressureDecision",
+  "spark_core::transport::connection::BackpressureMetrics",
+  "spark_core::transport::connection::TransportConnection",
+  "spark_core::transport::datagram::DatagramEndpoint",
+  "spark_core::transport::listener::TransportListener",
+  "spark_core::transport::address::AddressFamily",
+  "spark_core::transport::address::TransportSocketAddr",
+  "spark_core::transport::shutdown::ShutdownDirection",
   "spark_core::transport::params::TransportParams(_)",
   "spark_core::transport::server::ListenerShutdown",
   "spark_core::transport::traits::DynServerTransport",

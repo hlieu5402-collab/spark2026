@@ -9,7 +9,7 @@
 //! - 使用 [`Timeout::try_new`] 构造软、硬超时组合；
 //! - 若业务存在多套超时策略，可通过 [`TimeoutProfile`] 表示并在配置中心下发。
 
-use crate::{error::codes, types::NonEmptyStr, CoreError, Result};
+use crate::{CoreError, Result, error::codes, types::NonEmptyStr};
 use alloc::{sync::Arc, vec::Vec};
 use core::time::Duration;
 

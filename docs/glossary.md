@@ -26,7 +26,7 @@
 
 ## Transport（传输与握手）
 - **定位**：`spark_core::transport` 抽象握手、监听、双向信道构建等能力，统一 QUIC/TCP/UDP 等后端。 
-- **Rustdoc**：[`spark_core::transport`](https://docs.rs/spark-core/latest/spark_core/transport/index.html)、[`spark-transport`](https://docs.rs/spark-transport/latest/spark_transport/)。
+- **Rustdoc**：[`spark_core::transport`](https://docs.rs/spark-core/latest/spark_core/transport/index.html)。
 - **示例**：[`TransportParams`](../crates/spark-core/src/data_plane/transport/params.rs#L20-L136) 展示协商参数的序列化策略。 
 - **TCK**：[`graceful_shutdown::draining_connections_respect_fin`](../crates/spark-contract-tests/src/graceful_shutdown.rs#L640-L796) 通过注入自定义传输桩验证 FIN/超时协商流程。
 

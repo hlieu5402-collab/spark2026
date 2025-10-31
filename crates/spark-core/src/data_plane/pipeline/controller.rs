@@ -37,8 +37,8 @@ use crate::{
     contract::{CallContext, CloseReason, Deadline},
     error::{CoreError, SparkError},
     observability::{
-        metrics::contract::pipeline as pipeline_metrics, CoreUserEvent, OwnedAttributeSet,
-        TraceContext,
+        CoreUserEvent, OwnedAttributeSet, TraceContext,
+        metrics::contract::pipeline as pipeline_metrics,
     },
     runtime::CoreServices,
     sealed::Sealed,
@@ -48,7 +48,7 @@ use super::{
     channel::{Channel, WriteSignal},
     context::Context as PipelineContext,
     handler::{self, InboundHandler, OutboundHandler},
-    instrument::{start_inbound_span, InstrumentedLogger},
+    instrument::{InstrumentedLogger, start_inbound_span},
     internal::{HandlerEpochBuffer, HotSwapRegistry},
     middleware::{ChainBuilder, Middleware},
 };

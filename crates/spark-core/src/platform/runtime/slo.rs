@@ -18,9 +18,9 @@
 //! * **边界情况：** 合约作者需关注超时、重复调度、以及宿主拒绝服务等边界；本模块接口文档会明确每个 API 的退化行为，便于上层实现补偿逻辑。
 //!
 use crate::{
+    Error,
     configuration::{ConfigKey, ConfigScope, ConfigValue},
     contract::{BudgetKind, BudgetSnapshot},
-    Error,
 };
 use alloc::{
     borrow::Cow,

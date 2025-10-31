@@ -1,5 +1,5 @@
 use crate::host::context::HostContext;
-use crate::{sealed::Sealed, Error};
+use crate::{Error, sealed::Sealed};
 use alloc::string::String;
 
 /// 宿主生命周期阶段。
@@ -53,7 +53,7 @@ pub trait HostLifecycle: Sealed {
 
     /// 通知组件宿主正在启动。
     fn on_starting(&self, ctx: &HostContext, phase: StartupPhase)
-        -> crate::Result<(), Self::Error>;
+    -> crate::Result<(), Self::Error>;
 
     /// 通知组件宿主已经就绪。
     fn on_ready(&self, ctx: &HostContext) -> crate::Result<(), Self::Error>;

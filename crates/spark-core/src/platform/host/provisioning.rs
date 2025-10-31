@@ -1,5 +1,5 @@
 use crate::host::context::HostContext;
-use crate::{sealed::Sealed, Error};
+use crate::{Error, sealed::Sealed};
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;

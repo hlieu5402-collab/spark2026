@@ -34,8 +34,8 @@ pub use change::{ChangeEvent, ChangeNotification, ChangeSet};
 pub use error::{ConfigurationError, ConfigurationErrorKind, SourceRegistrationError};
 pub use events::*;
 pub use events_runtime::{
-    aggregate_configuration_drift, DriftAggregationContext, DriftAggregationError,
-    DriftAggregationOutcome, DriftNodeReport,
+    DriftAggregationContext, DriftAggregationError, DriftAggregationOutcome, DriftNodeReport,
+    aggregate_configuration_drift,
 };
 pub(crate) use key::ConfigKeyRepr;
 pub use key::{ConfigKey, ConfigScope};

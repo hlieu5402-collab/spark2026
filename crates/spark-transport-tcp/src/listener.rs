@@ -5,7 +5,7 @@ use crate::{
 };
 use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use spark_core::transport::TransportBuilder;
-use spark_transport::{ShutdownDirection, TransportListener as TransportListenerTrait};
+use spark_core::transport::{ShutdownDirection, TransportListener as TransportListenerTrait};
 use std::boxed::Box;
 use std::{future::Future, pin::Pin, time::Duration};
 use tokio::net::TcpListener as TokioTcpListener;

@@ -1,7 +1,7 @@
 use core::{future::Future, task::Context as TaskContext};
 
 use crate::status::PollReady;
-use crate::{context::Context, contract::CallContext, sealed::Sealed, Error};
+use crate::{Error, context::Context, contract::CallContext, sealed::Sealed};
 
 /// `Service` 提供 Spark 数据平面“零虚分派”范式下的业务调用契约。
 ///
@@ -63,7 +63,7 @@ pub trait Service<Request>: Send + Sync + 'static + Sealed {
     ///   预算耗尽与关闭意图；
     /// - **边界条件**：若返回 `Poll::Pending`，实现必须在状态改变时唤醒 `cx.waker()`。
     fn poll_ready(&mut self, ctx: &Context<'_>, cx: &mut TaskContext<'_>)
-        -> PollReady<Self::Error>;
+    -> PollReady<Self::Error>;
 
     /// 发起一次业务调用。
     ///

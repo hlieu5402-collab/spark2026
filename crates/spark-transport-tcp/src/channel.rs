@@ -10,7 +10,7 @@ use spark_core::prelude::{
     CallContext, Context, CoreError, PollReady, ReadyCheck, ReadyState, ShutdownDirection,
     TransportSocketAddr,
 };
-use spark_transport::{
+use spark_core::transport::{
     BackpressureDecision, BackpressureMetrics, TransportConnection as TransportConnectionTrait,
 };
 use std::borrow::Cow;
@@ -235,7 +235,7 @@ impl TcpChannel {
             let chunk = buf.chunk_mut();
             if chunk.len() == 0 {
                 warn!(
-                    target: "spark_transport::tcp",
+                    target: "spark_core::transport::tcp",
                     connection = %self.id(),
                     "TransportConnection::read detected zero writable capacity; 上层需扩容或重新租借缓冲以避免空转"
                 );

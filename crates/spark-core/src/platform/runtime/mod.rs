@@ -56,10 +56,10 @@ pub(crate) use hotreload::HotReloadObservability;
 pub use hotreload::{HotReloadApplyTimer, HotReloadFence, HotReloadReadGuard, HotReloadWriteGuard};
 pub use services::CoreServices;
 pub use slo::{
-    slo_policy_table_key, SloPolicyAction, SloPolicyConfigError, SloPolicyDirective,
-    SloPolicyManager, SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger,
+    SloPolicyAction, SloPolicyConfigError, SloPolicyDirective, SloPolicyManager,
+    SloPolicyReloadReport, SloPolicyRule, SloPolicyTrigger, slo_policy_table_key,
 };
-pub use sugar::{spawn_in, CallContext, PipelineContextCaps, RuntimeCaps};
+pub use sugar::{CallContext, PipelineContextCaps, RuntimeCaps, spawn_in};
 pub use task::{
     BlockingTaskSubmission, JoinHandle, LocalTaskSubmission, ManagedBlockingTask, ManagedLocalTask,
     ManagedSendTask, SendTaskSubmission, TaskCancellationStrategy, TaskError, TaskHandle,

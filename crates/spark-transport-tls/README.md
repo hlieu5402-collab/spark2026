@@ -1,7 +1,7 @@
 # spark-transport-tls
 
 ## 职责边界
-- 在 `spark-transport-tcp` 基础上提供 TLS 1.3 通道，保证握手、会话恢复与加密数据流符合 `spark-core::transport::channel` 契约。
+- 在 `spark-transport-tcp` 基础上提供 TLS 1.3 通道，保证握手、会话恢复与加密数据流符合 `spark-core::transport::connection` 契约。
 - 继承 `CallContext` 的取消、截止、预算语义，并更新 `SecurityContextSnapshot` 以供观测与审计链路使用。
 - 提供证书热更新与会话缓存管理，确保长连接服务在不中断流量的情况下轮换密钥。
 
