@@ -22,6 +22,7 @@ mod contract;
 mod decoder;
 mod dyn_codec;
 mod encoder;
+mod frame_constraints;
 mod metadata;
 pub mod metrics;
 mod registry;
