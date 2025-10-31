@@ -1,6 +1,6 @@
 # 上下文语法糖：`spawn_in` 与 `with_ctx!`
 
-> **目标**：在保持显式传递 [`CallContext`](../crates/spark-core/src/contract.rs) 契约的前提下，降低任务提交与上下文克隆的样板代码。
+> **目标**：在保持显式传递 [`CallContext`](../crates/spark-core/src/kernel/contract.rs) 契约的前提下，降低任务提交与上下文克隆的样板代码。
 
 ## 设计背景
 
@@ -16,10 +16,10 @@
 
 ## 核心组件
 
-- [`RuntimeCaps`](../crates/spark-core/src/runtime/sugar.rs)：统一描述“可提交任务的运行时能力”，默认对实现 [`TaskExecutor`](../crates/spark-core/src/runtime/executor.rs) 的类型生效。
-- [`CallContext`](../crates/spark-core/src/runtime/sugar.rs)：语法糖视图，将 `CallContext` 引用与 `RuntimeCaps` 绑定在一起，提供 `clone_call()` 等便捷方法。
-- [`spawn_in`](../crates/spark-core/src/runtime/sugar.rs)：基于语法糖视图提交任务，自动完成 `spawn` 与 Join 句柄转换。
-- [`with_ctx!`](../crates/spark-core/src/macros.rs)：在 Pipeline [`Context`](../crates/spark-core/src/pipeline/context.rs) 内重绑定同名变量，直接得到语法糖视图。
+- [`RuntimeCaps`](../crates/spark-core/src/platform/runtime/sugar.rs)：统一描述“可提交任务的运行时能力”，默认对实现 [`TaskExecutor`](../crates/spark-core/src/platform/runtime/executor.rs) 的类型生效。
+- [`CallContext`](../crates/spark-core/src/platform/runtime/sugar.rs)：语法糖视图，将 `CallContext` 引用与 `RuntimeCaps` 绑定在一起，提供 `clone_call()` 等便捷方法。
+- [`spawn_in`](../crates/spark-core/src/platform/runtime/sugar.rs)：基于语法糖视图提交任务，自动完成 `spawn` 与 Join 句柄转换。
+- [`with_ctx!`](../crates/spark-core/src/macros.rs)：在 Pipeline [`Context`](../crates/spark-core/src/data_plane/pipeline/context.rs) 内重绑定同名变量，直接得到语法糖视图。
 
 ## 使用示例
 
@@ -57,5 +57,5 @@ fn on_read<C: spark_core::pipeline::Context>(ctx: &C) {
 ## 注意事项
 
 1. `spawn_in` 不会自动克隆 `CallContext`；若异步任务需要所有权，请使用 `CallContext::clone_call()`。
-2. `with_ctx!` 仅适用于实现 [`pipeline::Context`](../crates/spark-core/src/pipeline/context.rs) 的类型；若在其它场景使用，请手动调用 `runtime::CallContext::borrowed`（或 `runtime::CallContext::new` 搭配自定义运行时能力）。
-3. `RuntimeCaps` 默认返回 [`JoinHandle`](../crates/spark-core/src/runtime/task.rs)；如需自定义句柄，请在自定义实现的 [`spawn_with`](../crates/spark-core/src/runtime/sugar.rs) 中返回自有类型，并确保仍遵循 [`TaskHandle`](../crates/spark-core/src/runtime/task.rs) 契约。
+2. `with_ctx!` 仅适用于实现 [`pipeline::Context`](../crates/spark-core/src/data_plane/pipeline/context.rs) 的类型；若在其它场景使用，请手动调用 `runtime::CallContext::borrowed`（或 `runtime::CallContext::new` 搭配自定义运行时能力）。
+3. `RuntimeCaps` 默认返回 [`JoinHandle`](../crates/spark-core/src/platform/runtime/task.rs)；如需自定义句柄，请在自定义实现的 [`spawn_with`](../crates/spark-core/src/platform/runtime/sugar.rs) 中返回自有类型，并确保仍遵循 [`TaskHandle`](../crates/spark-core/src/platform/runtime/task.rs) 契约。

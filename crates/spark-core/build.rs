@@ -12,8 +12,8 @@ use serde::Deserialize;
 #[path = "../../tools/error_matrix_contract.rs"]
 mod error_matrix_contract;
 use error_matrix_contract::{
-    BudgetDispositionSpec, BusyDispositionSpec, CategoryTemplateSpec, ExpandedEntry,
-    SecurityClassSpec, expand_entries, read_error_matrix_contract,
+    expand_entries, read_error_matrix_contract, BudgetDispositionSpec, BusyDispositionSpec,
+    CategoryTemplateSpec, ExpandedEntry, SecurityClassSpec,
 };
 
 /// 构建脚本入口：读取 TOML 契约，生成 `crates/spark-core/src/error/generated/category_matrix.rs`。
@@ -50,9 +50,9 @@ fn main() {
     );
     let observability_contract = read_observability_keys_contract(&observability_contract_path);
     let observability_generated = render_observability_keys(&observability_contract);
-    let observability_output_path = manifest_dir.join("src/observability/keys.rs");
+    let observability_output_path = manifest_dir.join("src/governance/observability/keys.rs");
     fs::write(&observability_output_path, observability_generated)
-        .expect("写入 observability/keys.rs");
+        .expect("写入 governance/observability/keys.rs");
 
     let config_events_contract_path = manifest_dir.join("../../contracts/config_events.toml");
     println!(
@@ -61,9 +61,9 @@ fn main() {
     );
     let config_events_contract = read_config_events_contract(&config_events_contract_path);
     let config_events_generated = render_config_events(&config_events_contract);
-    let config_events_output_path = manifest_dir.join("src/configuration/events.rs");
+    let config_events_output_path = manifest_dir.join("src/governance/configuration/events.rs");
     fs::write(&config_events_output_path, config_events_generated)
-        .expect("写入 configuration/events.rs");
+        .expect("写入 governance/configuration/events.rs");
 }
 
 /// 可观测性键名合约的顶层结构：按分组列出键及其元数据。
@@ -168,7 +168,7 @@ fn read_observability_keys_contract(path: &Path) -> ObservabilityKeysContract {
 /// # 教案式说明
 /// - **意图（Why）**：构建时一次生成全部指标/日志/追踪键，杜绝人为拼写错误；
 /// - **逻辑（How）**：构造模块树、逐层写入模块注释与常量定义；
-/// - **契约（What）**：返回完整的 Rust 源码字符串，供写入 `crates/spark-core/src/observability/keys.rs`。
+/// - **契约（What）**：返回完整的 Rust 源码字符串，供写入 `crates/spark-core/src/governance/observability/keys.rs`。
 fn render_observability_keys(contract: &ObservabilityKeysContract) -> String {
     let mut groups = contract.groups.clone();
     groups.sort_by(|a, b| a.path.cmp(&b.path));

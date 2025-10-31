@@ -15,7 +15,7 @@
 ## Frame（帧与消息封装）
 - **定位**：`spark_core::protocol::Frame` 将请求 ID、序列号与负载绑定，支撑跨传输的统一分片语义。 
 - **Rustdoc**：[`spark_core::protocol::Frame`](https://docs.rs/spark-core/latest/spark_core/protocol/struct.Frame.html)。
-- **示例**：[`Frame::try_new`](../crates/spark-core/src/protocol/frame.rs) 的单元测试演示帧构造约束（请求 ID、FIN 标记）。 
+- **示例**：[`Frame::try_new`](../crates/spark-core/src/data_plane/protocol/frame.rs) 的单元测试演示帧构造约束（请求 ID、FIN 标记）。 
 - **TCK**：[`spark-impl-tck::ws_sip::frame_text_binary`](../crates/spark-impl-tck/tests/ws_sip/frame_text_binary.rs#L8-L155) 验证 SIP<->WebSocket 转换对帧 FIN/掩码语义的遵守。
 
 ## Codec（编解码）
@@ -27,7 +27,7 @@
 ## Transport（传输与握手）
 - **定位**：`spark_core::transport` 抽象握手、监听、双向信道构建等能力，统一 QUIC/TCP/UDP 等后端。 
 - **Rustdoc**：[`spark_core::transport`](https://docs.rs/spark-core/latest/spark_core/transport/index.html)、[`spark-transport`](https://docs.rs/spark-transport/latest/spark_transport/)。
-- **示例**：[`TransportParams`](../crates/spark-core/src/transport/params.rs#L20-L136) 展示协商参数的序列化策略。 
+- **示例**：[`TransportParams`](../crates/spark-core/src/data_plane/transport/params.rs#L20-L136) 展示协商参数的序列化策略。 
 - **TCK**：[`graceful_shutdown::draining_connections_respect_fin`](../crates/spark-contract-tests/src/graceful_shutdown.rs#L640-L796) 通过注入自定义传输桩验证 FIN/超时协商流程。
 
 ## Pipeline（处理链）
@@ -39,25 +39,25 @@
 ## Middleware（管线中间件）
 - **定位**：`Middleware` 及其描述符定义在 Handler 链中插入横切逻辑（鉴权、观测、熔断）的扩展点。 
 - **Rustdoc**：[`spark_core::pipeline::middleware`](https://docs.rs/spark-core/latest/spark_core/pipeline/middleware/index.html)。
-- **示例**：[`ChainBuilder::register_inbound`](../crates/spark-core/src/pipeline/middleware.rs#L52-L118) 说明如何在链路中组装中间件。 
+- **示例**：[`ChainBuilder::register_inbound`](../crates/spark-core/src/data_plane/pipeline/middleware.rs#L52-L118) 说明如何在链路中组装中间件。 
 - **TCK**：[`observability::middleware_emits_expected_attributes`](../crates/spark-contract-tests/src/observability.rs#L210-L332) 检查中间件插桩的可观测性契约。
 
 ## Service（服务接口）
 - **定位**：`spark_core::service` 聚焦业务处理接口、自动对象安全桥接与层级化装饰，支撑高阶路由与管线结果返还。 
 - **Rustdoc**：[`spark_core::service`](https://docs.rs/spark-core/latest/spark_core/service/index.html)、[`spark-middleware`](https://docs.rs/spark-middleware/latest/spark_middleware/)。
-- **示例**：[`ServiceLogic::call`](../crates/spark-core/src/service/simple.rs#L120-L210) 演示 `SimpleServiceFn` 将异步函数适配为服务。 
+- **示例**：[`ServiceLogic::call`](../crates/spark-core/src/data_plane/service/simple.rs#L120-L210) 演示 `SimpleServiceFn` 将异步函数适配为服务。 
 - **TCK**：[`graceful_shutdown::coordinator_waits_for_service_draining`](../crates/spark-contract-tests/src/graceful_shutdown.rs#L820-L1012) 验证服务在关闭流程中的幂等性与截止时间处理。
 
 ## Router（路由控制）
 - **定位**：`spark_core::router` 负责将 `RoutingIntent`、`RouteCatalog` 与动态元数据结合，决策目标 Service/Pipeline。 
 - **Rustdoc**：[`spark_core::router`](https://docs.rs/spark-core/latest/spark_core/router/index.html)、[`spark-router`](https://docs.rs/spark-router/latest/spark_router/)。
-- **示例**：[`RoutingContext::new`](../crates/spark-core/src/router/context.rs#L138-L199) 说明如何组装路由上下文。 
+- **示例**：[`RoutingContext::new`](../crates/spark-core/src/data_plane/router/context.rs#L138-L199) 说明如何组装路由上下文。 
 - **TCK**：[`state_machine::context_propagates_routing_snapshot`](../crates/spark-contract-tests/src/state_machine.rs#L240-L368) 校验路由快照与 Pipeline 上下文的一致性。
 
 ## Context（调用上下文）
 - **定位**：`spark_core::context` 与 `spark_core::contract::CallContext` 统一调度、取消、截止时间、缓冲等跨 Handler 信息。 
 - **Rustdoc**：[`spark_core::context`](https://docs.rs/spark-core/latest/spark_core/context/index.html)、[`spark_core::contract`](https://docs.rs/spark-core/latest/spark_core/contract/index.html)。
-- **示例**：[`CallContext::with_deadline`](../crates/spark-core/src/contract.rs#L120-L198) 描述截止时间传播。 
+- **示例**：[`CallContext::with_deadline`](../crates/spark-core/src/kernel/contract.rs#L120-L198) 描述截止时间传播。 
 - **TCK**：[`state_machine::child_context_inherits_cancellation`](../crates/spark-contract-tests/src/state_machine.rs#L60-L214) 覆盖取消链路。
 
 ## Error（错误语义）
@@ -69,5 +69,5 @@
 ## State（状态与节流）
 - **定位**：`spark_core::model::State`/`Status` 以及 `spark_core::status` 模块表示 ReadyState/Budget/节流策略，驱动背压。 
 - **Rustdoc**：[`spark_core::model`](https://docs.rs/spark-core/latest/spark_core/model/index.html)、[`spark_core::status`](https://docs.rs/spark-core/latest/spark_core/status/index.html)。
-- **示例**：[`RetryAdvice`](../crates/spark-core/src/status/retry.rs#L15-L140) 说明重试节奏计算。 
+- **示例**：[`RetryAdvice`](../crates/spark-core/src/kernel/status/retry.rs#L15-L140) 说明重试节奏计算。 
 - **TCK**：[`backpressure::channel_queue_exhaustion_emits_busy_then_retry_after`](../crates/spark-contract-tests/src/backpressure.rs#L60-L198) 验证 ReadyState 序列。

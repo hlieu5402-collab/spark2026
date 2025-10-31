@@ -7,15 +7,15 @@
 > - **统一协议红线**：`tools/ci/check_unified_protocol_guard.sh` 会在 CI 早期检查公共协议 API 是否变更；若未同步提交 CEP（`docs/governance/CEP-*.md`），流水线将直接拒绝。
 
 ## 1. 双层 API 模型
-- **落地位置**：`crates/spark-core/src/service.rs`、`buffer/mod.rs` 等提供泛型 `Service`/`Layer` 与对象安全 `DynService`/`ServiceObject`/`BoxService`。
+- **落地位置**：`crates/spark-core/src/data_plane/service.rs`、`buffer/mod.rs` 等提供泛型 `Service`/`Layer` 与对象安全 `DynService`/`ServiceObject`/`BoxService`。
 - **CI 约束**：`make ci-lints` 会检查对象安全实现是否编译，`cargo doc` 验证文档示例。
 
 ## 2. 取消 / 截止 / 预算统一原语
-- **落地位置**：`crates/spark-core/src/contract.rs` 定义 `Cancellation`、`Deadline`、`Budget`、`CallContext`。
+- **落地位置**：`crates/spark-core/src/kernel/contract.rs` 定义 `Cancellation`、`Deadline`、`Budget`、`CallContext`。
 - **CI 约束**：`make ci-no-std-alloc` 确认新原语在 `no_std + alloc` 下可编译。
 
 ## 3. 背压语义统一
-- **落地位置**：`crates/spark-core/src/status/ready.rs` 提供唯一的 `ReadyState/ReadyCheck/PollReady` 语义出口，并通过 `BusyReason` 抽象繁忙原因。
+- **落地位置**：`crates/spark-core/src/kernel/status/ready.rs` 提供唯一的 `ReadyState/ReadyCheck/PollReady` 语义出口，并通过 `BusyReason` 抽象繁忙原因。
 - **CI 约束**：`cargo clippy -- -D warnings` 确保所有调用方显式处理统一状态，避免忽略背压信号；`tools/ci/check_consistency.sh` 负责阻止旧的 `Backpressure` 与 `Reason` 拼接关键词再次出现。
 
 ## 4. 优雅关闭契约

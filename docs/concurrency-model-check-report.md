@@ -26,7 +26,7 @@
 
 ## 发现与修复
 - **`Arc` 与互斥实现分离**：
-  - 在 `crates/spark-core/src/contract.rs` 中固定 `Arc` 的具体类型以保留 `Eq/Hash` 派生，避免 Loom 条件编译导致的 trait 派生失败。【F:crates/spark-core/src/contract.rs†L1-L16】
+  - 在 `crates/spark-core/src/kernel/contract.rs` 中固定 `Arc` 的具体类型以保留 `Eq/Hash` 派生，避免 Loom 条件编译导致的 trait 派生失败。【F:crates/spark-core/src/kernel/contract.rs†L1-L16】
 - **通道竞态守护**：
   - `crates/spark-core/tests/loom_concurrency.rs` 增补通道关闭场景，覆盖优雅/强制关闭的竞态收敛。【F:crates/spark-core/tests/loom_concurrency.rs†L1-L139】
 - **Miri 抽样入口统一**：

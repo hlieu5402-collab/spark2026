@@ -89,7 +89,7 @@ readonly CONTRACT_REGEX='\b(ReadyState|ErrorCategory|ObservabilityContract|BufVi
 readonly CATEGORY_MATRIX_SOURCE='crates/spark-core/src/error/generated/category_matrix.rs'
 readonly CATEGORY_MATRIX_DOC='docs/error-category-matrix.md'
 readonly CATEGORY_MATRIX_CONTRACT='contracts/error_matrix.toml'
-readonly CONFIG_EVENTS_SOURCE='crates/spark-core/src/configuration/events.rs'
+readonly CONFIG_EVENTS_SOURCE='crates/spark-core/src/governance/configuration/events.rs'
 readonly CONFIG_EVENTS_DOC='docs/configuration-events.md'
 readonly CONFIG_EVENTS_CONTRACT='contracts/config_events.toml'
 readonly CONFIG_EVENTS_SCHEMA_JSON='schemas/configuration-events.schema.json'
@@ -99,7 +99,7 @@ readonly JAVA_SDK_PATHSPEC=':(glob)sdk/java/**'
 readonly CATEGORY_SURFACE_PATHS=(
   'crates/spark-core/src/error.rs'
   'crates/spark-core/src/error/generated/category_matrix.rs'
-  'crates/spark-core/src/pipeline/default_handlers.rs'
+  'crates/spark-core/src/data_plane/pipeline/default_handlers.rs'
 )
 
 # 教案级注释：错误分类矩阵 SOT 守门（Why / How / What / Trade-offs）

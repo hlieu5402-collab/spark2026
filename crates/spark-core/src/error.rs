@@ -1,7 +1,6 @@
 use crate::{
-    Error, TraceContext, cluster::NodeId, observability::OwnedAttributeSet, sealed::Sealed,
-    security::SecurityClass, status::RetryAdvice, transport::TransportSocketAddr,
-    types::BudgetKind,
+    cluster::NodeId, observability::OwnedAttributeSet, sealed::Sealed, security::SecurityClass,
+    status::RetryAdvice, transport::TransportSocketAddr, types::BudgetKind, Error, TraceContext,
 };
 use alloc::borrow::Cow;
 

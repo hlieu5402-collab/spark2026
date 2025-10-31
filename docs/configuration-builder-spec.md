@@ -10,10 +10,10 @@
 
 | 能力 | 类型 | 说明 |
 | --- | --- | --- |
-| 构建结果 | [`BuildOutcome`](../crates/spark-core/src/configuration/builder.rs) | 封装 `handle`、`initial`、`report` 三元组。 |
-| 校验报告 | [`ValidationReport`](../crates/spark-core/src/configuration/builder.rs) | 逐条记录检查项，提供 `passed_count/failed_count` 指标。 |
-| 构建错误 | [`BuildError`](../crates/spark-core/src/configuration/builder.rs) | 暴露 `kind/stage/report/cause`，`Display` 仅输出脱敏摘要。 |
-| 快照 | [`ConfigurationSnapshot`](../crates/spark-core/src/configuration/snapshot.rs) | 包含 Profile 概要、Layer 元数据与脱敏后的键值条目。 |
+| 构建结果 | [`BuildOutcome`](../crates/spark-core/src/governance/configuration/builder.rs) | 封装 `handle`、`initial`、`report` 三元组。 |
+| 校验报告 | [`ValidationReport`](../crates/spark-core/src/governance/configuration/builder.rs) | 逐条记录检查项，提供 `passed_count/failed_count` 指标。 |
+| 构建错误 | [`BuildError`](../crates/spark-core/src/governance/configuration/builder.rs) | 暴露 `kind/stage/report/cause`，`Display` 仅输出脱敏摘要。 |
+| 快照 | [`ConfigurationSnapshot`](../crates/spark-core/src/governance/configuration/snapshot.rs) | 包含 Profile 概要、Layer 元数据与脱敏后的键值条目。 |
 
 ### `BuildErrorKind`
 

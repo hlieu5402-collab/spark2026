@@ -28,7 +28,7 @@
 | `changes.created/updated` | `Vec<{ key, value }>` | 新增/更新项的完整配置（包含元数据）。 |
 | `changes.deleted` | `Vec<{ key }>` | 被删除的配置键。 |
 
-> 字段在 `spark_core::audit::AuditEventV1` 中有一一对应的实现，详见源码注释。【F:crates/spark-core/src/audit/mod.rs†L47-L164】
+> 字段在 `spark_core::audit::AuditEventV1` 中有一一对应的实现，详见源码注释。【F:crates/spark-core/src/governance/audit/mod.rs†L47-L164】
 
 ## 事件样例
 
@@ -80,9 +80,9 @@
 
 ## 事件产生流程
 
-1. `ConfigurationBuilder::with_audit_pipeline` 注入 `AuditPipeline`，提供 `AuditRecorder` 与上下文（实体类型、操作者等）。【F:crates/spark-core/src/configuration/builder.rs†L566-L586】
-2. `LayeredConfiguration::apply_change` 在应用增量前计算 `state_prev_hash`，并验证是否与 `audit_chain_tip` 一致，若不一致直接返回 `ConfigurationErrorKind::Conflict`。【F:crates/spark-core/src/configuration/builder.rs†L905-L949】
-3. 生成 `AuditChangeSet`，写入 Recorder；Recorder 失败时自动回滚 Layer 与版本号并返回 `ConfigurationErrorKind::Audit`。【F:crates/spark-core/src/configuration/builder.rs†L951-L992】
+1. `ConfigurationBuilder::with_audit_pipeline` 注入 `AuditPipeline`，提供 `AuditRecorder` 与上下文（实体类型、操作者等）。【F:crates/spark-core/src/governance/configuration/builder.rs†L566-L586】
+2. `LayeredConfiguration::apply_change` 在应用增量前计算 `state_prev_hash`，并验证是否与 `audit_chain_tip` 一致，若不一致直接返回 `ConfigurationErrorKind::Conflict`。【F:crates/spark-core/src/governance/configuration/builder.rs†L905-L949】
+3. 生成 `AuditChangeSet`，写入 Recorder；Recorder 失败时自动回滚 Layer 与版本号并返回 `ConfigurationErrorKind::Audit`。【F:crates/spark-core/src/governance/configuration/builder.rs†L951-L992】
 4. 成功写入后更新链尾哈希并广播变更，确保审计与实际状态同步前进。 
 
 ## 回放与重发策略
@@ -93,7 +93,7 @@
 
 ## 与 Observability 契约的衔接
 
-`DEFAULT_OBSERVABILITY_CONTRACT` 已同步升级审计字段列表，方便日志/指标侧按键采集事件元数据。【F:crates/spark-core/src/contract.rs†L493-L507】
+`DEFAULT_OBSERVABILITY_CONTRACT` 已同步升级审计字段列表，方便日志/指标侧按键采集事件元数据。【F:crates/spark-core/src/kernel/contract.rs†L493-L507】
 
 ## 附录：基线文件格式
 
