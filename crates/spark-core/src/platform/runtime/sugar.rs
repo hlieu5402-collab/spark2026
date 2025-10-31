@@ -111,12 +111,6 @@ where
     }
 }
 
-#[deprecated(
-    since = "0.1.0",
-    note = "removal: planned for 0.3.0; migration: 将 `ContextCaps` 替换为 `PipelineContextCaps` 或直接借用 Pipeline Context。"
-)]
-pub type ContextCaps<'a, C> = PipelineContextCaps<'a, C>;
-
 /// `BorrowedRuntimeCaps` 兼容层：保留旧版 API，帮助现有代码在迁移到“直接使用引用”模式前保持可编译。
 ///
 /// # 设计背景（Why）

@@ -176,8 +176,3 @@ impl<'a> From<&'a CallContext> for Context<'a> {
     }
 }
 
-#[deprecated(
-    since = "0.1.0",
-    note = "removal: planned for 0.3.0; migration: 将 `ExecutionContext` 全量替换为 `Context` 并更新相关导入路径。"
-)]
-pub type ExecutionContext<'a> = Context<'a>;

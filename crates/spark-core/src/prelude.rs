@@ -45,7 +45,7 @@
 /// - 支持 `no_std + alloc` 环境，全部类型均来源于本 crate。
 ///
 /// # 收录内容（What）
-/// - 调用上下文：[`CallContext`]、[`CallContextBuilder`]、[`Cancellation`]、[`Deadline`]、[`TraceContext`];
+/// - 调用上下文：[`CallContext`]、[`CallContextBuilder`]、[`Cancellation`]、[`Context`]、[`Deadline`]、[`TraceContext`];
 /// - 错误体系：[`CoreError`]、[`Result`];
 /// - 预算与协议：[`crate::contract::Budget`]、[`crate::contract::BudgetDecision`]、
 ///   [`crate::protocol::Event`]、[`crate::protocol::Frame`]、[`crate::protocol::Message`];
@@ -57,7 +57,7 @@
 /// - **入口综述（Why）**：`spark_core::prelude` 面向业务侧提供“调用上下文五元组 + 错误语义 + 预算”一站式导入，
 ///   上层仅需 `use spark_core::prelude::*;` 便可获得常见契约与辅助工具；
 /// - **调用上下文（What）**：[`crate::CallContext`]、[`crate::CallContextBuilder`]、[`crate::Cancellation`],
-///   [`crate::Deadline`] 用于描述一次 RPC 生命周期与取消/截止语义；
+///   [`crate::Context`]、[`crate::Deadline`] 用于描述一次 RPC 生命周期与取消/截止语义；
 /// - **预算协同**：[`crate::contract::Budget`]、[`crate::contract::BudgetDecision`],
 ///   [`crate::contract::BudgetKind`]、[`crate::contract::BudgetSnapshot`] 抽象跨层背压资源；
 /// - **错误体系**：[`crate::CoreError`]、[`crate::SparkError`]、[`crate::Result`] 及错误枚举确保统一的诊断与恢复策略；
@@ -92,11 +92,8 @@ pub use crate::{
     types::BudgetSet,
 };
 
-#[allow(deprecated)]
-pub use crate::context::ExecutionContext;
-
 pub use crate::{
-    CallContext, CallContextBuilder, Cancellation, CloseReason, Deadline, Event, Frame,
+    CallContext, CallContextBuilder, Cancellation, CloseReason, Context, Deadline, Event, Frame,
     IdempotencyKey, Message, NonEmptyStr, RequestId, State, Status, Timeout, TimeoutProfile,
 };
 

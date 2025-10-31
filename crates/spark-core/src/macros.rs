@@ -13,7 +13,7 @@
 ///
 /// # 展开逻辑（How）
 /// - 保存对原始 `Context` 的引用，避免移动所有权；
-/// - 使用 [`crate::runtime::PipelineContextCaps`]（兼容别名 [`crate::runtime::ContextCaps`]）适配执行器能力；
+/// - 使用 [`crate::runtime::PipelineContextCaps`] 适配执行器能力；
 /// - 构造语法糖上下文并以同名变量绑定，再返回调用方提供的表达式。
 ///
 /// # 契约说明（What）
