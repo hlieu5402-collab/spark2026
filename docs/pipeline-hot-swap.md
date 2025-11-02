@@ -1,6 +1,6 @@
 # Pipeline 热插拔切换时序与内存安全
 
-> **适用范围**：本文档配套 `spark-core` 默认的 `HotSwapController` 实现，用于解释在运行时插入、替换、移除
+> **适用范围**：本文档配套 `spark-core` 默认的 `HotSwapPipeline` 实现，用于解释在运行时插入、替换、移除
 > Handler 时的可见性保证与调用顺序。若后续实现替换为自定义控制器，请根据相同方法补齐安全性分析。
 
 ## 1. 术语约定
@@ -23,12 +23,12 @@ rebuild HandlerRegistration Vec
 registry.update(new registrations)
 handlers.store(new Arc)
 handlers.bump_epoch()  ---- epoch ↑
-unlock(mutation)                              observe epoch via Controller::epoch
+unlock(mutation)                              observe epoch via Pipeline::epoch
                                               (旧快照仍有效直至 Arc 引用计数归零)
 ```
 
 - **线性化点**：`handlers.store`。自此之后，新的事件读取操作将看到更新后的链路。
-- **可观测一致性**：`Controller::epoch` 在 `bump_epoch` 后增加；管理面或测试可在调用热更新 API 后轮询该数值。
+- **可观测一致性**：`Pipeline::epoch` 在 `bump_epoch` 后增加；管理面或测试可在调用热更新 API 后轮询该数值。
   当 `epoch` 出现自增且注册表快照中已包含目标 Handler，即可判定切换完成。
 
 ## 3. 内存安全保证

@@ -129,7 +129,7 @@ mod tests {
                     panic!("测试桩未实现 channel()：语法糖示例不应调用该方法");
                 }
 
-                fn controller(&self) -> &dyn spark_core::pipeline::Controller<HandleId = spark_core::pipeline::controller::ControllerHandleId> {
+                fn controller(&self) -> &dyn spark_core::pipeline::Pipeline<HandleId = spark_core::pipeline::controller::PipelineHandleId> {
                     panic!("测试桩未实现 controller()：语法糖示例不应调用该方法");
                 }
 

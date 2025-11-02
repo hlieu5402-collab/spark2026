@@ -5,13 +5,13 @@
 // - 早期实现借助裸指针跨越借用检查器，存在在异步扩展场景下被误用的风险。
 //
 // ## 解析逻辑（How）
-// - 本版实现通过 `Arc<HotSwapController>` 显式捕获控制器共享所有权，在构建上下文时
+// - 本版实现通过 `Arc<HotSwapPipeline>` 显式捕获控制器共享所有权，在构建上下文时
 //   由控制器内部的弱引用升级获得；
 // - `HotSwapContext` 直接持有 `Arc`，从而可以在无需 `unsafe` 的前提下调用控制器的受保护方法，
 //   并让 Rust 编译器负责线程安全性推导。
 //
 // ## 契约（What）
-// - `HotSwapController::new` 会自动注册自身弱引用，保证上下文在创建时一定能升级为强引用；
+// - `HotSwapPipeline::new` 会自动注册自身弱引用，保证上下文在创建时一定能升级为强引用；
 // - Handler 必须遵循“事件回调内即时使用上下文”的前置条件，避免跨线程长期保留 `Arc` 以防记忆泄漏。
 //
 // ## 风险与权衡（Trade-offs）
@@ -53,14 +53,14 @@ use super::{
     middleware::{ChainBuilder, Middleware},
 };
 
-/// 事件类型枚举，覆盖 Controller 在运行期间可能广播的核心事件。
+/// 事件类型枚举，覆盖 Pipeline 在运行期间可能广播的核心事件。
 ///
 /// # 设计背景（Why）
 /// - 综合 Netty ChannelPipeline 事件、Envoy Stream Callback、Tower Service 调度生命周期，提炼统一事件集合。
 /// - 为科研场景提供事件分类基准，可用于统计、追踪或模型检查。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ControllerEventKind {
+pub enum PipelineEventKind {
     /// 通道变为活跃。
     ChannelActivated,
     /// 收到一条读消息。
@@ -77,23 +77,23 @@ pub enum ControllerEventKind {
     ChannelDeactivated,
 }
 
-/// Controller 事件，用于对外发布遥测或审计信息。
+/// Pipeline 事件，用于对外发布遥测或审计信息。
 ///
 /// # 契约说明（What）
 /// - `kind`：事件类型。
 /// - `source`：触发事件的 Handler 或 Middleware 标签。
 /// - `note`：可选说明，建议用于记录关键信息（如错误分类、背压原因）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ControllerEvent {
-    kind: ControllerEventKind,
+pub struct PipelineEvent {
+    kind: PipelineEventKind,
     source: Cow<'static, str>,
     note: Option<Cow<'static, str>>,
 }
 
-impl ControllerEvent {
+impl PipelineEvent {
     /// 构造新的事件。
     pub fn new(
-        kind: ControllerEventKind,
+        kind: PipelineEventKind,
         source: impl Into<Cow<'static, str>>,
         note: Option<impl Into<Cow<'static, str>>>,
     ) -> Self {
@@ -105,7 +105,7 @@ impl ControllerEvent {
     }
 
     /// 获取事件类型。
-    pub fn kind(&self) -> ControllerEventKind {
+    pub fn kind(&self) -> PipelineEventKind {
         self.kind
     }
 
@@ -130,9 +130,9 @@ impl ControllerEvent {
 /// - **契约（What）**：句柄在控制器生命周期内唯一；比较与拷贝均为常数时间；
 ///   `direction()` 返回该句柄所属方向或锚点的方向提示。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ControllerHandleId(u64);
+pub struct PipelineHandleId(u64);
 
-impl ControllerHandleId {
+impl PipelineHandleId {
     /// 入站链路的虚拟头部锚点，用于“在最前方插入”。
     pub const INBOUND_HEAD: Self = Self(0);
     /// 出站链路的虚拟头部锚点。
@@ -182,7 +182,7 @@ impl ControllerHandleId {
 /// Handler 注册信息，协助调度器与观测系统理解链路结构。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HandlerRegistration {
-    handle_id: ControllerHandleId,
+    handle_id: PipelineHandleId,
     label: String,
     descriptor: super::middleware::MiddlewareDescriptor,
     direction: HandlerDirection,
@@ -199,7 +199,7 @@ impl HandlerRegistration {
     /// - **契约（What）**：`handle_id` 必须由控制器分配且在当前生命周期内唯一；`label`、`descriptor`
     ///   分别用于人类可读名称与静态描述；`direction` 指示事件流向。
     pub fn new(
-        handle_id: ControllerHandleId,
+        handle_id: PipelineHandleId,
         label: impl Into<String>,
         descriptor: super::middleware::MiddlewareDescriptor,
         direction: HandlerDirection,
@@ -213,7 +213,7 @@ impl HandlerRegistration {
     }
 
     /// 返回 Handler 句柄，用于热插拔与回滚定位。
-    pub fn handle_id(&self) -> ControllerHandleId {
+    pub fn handle_id(&self) -> PipelineHandleId {
         self.handle_id
     }
 
@@ -288,7 +288,7 @@ pub trait Handler: Send + Sync + Sealed {
 /// # 教案式说明
 /// - **意图**：为调用方提供零拷贝转换入口，避免重复编写包装结构。
 /// - **逻辑**：内部仅存储一份 `Arc<dyn InboundHandler>`，对外暴露 `Handler` 接口并在需要时克隆。
-/// - **契约**：返回值可直接传递给 [`Controller::add_handler_after`] 等方法；底层 Handler 生命周期
+/// - **契约**：返回值可直接传递给 [`Pipeline::add_handler_after`] 等方法；底层 Handler 生命周期
 ///   由 `Arc` 管理。
 pub fn handler_from_inbound(handler: Arc<dyn InboundHandler>) -> Arc<dyn Handler> {
     Arc::new(InboundHandlerSlot { inner: handler })
@@ -335,7 +335,7 @@ impl Handler for OutboundHandlerSlot {
     }
 }
 
-/// Controller 是 Pipeline 的核心控制面，负责：
+/// Pipeline 是 Pipeline 的核心控制面，负责：
 /// 1. 组织 Handler 链路（含 Middleware 装配）。
 /// 2. 广播事件至 Handler。
 /// 3. 暴露 introspection 与遥测接口。
@@ -353,7 +353,7 @@ impl Handler for OutboundHandlerSlot {
 ///
 /// # 线程安全与生命周期约束
 /// - Trait 继承 `Send + Sync + 'static`：
-///   - **原因**：控制器常由运行时线程池并发访问，并在链路初始化后长期驻留；若不要求 `'static`，将无法安全放入 `Arc<dyn Controller<HandleId = ControllerHandleId>>`。
+///   - **原因**：控制器常由运行时线程池并发访问，并在链路初始化后长期驻留；若不要求 `'static`，将无法安全放入 `Arc<dyn Pipeline<HandleId = PipelineHandleId>>`。
 ///   - **对比**：`Context` 仅要求 `Send + Sync`，生命周期绑定单次事件回调，可由控制器控制释放时机。
 /// - Handler 注册提供“拥有型 Box”与“借用型 `'static` 引用”双入口：
 ///   - `register_*_handler` 适合一次性构造后交由控制面托管；
@@ -366,9 +366,9 @@ impl Handler for OutboundHandlerSlot {
 /// # 风险提示（Trade-offs）
 /// - 在高负载场景下，Middleware 装配应尽量避免动态分配，可预先缓存 Handler 实例。
 /// - 若实现支持热更新，需保证 `install_middleware` 幂等且可回滚。
-pub trait Controller: Send + Sync + 'static + Sealed {
+pub trait Pipeline: Send + Sync + 'static + Sealed {
     /// # 契约维度速览
-    /// - **语义**：`Controller` 代表 Pipeline 的运行时调度核心，负责 Handler/Middleware 装配、事件广播与热更新。
+    /// - **语义**：`Pipeline` 代表 Pipeline 的运行时调度核心，负责 Handler/Middleware 装配、事件广播与热更新。
     /// - **错误**：链路装配失败需返回 [`CoreError`]，建议使用 `pipeline.install_failed`、`pipeline.handler_conflict` 等错误码。
     /// - **并发**：实现必须支持多线程同时操作（注册 Handler、广播事件），常用 `ArcSwap`/`Mutex` 维护一致性。
     /// - **背压**：通过 [`Self::emit_read`]、[`Self::emit_writability_changed`] 等方法向上层反馈 [`BackpressureSignal`](crate::contract::BackpressureSignal) 映射的事件。
@@ -460,7 +460,7 @@ pub trait Controller: Send + Sync + 'static + Sealed {
 /// - **契约（What）**：`id` 必须对应控制器分配的句柄；若一个节点只实现入站（或出站）能力，另一侧
 ///   字段必须为 `None`，否则会造成事件重复分发。
 struct HandlerEntry {
-    id: ControllerHandleId,
+    id: PipelineHandleId,
     label: String,
     descriptor: super::middleware::MiddlewareDescriptor,
     direction: HandlerDirection,
@@ -471,7 +471,7 @@ struct HandlerEntry {
 
 impl HandlerEntry {
     /// 依据通用 Handler 构造节点。
-    fn new(id: ControllerHandleId, label: &str, handler: Arc<dyn Handler>) -> Self {
+    fn new(id: PipelineHandleId, label: &str, handler: Arc<dyn Handler>) -> Self {
         let direction = handler.direction();
         Self {
             id,
@@ -492,7 +492,7 @@ impl HandlerEntry {
     ///   将其中的 `name()` 作为最新标签写回注册表，同时克隆方向与入/出站实现，维持节点语义完整。
     /// - **契约（What）**：调用前需确保替换 Handler 正确实现 `descriptor()`，否则注册表会退化为匿名标签；
     ///   替换成功后，链路外部读取到的 label/descriptor 即与新 Handler 保持一致。
-    fn with_replacement(id: ControllerHandleId, _label: String, handler: Arc<dyn Handler>) -> Self {
+    fn with_replacement(id: PipelineHandleId, _label: String, handler: Arc<dyn Handler>) -> Self {
         let direction = handler.direction();
         let descriptor = handler.descriptor();
         let label = descriptor.name().to_string();
@@ -506,7 +506,7 @@ impl HandlerEntry {
         }
     }
 
-    fn handle_id(&self) -> ControllerHandleId {
+    fn handle_id(&self) -> PipelineHandleId {
         self.id
     }
 
@@ -532,7 +532,7 @@ impl HandlerEntry {
     }
 }
 
-/// 描述 HotSwapController 内部触发的变更操作类型。
+/// 描述 HotSwapPipeline 内部触发的变更操作类型。
 ///
 /// # 教案式说明
 /// - **意图（Why）**：集中管理 add/remove/replace 三种变更语义，
@@ -570,7 +570,7 @@ impl PipelineMutationKind {
 ///   3. 每次变更完成后执行 `HandlerEpochBuffer::bump_epoch`，外部可据此判断新快照是否已对所有线程可见。
 /// - **契约（What）**：构造时需注入通道、核心服务、调用上下文与追踪上下文；调用者必须通过 `Arc`
 ///   持有控制器，以保证在事件回调期间对象存活。
-pub struct HotSwapController {
+pub struct HotSwapPipeline {
     channel: Arc<dyn Channel>,
     services: CoreServices,
     call_context: CallContext,
@@ -578,11 +578,11 @@ pub struct HotSwapController {
     registry: HotSwapRegistry,
     sequence: AtomicU64,
     mutation: Mutex<()>,
-    self_ref: ArcSwap<Weak<HotSwapController>>,
+    self_ref: ArcSwap<Weak<HotSwapPipeline>>,
 }
 
 /// HotSwap 控制器在观测指标中的控制器标签取值。
-impl HotSwapController {
+impl HotSwapPipeline {
     /// 构造新的热插拔控制器。
     ///
     /// # 教案式说明
@@ -619,7 +619,7 @@ impl HotSwapController {
         controller
     }
 
-    fn append_handler(&self, label: &str, handler: Arc<dyn Handler>) -> ControllerHandleId {
+    fn append_handler(&self, label: &str, handler: Arc<dyn Handler>) -> PipelineHandleId {
         let _guard = self.mutation.lock();
         let current = self.handlers.load();
         let mut chain: Vec<_> = current.iter().cloned().collect();
@@ -638,9 +638,9 @@ impl HotSwapController {
         id
     }
 
-    fn next_handle_id(&self, direction: HandlerDirection) -> ControllerHandleId {
+    fn next_handle_id(&self, direction: HandlerDirection) -> PipelineHandleId {
         let sequence = self.sequence.fetch_add(1, Ordering::Relaxed);
-        ControllerHandleId::new(direction, sequence)
+        PipelineHandleId::new(direction, sequence)
     }
 
     fn commit_chain(&self, chain: Vec<Arc<HandlerEntry>>, mutation: PipelineMutationKind) {
@@ -729,7 +729,7 @@ impl HotSwapController {
         Arc::new(entries)
     }
 
-    fn upgrade_self(&self) -> Arc<HotSwapController> {
+    fn upgrade_self(&self) -> Arc<HotSwapPipeline> {
         // ## 教案级说明：自引用升级
         // - **Why**：在仅持有 `&self` 的上下文中，将 `Weak<Self>` 升级为 `Arc<Self>` 以便构建安全的执行上下文；
         // - **How**：读取 `ArcSwap` 保存的弱引用，调用 `upgrade` 获取强引用；若异常发生，记录不可恢复错误；
@@ -738,12 +738,12 @@ impl HotSwapController {
         self.self_ref
             .load_full()
             .upgrade()
-            .expect("HotSwapController weak self must be initialized")
+            .expect("HotSwapPipeline weak self must be initialized")
     }
 
     fn locate_insertion_index(
         chain: &[Arc<HandlerEntry>],
-        anchor: ControllerHandleId,
+        anchor: PipelineHandleId,
         direction: HandlerDirection,
     ) -> usize {
         if anchor.is_anchor() {
@@ -821,7 +821,7 @@ impl HotSwapController {
         }
     }
 
-    fn remove_by_handle(&self, handle: ControllerHandleId) -> bool {
+    fn remove_by_handle(&self, handle: PipelineHandleId) -> bool {
         if handle.is_anchor() {
             return false;
         }
@@ -837,7 +837,7 @@ impl HotSwapController {
         }
     }
 
-    fn replace_by_handle(&self, handle: ControllerHandleId, handler: Arc<dyn Handler>) -> bool {
+    fn replace_by_handle(&self, handle: PipelineHandleId, handler: Arc<dyn Handler>) -> bool {
         if handle.is_anchor() {
             return false;
         }
@@ -862,8 +862,8 @@ impl HotSwapController {
     }
 }
 
-impl Controller for HotSwapController {
-    type HandleId = ControllerHandleId;
+impl Pipeline for HotSwapPipeline {
+    type HandleId = PipelineHandleId;
 
     fn register_inbound_handler(&self, label: &str, handler: Box<dyn InboundHandler>) {
         let dyn_handler = handler_from_inbound(Arc::from(handler));
@@ -882,8 +882,8 @@ impl Controller for HotSwapController {
     ) -> crate::Result<(), CoreError> {
         // 教案级说明（Why）
         // - Middleware 约定通过 `ChainBuilder` 接口向控制器批量注册 Handler，
-        //   这里需要提供一个与 `HotSwapController` 状态一致的 Builder，以保持运行时的热插拔能力。
-        // - 直接复用 `HotSwapController` 自身可避免额外的链路副本，确保装配阶段不会引入额外锁或分配。
+        //   这里需要提供一个与 `HotSwapPipeline` 状态一致的 Builder，以保持运行时的热插拔能力。
+        // - 直接复用 `HotSwapPipeline` 自身可避免额外的链路副本，确保装配阶段不会引入额外锁或分配。
         //
         // 教案级说明（How）
         // - 构造轻量级的 [`HotSwapMiddlewareBuilder`]，其内部仅持有对控制器的共享引用；
@@ -980,15 +980,15 @@ impl Controller for HotSwapController {
     }
 }
 
-impl Controller for Arc<HotSwapController> {
-    type HandleId = ControllerHandleId;
+impl Pipeline for Arc<HotSwapPipeline> {
+    type HandleId = PipelineHandleId;
 
     fn register_inbound_handler(&self, label: &str, handler: Box<dyn InboundHandler>) {
-        <HotSwapController as Controller>::register_inbound_handler(self.as_ref(), label, handler);
+        <HotSwapPipeline as Pipeline>::register_inbound_handler(self.as_ref(), label, handler);
     }
 
     fn register_inbound_handler_static(&self, label: &str, handler: &'static dyn InboundHandler) {
-        <HotSwapController as Controller>::register_inbound_handler_static(
+        <HotSwapPipeline as Pipeline>::register_inbound_handler_static(
             self.as_ref(),
             label,
             handler,
@@ -996,11 +996,11 @@ impl Controller for Arc<HotSwapController> {
     }
 
     fn register_outbound_handler(&self, label: &str, handler: Box<dyn OutboundHandler>) {
-        <HotSwapController as Controller>::register_outbound_handler(self.as_ref(), label, handler);
+        <HotSwapPipeline as Pipeline>::register_outbound_handler(self.as_ref(), label, handler);
     }
 
     fn register_outbound_handler_static(&self, label: &str, handler: &'static dyn OutboundHandler) {
-        <HotSwapController as Controller>::register_outbound_handler_static(
+        <HotSwapPipeline as Pipeline>::register_outbound_handler_static(
             self.as_ref(),
             label,
             handler,
@@ -1012,60 +1012,60 @@ impl Controller for Arc<HotSwapController> {
         middleware: &dyn Middleware,
         services: &CoreServices,
     ) -> crate::Result<(), CoreError> {
-        <HotSwapController as Controller>::install_middleware(self.as_ref(), middleware, services)
+        <HotSwapPipeline as Pipeline>::install_middleware(self.as_ref(), middleware, services)
     }
 
     fn emit_channel_activated(&self) {
-        <HotSwapController as Controller>::emit_channel_activated(self.as_ref());
+        <HotSwapPipeline as Pipeline>::emit_channel_activated(self.as_ref());
     }
 
     fn emit_read(&self, msg: PipelineMessage) {
-        <HotSwapController as Controller>::emit_read(self.as_ref(), msg);
+        <HotSwapPipeline as Pipeline>::emit_read(self.as_ref(), msg);
     }
 
     fn emit_read_completed(&self) {
-        <HotSwapController as Controller>::emit_read_completed(self.as_ref());
+        <HotSwapPipeline as Pipeline>::emit_read_completed(self.as_ref());
     }
 
     fn emit_writability_changed(&self, is_writable: bool) {
-        <HotSwapController as Controller>::emit_writability_changed(self.as_ref(), is_writable);
+        <HotSwapPipeline as Pipeline>::emit_writability_changed(self.as_ref(), is_writable);
     }
 
     fn emit_user_event(&self, event: CoreUserEvent) {
-        <HotSwapController as Controller>::emit_user_event(self.as_ref(), event);
+        <HotSwapPipeline as Pipeline>::emit_user_event(self.as_ref(), event);
     }
 
     fn emit_exception(&self, error: CoreError) {
-        <HotSwapController as Controller>::emit_exception(self.as_ref(), error);
+        <HotSwapPipeline as Pipeline>::emit_exception(self.as_ref(), error);
     }
 
     fn emit_channel_deactivated(&self) {
-        <HotSwapController as Controller>::emit_channel_deactivated(self.as_ref());
+        <HotSwapPipeline as Pipeline>::emit_channel_deactivated(self.as_ref());
     }
 
     fn registry(&self) -> &dyn HandlerRegistry {
-        <HotSwapController as Controller>::registry(self.as_ref())
+        <HotSwapPipeline as Pipeline>::registry(self.as_ref())
     }
 
     fn epoch(&self) -> u64 {
-        <HotSwapController as Controller>::epoch(self.as_ref())
+        <HotSwapPipeline as Pipeline>::epoch(self.as_ref())
     }
 
     fn add_handler_after(
         &self,
-        anchor: ControllerHandleId,
+        anchor: PipelineHandleId,
         label: &str,
         handler: Arc<dyn Handler>,
-    ) -> ControllerHandleId {
-        <HotSwapController as Controller>::add_handler_after(self.as_ref(), anchor, label, handler)
+    ) -> PipelineHandleId {
+        <HotSwapPipeline as Pipeline>::add_handler_after(self.as_ref(), anchor, label, handler)
     }
 
-    fn remove_handler(&self, handle: ControllerHandleId) -> bool {
-        <HotSwapController as Controller>::remove_handler(self.as_ref(), handle)
+    fn remove_handler(&self, handle: PipelineHandleId) -> bool {
+        <HotSwapPipeline as Pipeline>::remove_handler(self.as_ref(), handle)
     }
 
-    fn replace_handler(&self, handle: ControllerHandleId, handler: Arc<dyn Handler>) -> bool {
-        <HotSwapController as Controller>::replace_handler(self.as_ref(), handle, handler)
+    fn replace_handler(&self, handle: PipelineHandleId, handler: Arc<dyn Handler>) -> bool {
+        <HotSwapPipeline as Pipeline>::replace_handler(self.as_ref(), handle, handler)
     }
 }
 
@@ -1073,10 +1073,10 @@ impl Controller for Arc<HotSwapController> {
 ///
 /// # 教案式说明
 /// - **意图（Why）**：`Middleware::configure` 通过 [`ChainBuilder`] 追加 Handler，本结构体将该契约映射
-///   到 `HotSwapController` 的热插拔接口，使中间件无需了解内部锁策略即可完成注册。
+///   到 `HotSwapPipeline` 的热插拔接口，使中间件无需了解内部锁策略即可完成注册。
 /// - **逻辑（How）**：
 ///   1. 在构造时捕获控制器的共享引用；
-///   2. `register_inbound`/`register_outbound` 直接转发到 `HotSwapController` 的注册方法，由其负责方向推断
+///   2. `register_inbound`/`register_outbound` 直接转发到 `HotSwapPipeline` 的注册方法，由其负责方向推断
 ///      与链路重建；
 ///   3. Builder 本身不持有额外状态，满足 `configure` 幂等调用时的零残留要求。
 /// - **契约（What）**：
@@ -1088,14 +1088,14 @@ impl Controller for Arc<HotSwapController> {
 ///   - 若中间件在 `configure` 中批量注册大量 Handler，控制器内部的锁会串行化这些操作，
 ///     这是在“保持链路一致性”与“装配性能”之间的权衡。
 struct HotSwapMiddlewareBuilder<'a> {
-    controller: &'a HotSwapController,
+    controller: &'a HotSwapPipeline,
 }
 
 impl<'a> HotSwapMiddlewareBuilder<'a> {
     /// 创建绑定到指定控制器的 Builder 视图。
     ///
     /// # 契约（What）
-    /// - `controller`：当前正在装配的 `HotSwapController`，生命周期需覆盖整个 `configure` 调用过程；
+    /// - `controller`：当前正在装配的 `HotSwapPipeline`，生命周期需覆盖整个 `configure` 调用过程；
     /// - 返回值：新的 Builder 仅持有引用，不会触发任何链路修改。
     ///
     /// # 前置条件（Preconditions）
@@ -1103,7 +1103,7 @@ impl<'a> HotSwapMiddlewareBuilder<'a> {
     ///
     /// # 后置条件（Postconditions）
     /// - Builder 可安全地在同一线程内多次调用注册方法；完成装配后可直接丢弃。
-    fn new(controller: &'a HotSwapController) -> Self {
+    fn new(controller: &'a HotSwapPipeline) -> Self {
         Self { controller }
     }
 }
@@ -1135,7 +1135,7 @@ impl ChainBuilder for HotSwapMiddlewareBuilder<'_> {
 
 /// 事件调度时注入 Handler 的上下文实现。
 struct HotSwapContext {
-    controller: Arc<HotSwapController>,
+    controller: Arc<HotSwapPipeline>,
     channel: Arc<dyn Channel>,
     services: CoreServices,
     call_context: CallContext,
@@ -1147,7 +1147,7 @@ struct HotSwapContext {
 
 impl HotSwapContext {
     fn new(
-        controller: Arc<HotSwapController>,
+        controller: Arc<HotSwapPipeline>,
         channel: Arc<dyn Channel>,
         services: &CoreServices,
         call_context: &CallContext,
@@ -1183,7 +1183,7 @@ impl PipelineContext for HotSwapContext {
         self.channel.as_ref()
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         self.controller.as_ref()
     }
 
@@ -1261,21 +1261,21 @@ fn clone_user_event(event: &CoreUserEvent) -> CoreUserEvent {
     }
 }
 
-impl ChainBuilder for dyn Controller<HandleId = ControllerHandleId> {
+impl ChainBuilder for dyn Pipeline<HandleId = PipelineHandleId> {
     fn register_inbound(&mut self, label: &str, handler: Box<dyn InboundHandler>) {
-        Controller::register_inbound_handler(self, label, handler);
+        Pipeline::register_inbound_handler(self, label, handler);
     }
 
     fn register_inbound_static(&mut self, label: &str, handler: &'static dyn InboundHandler) {
-        Controller::register_inbound_handler_static(self, label, handler);
+        Pipeline::register_inbound_handler_static(self, label, handler);
     }
 
     fn register_outbound(&mut self, label: &str, handler: Box<dyn OutboundHandler>) {
-        Controller::register_outbound_handler(self, label, handler);
+        Pipeline::register_outbound_handler(self, label, handler);
     }
 
     fn register_outbound_static(&mut self, label: &str, handler: &'static dyn OutboundHandler) {
-        Controller::register_outbound_handler_static(self, label, handler);
+        Pipeline::register_outbound_handler_static(self, label, handler);
     }
 }
 
@@ -1308,7 +1308,7 @@ mod tests {
     };
 
     /// 构建最小化运行环境，确保控制器在测试中具备完整依赖。
-    fn build_controller_fixture() -> (Arc<HotSwapController>, Arc<TestChannel>) {
+    fn build_controller_fixture() -> (Arc<HotSwapPipeline>, Arc<TestChannel>) {
         let runtime = Arc::new(NoopRuntime::new());
         let logger = Arc::new(NoopLogger);
         let ops = Arc::new(NoopOpsBus::default());
@@ -1336,10 +1336,9 @@ mod tests {
 
         let channel = Arc::new(TestChannel::new("controller-unit"));
         let controller =
-            HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
-        channel.bind_controller(
-            controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>
-        );
+            HotSwapPipeline::new(channel.clone() as Arc<dyn Channel>, services, call_context);
+        channel
+            .bind_controller(controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>);
 
         (controller, channel)
     }
@@ -1370,7 +1369,7 @@ mod tests {
     /// 测试用 Channel，实现核心接口以驱动控制器流程。
     struct TestChannel {
         id: &'static str,
-        controller: OnceLock<Arc<dyn Controller<HandleId = ControllerHandleId>>>,
+        controller: OnceLock<Arc<dyn Pipeline<HandleId = PipelineHandleId>>>,
         extensions: TestExtensions,
     }
 
@@ -1383,7 +1382,7 @@ mod tests {
             }
         }
 
-        fn bind_controller(&self, controller: Arc<dyn Controller<HandleId = ControllerHandleId>>) {
+        fn bind_controller(&self, controller: Arc<dyn Pipeline<HandleId = PipelineHandleId>>) {
             let _ = self.controller.set(controller);
         }
     }
@@ -1401,7 +1400,7 @@ mod tests {
             true
         }
 
-        fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+        fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
             self.controller
                 .get()
                 .expect("controller must be bound")

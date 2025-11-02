@@ -3,7 +3,7 @@ use alloc::{boxed::Box, sync::Arc};
 use spark_core::{
     Result as CoreResult,
     contract::CallContext,
-    pipeline::DynControllerFactory,
+    pipeline::DynPipelineFactory,
     runtime::CoreServices,
     transport::{DynServerTransport, DynTransportFactory, ListenerConfig},
 };
@@ -11,10 +11,10 @@ use spin::Mutex;
 
 use crate::transport::TransportFactoryExt;
 
-/// 将 `DynControllerFactory` 再包装为对象安全别名，方便在宿主 API 中使用。
-pub trait ControllerFactory: DynControllerFactory {}
+/// 将 `DynPipelineFactory` 再包装为对象安全别名，方便在宿主 API 中使用。
+pub trait PipelineFactory: DynPipelineFactory {}
 
-impl<T> ControllerFactory for T where T: DynControllerFactory {}
+impl<T> PipelineFactory for T where T: DynPipelineFactory {}
 
 /// `ExamplesServer` 负责在运行时协调 Transport 监听器与 Pipeline 控制面的装配。
 ///
@@ -95,7 +95,7 @@ impl ExamplesServer {
     /// - 当前缺乏实际的接受循环，因此调用者仍需结合外部任务或后续版本完成连接处理；
     /// - 若 `listen` 阶段失败，缓存保持原状，不会覆盖旧的监听器；
     /// - TODO(ember-accept-loop)：待 `DynServerTransport` 暴露 `accept` 契约后，需要在此方法中启动异步循环创建 Pipeline，以避免长时间只监听不处理。
-    pub async fn run(&self, controller_factory: Arc<dyn ControllerFactory>) -> CoreResult<()> {
+    pub async fn run(&self, controller_factory: Arc<dyn PipelineFactory>) -> CoreResult<()> {
         let call_context = CallContext::builder().build();
         let execution = call_context.execution();
 

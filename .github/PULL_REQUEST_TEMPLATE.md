@@ -42,7 +42,7 @@
 - [ ] 构建 / DevOps
 - [ ] 其他（请注明）：
 
-## ReadyState / RetryAfter / ErrorCategory / Controller 文档与演练治理
+## ReadyState / RetryAfter / ErrorCategory / Pipeline 文档与演练治理
 
 - [ ] 已更新 `docs/state_machines.md`，同步状态机图谱与分支语义
 - [ ] 已更新 `docs/retry-policy.md`，阐明新的重试窗口或退避策略

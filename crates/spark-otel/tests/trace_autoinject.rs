@@ -18,8 +18,8 @@ use spark_core::{
         SpanId, TraceContext,
     },
     pipeline::{
-        Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
-        controller::{ControllerHandleId, HotSwapController},
+        Channel, ChannelState, ExtensionsMap, Pipeline, WriteSignal,
+        controller::{HotSwapPipeline, PipelineHandleId},
         handler::InboundHandler,
     },
     runtime::{
@@ -68,9 +68,8 @@ fn trace_context_auto_injected_and_spans_form_parent_child_tree() {
 
     let channel = Arc::new(TestChannel::new("trace-auto-inject"));
     let controller =
-        HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
-    channel
-        .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
+        HotSwapPipeline::new(channel.clone() as Arc<dyn Channel>, services, call_context);
+    channel.bind_controller(controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>);
 
     controller.register_inbound_handler("alpha", Box::new(AlphaHandler));
     controller.register_inbound_handler("beta", Box::new(BetaHandler));
@@ -285,10 +284,10 @@ struct TestMessage {
     id: usize,
 }
 
-/// 极简 Channel 实现，桥接 HotSwapController 并避免真实网络依赖。
+/// 极简 Channel 实现，桥接 HotSwapPipeline 并避免真实网络依赖。
 struct TestChannel {
     id: String,
-    controller: OnceLock<Arc<dyn Controller<HandleId = ControllerHandleId>>>,
+    controller: OnceLock<Arc<dyn Pipeline<HandleId = PipelineHandleId>>>,
     extensions: TestExtensions,
 }
 
@@ -301,7 +300,7 @@ impl TestChannel {
         }
     }
 
-    fn bind_controller(&self, controller: Arc<dyn Controller<HandleId = ControllerHandleId>>) {
+    fn bind_controller(&self, controller: Arc<dyn Pipeline<HandleId = PipelineHandleId>>) {
         let _ = self.controller.set(controller);
     }
 }
@@ -319,7 +318,7 @@ impl Channel for TestChannel {
         true
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         self.controller
             .get()
             .expect("controller 应提前绑定")

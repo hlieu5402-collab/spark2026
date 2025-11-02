@@ -14,13 +14,13 @@ use crate::observability::CoreUserEvent;
 /// - 结合科研需求，引入 `MiddlewareDescriptor` 以支持静态分析、链路可视化。
 ///
 /// # 契约说明（What）
-/// - 所有方法均在 Controller 线程或执行上下文中调用，必须无阻塞或将耗时操作移交到运行时。
+/// - 所有方法均在 Pipeline 线程或执行上下文中调用，必须无阻塞或将耗时操作移交到运行时。
 /// - `on_user_event` 适配跨模块的业务事件广播。
 /// - 异常需通过 `on_exception_caught` 处理，必要时触发降级或关闭连接。
 ///
 /// # 前置/后置条件（Contract）
 /// - **前置**：实现类型必须是 `'static + Send + Sync`，以便在多线程环境下安全复用。
-/// - **后置**：若 `on_exception_caught` 未能恢复，应通知 Controller 触发关闭，以防资源泄漏。
+/// - **后置**：若 `on_exception_caught` 未能恢复，应通知 Pipeline 触发关闭，以防资源泄漏。
 ///
 /// # 风险提示（Trade-offs）
 /// - 请避免在 Handler 内部持久化 `Context` 引用；若确有需要，需确保不会导致引用循环。
@@ -117,7 +117,7 @@ impl<T> DuplexHandler for T where T: InboundHandler + OutboundHandler {}
 ///
 /// # 契约说明（What）
 /// - **输入**：`handler` 必须指向 `'static` 生命周期的 `InboundHandler` 实例，常见于 `lazy_static!` 或 `OnceLock` 场景；
-/// - **返回值**：可直接传递给 `Controller::register_inbound_handler` 等拥有型入口；
+/// - **返回值**：可直接传递给 `Pipeline::register_inbound_handler` 等拥有型入口；
 /// - **前置条件**：调用方需保证底层 Handler 在系统生命周期内有效；
 /// - **后置条件**：代理仅负责转发，不拥有底层资源，关闭时不会触发额外析构。
 ///
@@ -138,7 +138,7 @@ pub(crate) fn box_inbound_from_static(
 ///
 /// # 契约说明（What）
 /// - **输入**：`handler` 为 `'static` 出站 Handler；
-/// - **返回值**：可交由 `Controller::register_outbound_handler` 继续处理；
+/// - **返回值**：可交由 `Pipeline::register_outbound_handler` 继续处理；
 /// - **前置条件/后置条件**：与 [`box_inbound_from_static`] 一致。
 pub(crate) fn box_outbound_from_static(
     handler: &'static dyn OutboundHandler,

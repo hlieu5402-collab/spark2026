@@ -21,9 +21,9 @@ use spark_core::error::codes;
 use spark_core::future::BoxFuture;
 use spark_core::observability::trace::{TraceContext, TraceFlags};
 use spark_core::pipeline::{
-    Channel, ChannelState, Controller, HandlerRegistry, WriteSignal,
+    Channel, ChannelState, Pipeline, HandlerRegistry, WriteSignal,
 };
-use spark_core::pipeline::controller::ControllerHandleId;
+use spark_core::pipeline::controller::PipelineHandleId;
 use spark_core::router::binding::{RouteBinding, RouteDecision};
 use spark_core::router::catalog::{RouteCatalog, RouteDescriptor};
 use spark_core::router::context::{RoutingContext, RoutingIntent, RoutingSnapshot};
@@ -244,7 +244,7 @@ fn execute_replay(seed: u64) -> Vec<StageObservation> {
     let transport_factory = RecordingTransportFactory::new(events.clone(), transport_addr);
 
     let listener_config = ListenerConfig::new(endpoint.clone());
-    let controller_factory = Arc::new(DummyControllerFactory);
+    let controller_factory = Arc::new(DummyPipelineFactory);
     let allocator = NoopAllocator;
 
     let waker = noop_waker();
@@ -705,7 +705,7 @@ impl TransportFactory for RecordingTransportFactory {
     type BindFuture<'a, P> = core::future::Ready<spark_core::Result<Self::Server, CoreError>>
     where
         Self: 'a,
-        P: spark_core::pipeline::ControllerFactory + Send + Sync + 'static;
+        P: spark_core::pipeline::PipelineFactory + Send + Sync + 'static;
 
     type ConnectFuture<'a> = core::future::Ready<spark_core::Result<Self::Channel, CoreError>> where Self: 'a;
 
@@ -724,8 +724,8 @@ impl TransportFactory for RecordingTransportFactory {
         _pipeline_factory: Arc<P>,
     ) -> Self::BindFuture<'_, P>
     where
-        P: spark_core::pipeline::ControllerFactory + Send + Sync + 'static,
-        P::Controller: Controller,
+        P: spark_core::pipeline::PipelineFactory + Send + Sync + 'static,
+        P::Pipeline: Pipeline,
     {
         self.events
             .lock()
@@ -821,7 +821,7 @@ impl Channel for TestChannel {
         true
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         &self.controller
     }
 
@@ -877,12 +877,12 @@ impl ExtensionsMap for NoopExtensions {
     fn clear(&self) {}
 }
 
-/// 不执行任何操作的 Controller，实现所有接口为 no-op。
+/// 不执行任何操作的 Pipeline，实现所有接口为 no-op。
 #[derive(Clone, Default)]
 struct NoopController;
 
-impl Controller for NoopController {
-    type HandleId = ControllerHandleId;
+impl Pipeline for NoopController {
+    type HandleId = PipelineHandleId;
     fn register_inbound_handler(&self, _: &str, _: Box<dyn spark_core::pipeline::handler::InboundHandler>) {}
 
     fn register_outbound_handler(&self, _: &str, _: Box<dyn spark_core::pipeline::handler::OutboundHandler>) {}
@@ -919,7 +919,7 @@ impl Controller for NoopController {
         _label: &str,
         _handler: Arc<dyn spark_core::pipeline::controller::Handler>,
     ) -> Self::HandleId {
-        spark_core::pipeline::controller::ControllerHandleId::INBOUND_HEAD
+        spark_core::pipeline::controller::PipelineHandleId::INBOUND_HEAD
     }
 
     fn remove_handler(&self, _handle: Self::HandleId) -> bool {
@@ -1059,12 +1059,12 @@ fn noop_waker() -> Waker {
 }
 
 /// 空控制器工厂，仅用于满足 trait 约束。
-struct DummyControllerFactory;
+struct DummyPipelineFactory;
 
-impl spark_core::pipeline::ControllerFactory for DummyControllerFactory {
-    type Controller = NoopController;
+impl spark_core::pipeline::PipelineFactory for DummyPipelineFactory {
+    type Pipeline = NoopController;
 
-    fn build(&self, _: &spark_core::runtime::CoreServices) -> spark_core::Result<Self::Controller, CoreError> {
+    fn build(&self, _: &spark_core::runtime::CoreServices) -> spark_core::Result<Self::Pipeline, CoreError> {
         Ok(NoopController)
     }
 }

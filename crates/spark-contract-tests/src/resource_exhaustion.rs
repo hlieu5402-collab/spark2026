@@ -5,11 +5,11 @@ use spark_core::contract::{CallContext, CloseReason};
 use spark_core::error::codes;
 use spark_core::observability::{CoreUserEvent, Logger, MetricsProvider, TraceContext, TraceFlags};
 use spark_core::pipeline::channel::ChannelState;
-use spark_core::pipeline::controller::ControllerHandleId;
+use spark_core::pipeline::controller::PipelineHandleId;
 use spark_core::pipeline::default_handlers::{ExceptionAutoResponder, ReadyStateEvent};
 use spark_core::pipeline::handler::{InboundHandler, OutboundHandler};
 use spark_core::pipeline::{
-    Channel, Context, Controller, ExtensionsMap, HandlerRegistry, WriteSignal,
+    Channel, Context, ExtensionsMap, HandlerRegistry, Pipeline, WriteSignal,
 };
 use spark_core::status::{BusyReason, ReadyState};
 use spark_core::test_stubs::observability::{NoopLogger, NoopMetricsProvider};
@@ -152,8 +152,8 @@ struct ReadyRecordingController {
     ready_states: Mutex<Vec<ReadyState>>,
 }
 
-impl Controller for ReadyRecordingController {
-    type HandleId = ControllerHandleId;
+impl Pipeline for ReadyRecordingController {
+    type HandleId = PipelineHandleId;
 
     fn register_inbound_handler(&self, _: &str, _: Box<dyn InboundHandler>) {}
 
@@ -250,7 +250,7 @@ impl Channel for ReadyChannel {
         true
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         &*self.controller
     }
 
@@ -344,7 +344,7 @@ impl Context for ReadyContext {
         self.channel.as_ref()
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         self.controller.as_ref()
     }
 

@@ -5,7 +5,7 @@ use crate::{
     CoreError, cluster::ServiceDiscovery, context::Context, pipeline::Channel, sealed::Sealed,
 };
 
-use crate::pipeline::factory::ControllerFactory as GenericControllerFactory;
+use crate::pipeline::factory::PipelineFactory as GenericPipelineFactory;
 
 use super::super::{
     TransportSocketAddr, factory::ListenerConfig, intent::ConnectionIntent,
@@ -123,7 +123,7 @@ pub trait ServerTransport: Send + Sync + 'static + Sealed {
 /// - `scheme` 返回协议标识（如 `tcp`/`quic`）；
 /// - `bind` 结合 [`ListenerConfig`] 与 Pipeline 工厂构造监听器，返回具体 [`ServerTransport`]；
 /// - `connect` 根据 [`ConnectionIntent`] 建立客户端通道，返回实现 [`Channel`] 的类型；
-/// - 需要与 [`Arc<GenericControllerFactory>`] 协同，以装配 Pipeline。
+/// - 需要与 [`Arc<GenericPipelineFactory>`] 协同，以装配 Pipeline。
 ///
 /// # 契约说明（What）
 /// - **关联类型**：`Channel`/`Server` 必须分别实现 [`Channel`] 与 [`ServerTransport`]；
@@ -132,7 +132,7 @@ pub trait ServerTransport: Send + Sync + 'static + Sealed {
 /// - **错误处理**：失败需返回 [`CoreError`]，并填写错误码提示运维动作。
 ///
 /// # 风险提示（Trade-offs）
-/// - 泛型层 Future 类型通常较复杂，若需在对象层复用，请结合 [`crate::pipeline::factory::DynControllerFactoryAdapter`] 等适配器做类型擦除；
+/// - 泛型层 Future 类型通常较复杂，若需在对象层复用，请结合 [`crate::pipeline::factory::DynPipelineFactoryAdapter`] 等适配器做类型擦除；
 /// - 建连过程若依赖 `ServiceDiscovery`，应处理网络分区、陈旧快照等异常并返回语义化错误。
 pub trait TransportFactory: Send + Sync + 'static + Sealed {
     /// 客户端通道类型。
@@ -144,7 +144,7 @@ pub trait TransportFactory: Send + Sync + 'static + Sealed {
     type BindFuture<'a, P>: Future<Output = crate::Result<Self::Server, CoreError>> + Send + 'a
     where
         Self: 'a,
-        P: GenericControllerFactory + Send + Sync + 'static;
+        P: GenericPipelineFactory + Send + Sync + 'static;
 
     /// 建连流程返回的 Future 类型。
     type ConnectFuture<'a>: Future<Output = crate::Result<Self::Channel, CoreError>> + Send + 'a
@@ -195,8 +195,8 @@ pub trait TransportFactory: Send + Sync + 'static + Sealed {
         pipeline_factory: Arc<P>,
     ) -> Self::BindFuture<'_, P>
     where
-        P: GenericControllerFactory + Send + Sync + 'static,
-        P::Controller: crate::pipeline::Controller;
+        P: GenericPipelineFactory + Send + Sync + 'static,
+        P::Pipeline: crate::pipeline::Pipeline;
 
     /// 建立客户端通道。
     ///

@@ -33,7 +33,7 @@
 ## Pipeline（处理链）
 - **定位**：`spark_core::pipeline` 提供 Handler 链、控制器、上下文与热插拔能力，连接编解码、路由与服务执行。 
 - **Rustdoc**：[`spark_core::pipeline`](https://docs.rs/spark-core/latest/spark_core/pipeline/index.html)、[`spark-pipeline`](https://docs.rs/spark-pipeline/latest/spark_pipeline/)。
-- **示例**：[`hot_swap` 集成测试](../crates/spark-core/tests/pipeline/hot_swap.rs#L40-L420) 展示 `Controller`、`Middleware` 与 `CoreServices` 协同实现零停机热替换。 
+- **示例**：[`hot_swap` 集成测试](../crates/spark-core/tests/pipeline/hot_swap.rs#L40-L420) 展示 `Pipeline`、`Middleware` 与 `CoreServices` 协同实现零停机热替换。 
 - **TCK**：[`hot_swap::pipeline_state_transitions_are_ordered`](../crates/spark-contract-tests/src/hot_swap.rs#L430-L585) 验证 epoch 切换与事件顺序。
 
 ## Middleware（管线中间件）

@@ -92,7 +92,7 @@ pub trait ChainBuilder: Sealed {
     }
 }
 
-/// Middleware 合约：以声明式方式将 Handler 注入 Controller。
+/// Middleware 合约：以声明式方式将 Handler 注入 Pipeline。
 ///
 /// # 契约维度速览
 /// - **语义**：`configure` 接口负责描述 Handler 链路拓扑，`descriptor` 提供自描述元数据，保证热更新与 introspection 的一致性。

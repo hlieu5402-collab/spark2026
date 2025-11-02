@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version = "1.89"
 authors = ["Gemini 架构组 <architecture@gemini.example>"]
 license = "Apache-2.0"
-description = "spark-pipeline: 热插拔 Controller 实现与中间件装配入口"
+description = "spark-pipeline: 热插拔 Pipeline 实现与中间件装配入口"
 
 [features]
 default = ["alloc"]

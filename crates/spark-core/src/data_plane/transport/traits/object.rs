@@ -5,7 +5,7 @@ use crate::{
     sealed::Sealed,
 };
 
-use crate::pipeline::factory::{DynControllerFactory, DynControllerFactoryAdapter};
+use crate::pipeline::factory::{DynPipelineFactory, DynPipelineFactoryAdapter};
 
 use super::super::{
     TransportSocketAddr, factory::ListenerConfig, intent::ConnectionIntent,
@@ -127,7 +127,7 @@ where
 /// - 与泛型层 [`GenericTransportFactory`] 互转，满足 T05 “双层语义等价” 目标。
 ///
 /// # 行为逻辑（How）
-/// - `bind_dyn` 将对象层 Pipeline 工厂适配为泛型 [`DynControllerFactoryAdapter`]，构建监听器并再度类型擦除；
+/// - `bind_dyn` 将对象层 Pipeline 工厂适配为泛型 [`DynPipelineFactoryAdapter`]，构建监听器并再度类型擦除；
 /// - `connect_dyn` 调用泛型实现，返回 `Box<dyn Channel>`；两者均通过 `async fn` 暴露异步结果，由 [`crate::async_trait`] 负责装箱；
 /// - 通过 `TransportFactoryObject` 在两层之间完成互转。
 ///
@@ -181,7 +181,7 @@ pub trait DynTransportFactory: Send + Sync + Sealed {
         &self,
         ctx: &Context<'_>,
         config: ListenerConfig,
-        pipeline_factory: Arc<dyn DynControllerFactory>,
+        pipeline_factory: Arc<dyn DynPipelineFactory>,
     ) -> crate::Result<Box<dyn DynServerTransport>, CoreError>;
 
     /// 建立客户端通道。
@@ -248,9 +248,9 @@ where
         &self,
         ctx: &Context<'_>,
         config: ListenerConfig,
-        pipeline_factory: Arc<dyn DynControllerFactory>,
+        pipeline_factory: Arc<dyn DynPipelineFactory>,
     ) -> crate::Result<Box<dyn DynServerTransport>, CoreError> {
-        let adapter = DynControllerFactoryAdapter::new(pipeline_factory);
+        let adapter = DynPipelineFactoryAdapter::new(pipeline_factory);
         let server =
             GenericTransportFactory::bind(&*self.inner, ctx, config, Arc::new(adapter)).await?;
         Ok(Box::new(ServerTransportObject::new(server)) as Box<dyn DynServerTransport>)

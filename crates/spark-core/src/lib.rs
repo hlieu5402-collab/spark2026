@@ -157,9 +157,10 @@ pub use observability::{
 };
 pub use pipeline::{
     ChainBuilder, Channel, ChannelState, Context as PipelineContext, Controller, ControllerEvent,
-    ControllerEventKind, ControllerFactory, DuplexHandler, ExtensionsMap, HandlerRegistry,
-    InboundHandler, Middleware, MiddlewareDescriptor, OutboundHandler, Pipeline, PipelineFactory,
-    WriteSignal,
+    ControllerEventKind, ControllerFactory, ControllerHandle, DuplexHandler, DynControllerFactory,
+    DynControllerFactoryAdapter, ExtensionsMap, HandlerRegistry, InboundHandler, Middleware,
+    MiddlewareDescriptor, OutboundHandler, Pipeline, PipelineEvent, PipelineEventKind,
+    PipelineFactory, PipelineHandle, PipelineHandleId, WriteSignal,
 };
 pub use protocol::{Event, Frame, Message};
 pub use router::{

@@ -1,11 +1,11 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-//! `spark-pipeline` 聚焦提供稳定的 Pipeline Controller 入口。
+//! `spark-pipeline` 聚焦提供稳定的 Pipeline Pipeline 入口。
 //!
 //! # 教案式说明
 //! - **意图（Why）**：将 `spark-core` 中的热插拔控制器打包为独立 Crate，供业务侧或科研实验在不直接依赖
 //!   内核实现细节的情况下复用高性能调度能力。
-//! - **逻辑（How）**：通过类型别名与再导出，将 `HotSwapController` 暴露为 `PipelineController`，并保留原有
+//! - **逻辑（How）**：通过类型别名与再导出，将 `HotSwapPipeline` 暴露为 `PipelineController`，并保留原有
 //!   API/特性开关；调用者只需在此 Crate 中构造控制器，即可获得完整的 Handler 管理与 Middleware 装配能力。
 //! - **契约（What）**：Crate 默认启用 `alloc` 特性，可在 `no_std` 环境中运行；若启用 `std` 特性，将自动联动
 //!   `spark-core/std` 以提供更丰富的运行时支持。
@@ -14,11 +14,11 @@
 
 extern crate alloc;
 
-pub use spark_core::pipeline::{Controller, controller::HotSwapController};
+pub use spark_core::pipeline::{Pipeline, controller::HotSwapPipeline};
 
 mod factory;
 
-pub use factory::DefaultControllerFactory;
+pub use factory::DefaultPipelineFactory;
 
 pub use router::RouterHandler as LegacyRouterHandler;
 
@@ -56,12 +56,12 @@ pub use spark_router::pipeline::{
 /// `PipelineController` 是 `spark-pipeline` 对外推荐的默认控制器实现。
 ///
 /// # 教案式说明
-/// - **意图（Why）**：通过别名保持 API 的语义化命名，避免直接暴露 `HotSwapController` 的实现细节，
+/// - **意图（Why）**：通过别名保持 API 的语义化命名，避免直接暴露 `HotSwapPipeline` 的实现细节，
 ///   便于未来在不破坏调用方代码的情况下迁移到其他热插拔方案。
-/// - **逻辑（How）**：类型等价于 [`HotSwapController`]，调用 `PipelineController::new` 时实质上使用
+/// - **逻辑（How）**：类型等价于 [`HotSwapPipeline`]，调用 `PipelineController::new` 时实质上使用
 ///   核心实现构造函数，并享有其链路管理能力与可观测性集成。
-/// - **契约（What）**：构造参数、热插拔操作、事件广播等行为全部继承自 `HotSwapController`；
-///   调用方应确保以 `Arc` 持有实例，遵循 `Controller` Trait 的生命周期约束。
+/// - **契约（What）**：构造参数、热插拔操作、事件广播等行为全部继承自 `HotSwapPipeline`；
+///   调用方应确保以 `Arc` 持有实例，遵循 `Pipeline` Trait 的生命周期约束。
 /// - **风险与权衡（Trade-offs）**：别名不会产生额外的 ABI 或性能开销，但也意味着该 Crate 与核心实现
 ///   紧密耦合；若未来需要差异化功能，应考虑新增显式类型而非修改别名。
-pub type PipelineController = HotSwapController;
+pub type PipelineController = HotSwapPipeline;

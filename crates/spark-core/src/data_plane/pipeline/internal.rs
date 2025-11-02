@@ -14,7 +14,7 @@
 //!   写操作先构造新的 `Arc<Vec<Arc<T>>>`，再调用 [`store`] 原子替换；最后执行 [`bump_epoch`] 告知所有
 //!   观察者“新快照已就绪”。
 //! - [`HotSwapRegistry`]：以 `ArcSwap<Vec<HandlerRegistration>>` 缓存 introspection 快照，供
-//!   [`Controller::registry`](super::controller::Controller::registry) 返回值复用，避免在热路径上重复分配。
+//!   [`Pipeline::registry`](super::controller::Pipeline::registry) 返回值复用，避免在热路径上重复分配。
 //!
 //! # 契约说明（What）
 //! - `HandlerEpochBuffer` 要求元素类型 `T` 实现 `Send + Sync`，以确保跨线程访问安全；读操作返回的
@@ -94,7 +94,7 @@ impl<T: Send + Sync + 'static> HandlerEpochBuffer<T> {
 /// - **逻辑（How）**：更新流程由控制器完成：在构造新的 `Vec<HandlerRegistration>` 后，转换为 `Arc`
 ///   并调用 [`update`] 原子替换；`snapshot` 则克隆内部向量，调用方可自由检查。
 /// - **契约（What）**：`HandlerRegistration` 必须保持值语义；调用方不应假设快照与运行中链路绝对同步，
-///   但可以结合 `Controller::epoch` 判断更新进度。
+///   但可以结合 `Pipeline::epoch` 判断更新进度。
 /// - **风险提示（Trade-offs）**：为了保证读取零拷贝，内部仍持有 `Arc<Vec<_>>`；若注册表非常大，需评估
 ///   更新频率对内存占用的影响。
 pub(crate) struct HotSwapRegistry {

@@ -23,8 +23,7 @@ use spark_core::future::BoxFuture;
 use spark_core::observability::CoreUserEvent;
 use spark_core::pipeline::channel::{Channel, ChannelState, WriteSignal};
 use spark_core::pipeline::controller::{
-    Controller, ControllerHandleId, Handler as PipelineHandler, HandlerRegistration,
-    HandlerRegistry,
+    Handler as PipelineHandler, HandlerRegistration, HandlerRegistry, Pipeline, PipelineHandleId,
 };
 use spark_core::pipeline::extensions::ExtensionsMap;
 use spark_core::runtime::CoreServices;
@@ -127,7 +126,7 @@ fn budget_concurrent_consume_refund_invariant() {
 fn channel_close_sequences_eventually_closed() {
     let channel = Arc::new(TestChannel::new("miri-channel"));
     let controller = Arc::new(NullController::default());
-    channel.bind_controller(controller as Arc<dyn Controller<HandleId = ControllerHandleId>>);
+    channel.bind_controller(controller as Arc<dyn Pipeline<HandleId = PipelineHandleId>>);
 
     let graceful = {
         let channel = Arc::clone(&channel);
@@ -173,7 +172,7 @@ fn channel_close_sequences_eventually_closed() {
 /// 测试用 Channel，实现必要的接口以复现关闭状态机。
 struct TestChannel {
     id: String,
-    controller: OnceLock<Arc<dyn Controller<HandleId = ControllerHandleId>>>,
+    controller: OnceLock<Arc<dyn Pipeline<HandleId = PipelineHandleId>>>,
     extensions: TestExtensions,
     state: AtomicU8,
     graceful_invocations: AtomicUsize,
@@ -196,7 +195,7 @@ impl TestChannel {
         }
     }
 
-    fn bind_controller(&self, controller: Arc<dyn Controller<HandleId = ControllerHandleId>>) {
+    fn bind_controller(&self, controller: Arc<dyn Pipeline<HandleId = PipelineHandleId>>) {
         let _ = self.controller.set(controller);
     }
 
@@ -247,7 +246,7 @@ impl Channel for TestChannel {
         self.load_state() != Self::STATE_CLOSED
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         self.controller
             .get()
             .expect("controller must be bound")
@@ -345,7 +344,7 @@ impl ExtensionsMap for TestExtensions {
     fn clear(&self) {}
 }
 
-/// 提供最小实现的 HandlerRegistry，用于满足 `Controller` 接口要求。
+/// 提供最小实现的 HandlerRegistry，用于满足 `Pipeline` 接口要求。
 #[derive(Default)]
 struct NullRegistry;
 
@@ -355,14 +354,14 @@ impl HandlerRegistry for NullRegistry {
     }
 }
 
-/// No-op 控制器，实现 `Controller` Trait 以满足测试的通道依赖。
+/// No-op 控制器，实现 `Pipeline` Trait 以满足测试的通道依赖。
 #[derive(Default)]
 struct NullController {
     registry: NullRegistry,
 }
 
-impl Controller for NullController {
-    type HandleId = ControllerHandleId;
+impl Pipeline for NullController {
+    type HandleId = PipelineHandleId;
 
     fn register_inbound_handler(
         &self,

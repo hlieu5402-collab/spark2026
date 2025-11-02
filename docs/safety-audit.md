@@ -6,14 +6,13 @@
 
 ## 详细白名单
 
-### crates/spark-core/src/data_plane/pipeline/controller.rs
-- **位置**：`HotSwapContext` 模块级 `#![allow(unsafe_code)]`、`unsafe impl Send/Sync` 以及 `controller()` 与 `forward_read()` 中的裸指针访问。
-- **目的**：向 Handler 提供只读的 `PipelineContext`，同时允许其在链路中继续调用控制器完成后续调度，而不额外复制控制器结构。
+### crates/spark-core/src/data_plane/pipeline/pipeline.rs
+- **状态**：`HotSwapPipeline` 采用 `Arc<HotSwapPipeline>` 与 `Weak` 的组合管理上下文，不再需要任何 `unsafe` 块或 `#![allow(unsafe_code)]` 豁免。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L1-L121】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L523-L708】
 - **安全性说明**：
-  - `HotSwapContext::new` 仅在控制器持有 `Arc` 引用的生命周期内构造上下文，裸指针不会悬垂；
-  - `Send`/`Sync` 依赖于控制器字段的线程安全性（全部为 `Arc`、原子或 `Mutex`），上下文只在事件分发期间短暂使用；
-  - `controller()` 与 `forward_read()` 的 `unsafe` 块仅在同步路径下解引用指针，`snapshot`、`trace` 等参数均通过 `Arc`/clone 保障所有权。
-- **验证途径**：由 `make ci-lints`、`cargo test -p spark-contract-tests` 等 CI 任务间接覆盖，确保 Handler 调度流程经常被执行；后续可通过 `make ci-no-std-alloc` 的集成测试验证。
+  - 上下文通过 `Arc` 捕获控制器所有权，`Weak` 在构造阶段自动升级，避免悬垂指针；
+  - 并发访问依赖 `ArcSwap`、原子计数与 `Mutex` 管理 Handler 注册表，遵循标准线程安全原语；
+  - 热插拔流程使用句柄与 `ArcSwap` 原子替换，所有对控制器的访问均经过 `Arc`/`Weak` 验证，无需裸指针操作。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L122-L451】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L523-L708】
+- **验证途径**：持续集成任务（`make ci-lints`、`make ci-no-std-alloc`、`make ci-bench-smoke` 等）均会构建并运行该实现，间接覆盖上下文升级与热插拔逻辑。
 
 ### crates/spark-core/src/data_plane/service/simple.rs
 - **位置**：模块级 `#![allow(unsafe_code)]`、`GuardedFuture::poll` 内 `get_unchecked_mut` 与 `Pin::new_unchecked` 调用。

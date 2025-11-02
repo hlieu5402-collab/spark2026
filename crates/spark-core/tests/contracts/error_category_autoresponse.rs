@@ -16,10 +16,10 @@ mod tests {
             use spark_core::error::{CoreError, category_matrix};
             use spark_core::observability::metrics::MetricsProvider;
             use spark_core::observability::{CoreUserEvent, Logger, TraceContext, TraceFlags};
-            use spark_core::pipeline::controller::{ControllerHandleId, Handler};
+            use spark_core::pipeline::controller::{Handler, PipelineHandleId};
             use spark_core::pipeline::handler::InboundHandler;
             use spark_core::pipeline::{
-                Channel, Context, Controller, HandlerRegistry, WriteSignal,
+                Channel, Context, HandlerRegistry, Pipeline, WriteSignal,
                 channel::ChannelState,
                 default_handlers::{ExceptionAutoResponder, ReadyStateEvent},
             };
@@ -259,8 +259,8 @@ mod tests {
                 }
             }
 
-            impl Controller for RecordingController {
-                type HandleId = ControllerHandleId;
+            impl Pipeline for RecordingController {
+                type HandleId = PipelineHandleId;
 
                 fn register_inbound_handler(
                     &self,
@@ -374,7 +374,7 @@ mod tests {
                     true
                 }
 
-                fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+                fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
                     &*self.controller
                 }
 
@@ -478,7 +478,7 @@ mod tests {
                     &self.channel
                 }
 
-                fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+                fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
                     &*self.controller
                 }
 
