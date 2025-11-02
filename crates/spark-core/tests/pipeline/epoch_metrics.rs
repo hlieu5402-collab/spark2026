@@ -11,8 +11,8 @@ use spark_core::{
         metrics::contract::pipeline as pipeline_contract,
     },
     pipeline::{
-        Channel, Controller,
-        controller::{ControllerHandleId, Handler, HotSwapController, handler_from_inbound},
+        Channel, Pipeline,
+        controller::{Handler, HotSwapPipeline, PipelineHandleId, handler_from_inbound},
         handler::InboundHandler,
     },
     runtime::{AsyncRuntime, CoreServices},
@@ -24,7 +24,7 @@ use super::hot_swap::{NoopBufferPool, NoopOpsBus, NoopRuntime, TestChannel};
 /// 验证 Pipeline 变更会同步记录纪元 Gauge、变更计数器与结构化日志。
 ///
 /// # 教案式说明
-/// - **意图（Why）**：确保 HotSwapController 在执行 add/remove/replace 时，
+/// - **意图（Why）**：确保 HotSwapPipeline 在执行 add/remove/replace 时，
 ///   能对外暴露 `spark.pipeline.epoch` 与 `spark.pipeline.mutation.total`，并输出统一的 INFO 日志，
 ///   以支撑 SRE 在告警与回退流程中进行比对。
 /// - **逻辑（How）**：通过自定义 `RecordingMetrics` 与 `RecordingLogger` 捕获调用次数、标签和值，
@@ -52,9 +52,8 @@ fn pipeline_mutations_emit_epoch_metrics_and_logs() {
     let call_context = CallContext::builder().build();
     let channel = Arc::new(TestChannel::new("epoch-metrics-channel"));
     let controller =
-        HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
-    channel
-        .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
+        HotSwapPipeline::new(channel.clone() as Arc<dyn Channel>, services, call_context);
+    channel.bind_controller(controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>);
 
     controller.register_inbound_handler("alpha", Box::new(NopInbound));
     let alpha_handle = controller

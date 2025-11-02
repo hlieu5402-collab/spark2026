@@ -10,11 +10,9 @@ use spark_core::observability::{
     TraceFlags,
 };
 use spark_core::pipeline::channel::{ChannelState, WriteSignal};
-use spark_core::pipeline::controller::{
-    ControllerHandleId, HotSwapController, handler_from_inbound,
-};
+use spark_core::pipeline::controller::{HotSwapPipeline, PipelineHandleId, handler_from_inbound};
 use spark_core::pipeline::handler::InboundHandler;
-use spark_core::pipeline::{Channel, Controller, ExtensionsMap, middleware::MiddlewareDescriptor};
+use spark_core::pipeline::{Channel, ExtensionsMap, Pipeline, middleware::MiddlewareDescriptor};
 use spark_core::runtime::{
     AsyncRuntime, CoreServices, MonotonicTimePoint, TaskCancellationStrategy, TaskExecutor,
     TaskHandle, TaskResult, TimeDriver,
@@ -59,7 +57,7 @@ pub const fn suite() -> &'static TckSuite {
     &SUITE
 }
 
-/// 验证 `HotSwapController` 在链路中插入新 Handler 时不会丢失消息或破坏顺序。
+/// 验证 `HotSwapPipeline` 在链路中插入新 Handler 时不会丢失消息或破坏顺序。
 ///
 /// # 教案式说明
 /// - **意图 (Why)**：运行期升级 Transport/Protocol 时需要动态插入 Handler，必须保证已有流量不受影响。
@@ -67,7 +65,7 @@ pub const fn suite() -> &'static TckSuite {
 /// - **契约 (What)**：
 ///   - 插入前事件序列为 `tls:1`；
 ///   - 插入后事件序列为 `tls:1`, `tls:2`, `log:2`；
-///   - Controller 的 epoch 自增，新增句柄不指向链表头。
+///   - Pipeline 的 epoch 自增，新增句柄不指向链表头。
 fn hot_swap_inserts_handler_without_dropping_messages() {
     let (_channel, controller) = build_hot_swap_controller("hot-swap-channel");
 
@@ -96,7 +94,7 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
     let dyn_handler = handler_from_inbound(logging_handler);
     let epoch_before = controller.epoch();
     let logging_handle = controller.add_handler_after(tls_handle, "logging", dyn_handler);
-    assert_ne!(logging_handle, ControllerHandleId::INBOUND_HEAD);
+    assert_ne!(logging_handle, PipelineHandleId::INBOUND_HEAD);
     assert!(controller.epoch() > epoch_before);
 
     controller.emit_read(PipelineMessage::from_user(TestMessage { id: 2 }));
@@ -171,7 +169,7 @@ fn hot_swap_replaces_handler_preserves_epoch_and_ordering() {
 /// 验证在 Handler 正在处理消息时执行插入操作，旧快照仍然保持一致，直至新 epoch 对后续消息生效。
 ///
 /// # 教案式说明
-/// - **意图 (Why)**：确认 `HotSwapController` 的“变更栅栏”语义——在单条消息的处理流程中，新插入的 Handler 不会提前介入，避免读到半更新的快照。
+/// - **意图 (Why)**：确认 `HotSwapPipeline` 的“变更栅栏”语义——在单条消息的处理流程中，新插入的 Handler 不会提前介入，避免读到半更新的快照。
 /// - **逻辑 (How)**：
 ///   1. 注册带栅栏的 `alpha` Handler，并在线程 A 中触发消息，使其在 `Barrier` 处暂停；
 ///   2. 主线程等待进入临界区后调用 `add_handler_after` 插入 `beta`，确认 epoch 自增；
@@ -215,7 +213,7 @@ fn hot_swap_addition_during_inflight_dispatch_awaits_epoch_barrier() {
         Arc::new(RecordingInbound::new("beta", Arc::clone(&events)));
     let beta_handler = handler_from_inbound(beta_handler);
     let beta_handle = controller.add_handler_after(alpha_handle, "beta", beta_handler);
-    assert_ne!(beta_handle, ControllerHandleId::INBOUND_HEAD);
+    assert_ne!(beta_handle, PipelineHandleId::INBOUND_HEAD);
     let epoch_after = controller.epoch();
     assert!(epoch_after > epoch_before, "插入新 Handler 必须自增 epoch");
 
@@ -240,15 +238,15 @@ fn hot_swap_addition_during_inflight_dispatch_awaits_epoch_barrier() {
     assert_eq!(labels, ["alpha", "beta"], "注册表顺序应保持插入语义");
 }
 
-/// 构建绑定 `HotSwapController` 的测试通道与控制器。
+/// 构建绑定 `HotSwapPipeline` 的测试通道与控制器。
 ///
 /// # 教案式说明
 /// - **意图 (Why)**：多条测试用例均需相同的控制器初始化流程，集中封装以保证依赖一致性并降低样板代码。
-/// - **逻辑 (How)**：创建无操作的运行时与观测组件，初始化 `CallContext` 与 `HotSwapController`，随后将控制器绑定到测试通道。
-/// - **契约 (What)**：返回 `(TestChannel, HotSwapController)` 的 `Arc` 元组，调用方需在生命周期结束前保持引用，以免控制器被提前释放。
+/// - **逻辑 (How)**：创建无操作的运行时与观测组件，初始化 `CallContext` 与 `HotSwapPipeline`，随后将控制器绑定到测试通道。
+/// - **契约 (What)**：返回 `(TestChannel, HotSwapPipeline)` 的 `Arc` 元组，调用方需在生命周期结束前保持引用，以免控制器被提前释放。
 /// - **权衡 (Trade-offs)**：默认构造的缓冲池与健康探针均为空，实现目标是减少测试依赖；
 ///   若想验证缓冲背压或健康检查逻辑，需要对返回的 `CoreServices` 进行二次配置。
-fn build_hot_swap_controller(channel_id: &str) -> (Arc<TestChannel>, Arc<HotSwapController>) {
+fn build_hot_swap_controller(channel_id: &str) -> (Arc<TestChannel>, Arc<HotSwapPipeline>) {
     let runtime = Arc::new(NoopRuntime::new());
     let logger = Arc::new(NoopLogger);
     let ops = Arc::new(NoopOpsBus::default());
@@ -276,17 +274,16 @@ fn build_hot_swap_controller(channel_id: &str) -> (Arc<TestChannel>, Arc<HotSwap
 
     let channel = Arc::new(TestChannel::new(channel_id));
     let controller =
-        HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
-    channel
-        .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
+        HotSwapPipeline::new(channel.clone() as Arc<dyn Channel>, services, call_context);
+    channel.bind_controller(controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>);
 
     (channel, controller)
 }
 
-/// 测试专用的 Channel，实现最小接口以绑定 `HotSwapController`。
+/// 测试专用的 Channel，实现最小接口以绑定 `HotSwapPipeline`。
 struct TestChannel {
     id: String,
-    controller: OnceLock<Arc<dyn Controller<HandleId = ControllerHandleId>>>,
+    controller: OnceLock<Arc<dyn Pipeline<HandleId = PipelineHandleId>>>,
     extensions: NoopExtensions,
 }
 
@@ -301,7 +298,7 @@ impl TestChannel {
     }
 
     /// 绑定控制器供 Pipeline 回调使用。
-    fn bind_controller(&self, controller: Arc<dyn Controller<HandleId = ControllerHandleId>>) {
+    fn bind_controller(&self, controller: Arc<dyn Pipeline<HandleId = PipelineHandleId>>) {
         if self.controller.set(controller).is_err() {
             panic!("controller should only be bound once");
         }
@@ -321,7 +318,7 @@ impl Channel for TestChannel {
         true
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         self.controller
             .get()
             .expect("controller should be bound")

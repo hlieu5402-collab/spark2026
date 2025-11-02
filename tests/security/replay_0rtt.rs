@@ -19,14 +19,14 @@ use spark_core::observability::metrics::{
 use spark_core::observability::{CoreUserEvent, LogRecord, Logger, TraceContext};
 use spark_core::pipeline::channel::ChannelState;
 use spark_core::pipeline::controller::{
-    Controller, ControllerHandleId, HandlerRegistration,
+    Pipeline, PipelineHandleId, HandlerRegistration,
 };
 use spark_core::pipeline::default_handlers::{
     ExceptionAutoResponder, ReadyStateEvent,
 };
 use spark_core::pipeline::handler::{InboundHandler, OutboundHandler};
 use spark_core::pipeline::{
-    Channel, Context, Controller as PipelineController, ExtensionsMap, HandlerRegistry,
+    Channel, Context, Pipeline as PipelineController, ExtensionsMap, HandlerRegistry,
     PipelineMessage, WriteSignal,
 };
 use spark_core::runtime::{
@@ -40,7 +40,7 @@ use spark_core::test_stubs::observability::{
     NoopCounter, NoopGauge, NoopHistogram, NoopLogger, NoopMetricsProvider,
 };
 
-/// 复合测试夹具，负责提供通用的 Controller / Channel / Context 实现。
+/// 复合测试夹具，负责提供通用的 Pipeline / Channel / Context 实现。
 ///
 /// - **Why**：便于复用记录 ReadyState 与关闭原因的逻辑，避免每个安全用例重复搭建管线伪造物。
 /// - **How**：内部以 `Arc` 包裹录制对象，`RecordingContext` 实现 `Context` trait 并代理至录制器。
@@ -117,8 +117,8 @@ struct RecordingController {
     ready_states: Mutex<Vec<ReadyState>>,
 }
 
-impl Controller for RecordingController {
-    type HandleId = ControllerHandleId;
+impl Pipeline for RecordingController {
+    type HandleId = PipelineHandleId;
 
     fn register_inbound_handler(&self, _: &str, _: Box<dyn InboundHandler>) {}
 
@@ -183,7 +183,7 @@ impl Controller for RecordingController {
     }
 }
 
-/// 空注册表实现，满足 Controller 契约。
+/// 空注册表实现，满足 Pipeline 契约。
 struct NoopRegistry;
 
 impl HandlerRegistry for NoopRegistry {
@@ -222,7 +222,7 @@ impl Channel for RecordingChannel {
         true
     }
 
-    fn controller(&self) -> &dyn PipelineController<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn PipelineController<HandleId = PipelineHandleId> {
         self.controller.as_ref()
     }
 
@@ -319,7 +319,7 @@ impl Context for RecordingContext {
         self.channel.as_ref()
     }
 
-    fn controller(&self) -> &dyn PipelineController<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn PipelineController<HandleId = PipelineHandleId> {
         self.controller.as_ref()
     }
 

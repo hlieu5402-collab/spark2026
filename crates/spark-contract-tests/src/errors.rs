@@ -5,11 +5,11 @@ use spark_core::error::{CoreError, ErrorCategory};
 use spark_core::observability::metrics::MetricsProvider;
 use spark_core::observability::{CoreUserEvent, Logger, TraceContext, TraceFlags};
 use spark_core::pipeline::channel::ChannelState;
-use spark_core::pipeline::controller::ControllerHandleId;
+use spark_core::pipeline::controller::PipelineHandleId;
 use spark_core::pipeline::default_handlers::{ExceptionAutoResponder, ReadyStateEvent};
 use spark_core::pipeline::handler::{InboundHandler, OutboundHandler};
 use spark_core::pipeline::{
-    Channel, Context, Controller, ExtensionsMap, HandlerRegistry, WriteSignal,
+    Channel, Context, ExtensionsMap, HandlerRegistry, Pipeline, WriteSignal,
 };
 use spark_core::runtime::{
     JoinHandle, MonotonicTimePoint, TaskCancellationStrategy, TaskExecutor, TaskHandle, TaskResult,
@@ -246,8 +246,8 @@ struct RecordingController {
     ready_states: Mutex<Vec<ReadyState>>,
 }
 
-impl Controller for RecordingController {
-    type HandleId = ControllerHandleId;
+impl Pipeline for RecordingController {
+    type HandleId = PipelineHandleId;
 
     fn register_inbound_handler(&self, _: &str, _: Box<dyn InboundHandler>) {}
 
@@ -346,7 +346,7 @@ impl Channel for RecordingChannel {
         true
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         &*self.controller
     }
 
@@ -446,7 +446,7 @@ impl Context for RecordingContext {
         self.channel.as_ref()
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         self.controller.as_ref()
     }
 

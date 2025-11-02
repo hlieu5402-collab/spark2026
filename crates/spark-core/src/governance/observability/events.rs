@@ -138,7 +138,7 @@ impl CoreUserEvent {
     ///
     /// # 契约说明（What）
     /// - **输入参数**：`event` 任意实现 [`ApplicationEvent`] 的对象；若依赖默认实现，则需为类型实现 `Clone` 以支撑多路广播。
-    /// - **返回值**：封装后的 [`CoreUserEvent::ApplicationSpecific`]，可在 Pipeline Handler、Controller 中分发。
+    /// - **返回值**：封装后的 [`CoreUserEvent::ApplicationSpecific`]，可在 Pipeline Handler、Pipeline 中分发。
     /// - **前置条件**：建议调用前在团队内定义事件命名规范（如 `team.domain.action`），避免命名冲突。
     /// - **后置条件**：返回事件可多次克隆广播，每次克隆均通过 [`ApplicationEvent::clone_event`] 完成。
     pub fn from_application_event<E>(event: E) -> Self

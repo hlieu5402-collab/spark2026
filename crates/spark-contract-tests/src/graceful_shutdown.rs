@@ -10,7 +10,7 @@ use spark_core::observability::{
 };
 use spark_core::pipeline::channel::ChannelState;
 use spark_core::pipeline::controller::{
-    Controller, ControllerHandleId, HandlerRegistration, HandlerRegistry,
+    HandlerRegistration, HandlerRegistry, Pipeline, PipelineHandleId,
 };
 use spark_core::pipeline::{Channel, ExtensionsMap};
 use spark_core::runtime::{
@@ -1303,7 +1303,7 @@ impl Channel for TestChannel {
         true
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         &*self.controller
     }
 
@@ -1371,8 +1371,8 @@ impl ExtensionsMap for NoopExtensions {
 #[derive(Default)]
 struct NoopController;
 
-impl Controller for NoopController {
-    type HandleId = ControllerHandleId;
+impl Pipeline for NoopController {
+    type HandleId = PipelineHandleId;
 
     fn register_inbound_handler(
         &self,

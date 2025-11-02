@@ -659,7 +659,7 @@ PY
 
 ## 检查九：关键状态语义改动需同步跨职能文档
 # - **意图 (Why)**：
-#   1. 当 PR 改动 `ReadyState` / `RetryAfter` / `ErrorCategory` / `Controller` 等核心治理语义时，若缺少配套的状态机手册、重试策略文档、观测仪表以及 Runbook，
+#   1. 当 PR 改动 `ReadyState` / `RetryAfter` / `ErrorCategory` / `Pipeline` 等核心治理语义时，若缺少配套的状态机手册、重试策略文档、观测仪表以及 Runbook，
 #      运维与值班人员将无法快速理解新行为，导致恢复流程断层。
 #   2. 历史上出现过“代码先行，Runbook 滞后”的案例，本检查通过自动化方式要求一次提交内补齐各侧文档，形成端到端可追溯链路。
 # - **所在位置与作用 (Where)**：位于语义守卫尾部，紧随运行时语义一致性检查之后，专门处理“跨团队知识同步”这一治理维度。
@@ -679,7 +679,7 @@ PY
 #   - **后置条件**：成功时静默通过，失败时阻断 CI；
 # - **设计权衡 (Trade-offs)**：
 #   - 采用轻量的 diff 解析而非构建 AST，可在不依赖额外第三方库的前提下运行于最小 CI 镜像；
-#   - 通过“关键字 + 文档清单”策略覆盖 ReadyState/RP/ErrorCategory/Controller 四类典型改动，若未来需要扩展可在关键字数组中追加；
+#   - 通过“关键字 + 文档清单”策略覆盖 ReadyState/RP/ErrorCategory/Pipeline 四类典型改动，若未来需要扩展可在关键字数组中追加；
 # - **风险提示 (Gotchas)**：
 #   - 若贡献者仅在工具脚本中引入关键字字符串（例如生成器参数），也会触发守卫，请在 PR 中说明原因并补齐文档；
 #   - 若文档更新通过自动生成脚本完成，需确保最终文件已被 `git add`，否则仍会被视为缺失；
@@ -693,7 +693,7 @@ import re
 import subprocess
 import sys
 
-KEYWORDS = re.compile(r"\b(ReadyState|RetryAfter|ErrorCategory|Controller)\b")
+KEYWORDS = re.compile(r"\b(ReadyState|RetryAfter|ErrorCategory|Pipeline)\b")
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 def run_diff(args, scope, sink):
@@ -821,7 +821,7 @@ PY
         return
     fi
 
-    printf '错误：检测到涉及 ReadyState/RetryAfter/ErrorCategory/Controller 的代码变更，但缺少文档/仪表/Runbook 配套更新。\n' >&2
+    printf '错误：检测到涉及 ReadyState/RetryAfter/ErrorCategory/Pipeline 的代码变更，但缺少文档/仪表/Runbook 配套更新。\n' >&2
     printf '触发的关键字行：\n' >&2
     printf '  %s\n' "$python_output" >&2
 

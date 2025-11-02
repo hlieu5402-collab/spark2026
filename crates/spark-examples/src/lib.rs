@@ -18,4 +18,4 @@ extern crate alloc;
 mod server;
 mod transport;
 
-pub use server::{ControllerFactory, ExamplesServer};
+pub use server::{PipelineFactory, ExamplesServer};

@@ -1,6 +1,6 @@
 use super::{
     channel::Channel,
-    controller::{Controller, ControllerHandleId},
+    pipeline::{Pipeline, PipelineHandleId},
 };
 use crate::{
     buffer::{BufferPool, PipelineMessage},
@@ -61,7 +61,7 @@ pub trait Context: Send + Sync + Sealed {
     fn channel(&self) -> &dyn Channel;
 
     /// 当前控制器引用。
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId>;
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId>;
 
     /// 执行器引用。
     fn executor(&self) -> &dyn TaskExecutor;

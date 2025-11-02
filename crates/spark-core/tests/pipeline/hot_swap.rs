@@ -16,8 +16,8 @@ use spark_core::{
         TraceFlags,
     },
     pipeline::{
-        Channel, ChannelState, Controller, ExtensionsMap, WriteSignal,
-        controller::{ControllerHandleId, Handler, HotSwapController, handler_from_inbound},
+        Channel, ChannelState, ExtensionsMap, Pipeline, WriteSignal,
+        controller::{Handler, HotSwapPipeline, PipelineHandleId, handler_from_inbound},
         handler::InboundHandler,
     },
     runtime::{
@@ -57,9 +57,8 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
 
     let channel = Arc::new(TestChannel::new("hot-swap-channel"));
     let controller =
-        HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
-    channel
-        .bind_controller(controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>);
+        HotSwapPipeline::new(channel.clone() as Arc<dyn Channel>, services, call_context);
+    channel.bind_controller(controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>);
 
     let events = Arc::new(Mutex::new(Vec::new()));
     controller.register_inbound_handler(
@@ -89,7 +88,7 @@ fn hot_swap_inserts_handler_without_dropping_messages() {
     let logging_handle = controller.add_handler_after(tls_handle, "logging", dyn_handler);
     assert_ne!(
         logging_handle,
-        ControllerHandleId::INBOUND_HEAD,
+        PipelineHandleId::INBOUND_HEAD,
         "新句柄不应回退到锚点"
     );
     assert!(
@@ -142,9 +141,9 @@ mod loom_tests {
 
             let channel = Arc::new(TestChannel::new("loom-channel"));
             let controller =
-                HotSwapController::new(channel.clone() as Arc<dyn Channel>, services, call_context);
+                HotSwapPipeline::new(channel.clone() as Arc<dyn Channel>, services, call_context);
             channel.bind_controller(
-                controller.clone() as Arc<dyn Controller<HandleId = ControllerHandleId>>
+                controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>
             );
 
             controller.register_inbound_handler(
@@ -184,7 +183,7 @@ mod loom_tests {
 /// 测试通道，为控制器提供固定上下文。
 pub(crate) struct TestChannel {
     id: String,
-    controller: OnceLock<Arc<dyn Controller<HandleId = ControllerHandleId>>>,
+    controller: OnceLock<Arc<dyn Pipeline<HandleId = PipelineHandleId>>>,
     extensions: TestExtensions,
 }
 
@@ -199,7 +198,7 @@ impl TestChannel {
 
     pub(crate) fn bind_controller(
         &self,
-        controller: Arc<dyn Controller<HandleId = ControllerHandleId>>,
+        controller: Arc<dyn Pipeline<HandleId = PipelineHandleId>>,
     ) {
         let _ = self.controller.set(controller);
     }
@@ -218,7 +217,7 @@ impl Channel for TestChannel {
         true
     }
 
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId> {
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
         self.controller
             .get()
             .expect("controller should be bound")

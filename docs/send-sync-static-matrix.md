@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `pipeline::Channel` | `Channel` | ✅ (`Send + Sync + 'static`) | N/A | `write`, `flush` | 通道封装在 `Arc<dyn Channel>` 中跨线程复用，要求 `'static`；消息体按需转移所有权。 |
 | `pipeline::Context` | `Context` | ✅ (`Send + Sync`)，🚫 `'static` | `channel()`, `controller()` 返回 `'static` 对象引用 | `write`, `close_graceful` | 上下文仅在单次事件调度内存活，故不强制 `'static`。 |
-| `pipeline::Controller` | `Controller` | ✅ (`Send + Sync + 'static`) | `register_inbound_handler_static`, `register_outbound_handler_static` | `register_inbound_handler`, `register_outbound_handler` | 借用入口转发至轻量代理，方便复用全局单例。 |
+| `pipeline::Pipeline` | `Pipeline` | ✅ (`Send + Sync + 'static`) | `register_inbound_handler_static`, `register_outbound_handler_static` | `register_inbound_handler`, `register_outbound_handler` | 借用入口转发至轻量代理，方便复用全局单例。 |
 | `pipeline::ChainBuilder` | `ChainBuilder` | 继承实现者约束 | `register_inbound_static`, `register_outbound_static` | `register_inbound`, `register_outbound` | 面向 Middleware 声明式装配的对偶入口。 |
 | `codec::CodecRegistry` | `CodecRegistry` | ✅ (`Send + Sync + 'static`) | `register_static` | `register` | 注册中心可在运行时共享，借用入口避免对 `'static` 单例重复装箱。 |
 | `configuration::ConfigurationBuilder` | `register_source_static` | Builder 自身 `Send + Sync` 可选 | `register_source_static` | `register_source` | 显式标注配置源 `'static` 假设，复用公共去重逻辑。 |

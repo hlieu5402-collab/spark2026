@@ -3,7 +3,7 @@ use alloc::{boxed::Box, sync::Arc};
 use spark_core::{
     Result as CoreResult, async_trait,
     context::Context,
-    pipeline::DynControllerFactory,
+    pipeline::DynPipelineFactory,
     transport::{DynServerTransport, DynTransportFactory, ListenerConfig},
 };
 
@@ -37,7 +37,7 @@ pub trait TransportFactoryExt {
         &self,
         ctx: &Context<'_>,
         config: ListenerConfig,
-        pipeline_factory: Arc<dyn DynControllerFactory>,
+        pipeline_factory: Arc<dyn DynPipelineFactory>,
     ) -> CoreResult<Box<dyn DynServerTransport>>;
 }
 
@@ -50,7 +50,7 @@ where
         &self,
         ctx: &Context<'_>,
         config: ListenerConfig,
-        pipeline_factory: Arc<dyn DynControllerFactory>,
+        pipeline_factory: Arc<dyn DynPipelineFactory>,
     ) -> CoreResult<Box<dyn DynServerTransport>> {
         self.bind_dyn(ctx, config, pipeline_factory).await
     }

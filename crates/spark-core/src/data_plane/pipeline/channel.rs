@@ -7,7 +7,7 @@ use crate::{
     transport::TransportSocketAddr,
 };
 
-use super::{Controller, controller::ControllerHandleId};
+use super::pipeline::{Pipeline, PipelineHandleId};
 
 /// 通道生命周期状态机，统一约束不同传输协议的状态转换。
 ///
@@ -101,7 +101,7 @@ pub trait Channel: Send + Sync + 'static + Sealed {
     fn is_writable(&self) -> bool;
 
     /// 返回关联的控制器引用。
-    fn controller(&self) -> &dyn Controller<HandleId = ControllerHandleId>;
+    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId>;
 
     /// 返回扩展属性映射。
     fn extensions(&self) -> &dyn crate::pipeline::ExtensionsMap;

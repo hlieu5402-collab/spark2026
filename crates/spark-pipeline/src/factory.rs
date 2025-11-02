@@ -3,20 +3,20 @@ use alloc::{sync::Arc, vec::Vec};
 use spark_core::{
     CoreError, Result as CoreResult,
     contract::CallContext,
-    pipeline::{Channel, Controller, ControllerFactory as CoreControllerFactory, Middleware},
+    pipeline::{Channel, Pipeline, PipelineFactory as CorePipelineFactory, Middleware},
     runtime::CoreServices,
 };
 
 use crate::PipelineController;
 
-/// `DefaultControllerFactory` 负责将传输层创建的 `Channel`、宿主提供的中间件序列
+/// `DefaultPipelineFactory` 负责将传输层创建的 `Channel`、宿主提供的中间件序列
 /// 与 `CoreServices` 聚合成可直接投入运行的 [`PipelineController`] 实例。
 ///
 /// # 教案级说明
 /// - **定位（Where）**：
 ///   - 位于 `spark-pipeline` crate，对外作为 `spark-examples`/`spark-hosting` 在运行时按连接
 ///     装配控制器的默认实现；
-///   - 与 `spark-core` 的 `ControllerFactory` trait 对齐，确保既能服务泛型层也能被对象层
+///   - 与 `spark-core` 的 `PipelineFactory` trait 对齐，确保既能服务泛型层也能被对象层
 ///     适配器复用。
 /// - **意图（Why）**：
 ///   - 在连接建立后，框架需要一个统一入口将通道、调用上下文与中间件链路一次性注入
@@ -43,7 +43,7 @@ use crate::PipelineController;
 ///   - TODO(pipeline-factory-hooks)：后续可在此处插入装配可观测性或策略检查逻辑，以提
 ///     升诊断能力。
 #[derive(Clone)]
-pub struct DefaultControllerFactory {
+pub struct DefaultPipelineFactory {
     /// 持有通道引用，供控制器在构造时绑定生命周期。
     channel: Arc<dyn Channel>,
     /// 连接级调用上下文，携带取消/截止/预算等契约。
@@ -52,8 +52,8 @@ pub struct DefaultControllerFactory {
     middleware: Vec<Arc<dyn Middleware>>,
 }
 
-impl DefaultControllerFactory {
-    /// 创建 `DefaultControllerFactory` 实例。
+impl DefaultPipelineFactory {
+    /// 创建 `DefaultPipelineFactory` 实例。
     ///
     /// # 教案级说明
     /// - **参数与约束**：
@@ -84,8 +84,8 @@ impl DefaultControllerFactory {
     }
 }
 
-impl CoreControllerFactory for DefaultControllerFactory {
-    type Controller = Arc<PipelineController>;
+impl CorePipelineFactory for DefaultPipelineFactory {
+    type Pipeline = Arc<PipelineController>;
 
     /// 装配带有中间件链路的 [`PipelineController`] 并返回。
     ///
@@ -104,7 +104,7 @@ impl CoreControllerFactory for DefaultControllerFactory {
     ///     重新构建；
     ///   - 克隆 `CoreServices` 会产生若干 `Arc` 引用计数更新，属于常数成本；
     ///   - 为避免热路径重复构建，建议按连接复用工厂并仅调用一次 `build`。
-    fn build(&self, core_services: &CoreServices) -> CoreResult<Self::Controller, CoreError> {
+    fn build(&self, core_services: &CoreServices) -> CoreResult<Self::Pipeline, CoreError> {
         // 克隆运行时依赖与上下文，确保控制器拥有独立的能力快照。
         let controller = PipelineController::new(
             Arc::clone(&self.channel),
