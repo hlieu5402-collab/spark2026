@@ -11,7 +11,7 @@ use spark_core::prelude::{
     ShutdownDirection, TransportSocketAddr,
 };
 use spark_core::transport::{
-    BackpressureDecision, BackpressureMetrics, TransportConnection as TransportConnectionTrait,
+    BackpressureDecision, BackpressureMetrics, Channel as ChannelTrait,
 };
 use std::borrow::Cow;
 use std::{
@@ -267,7 +267,7 @@ impl QuicChannel {
     }
 }
 
-impl TransportConnectionTrait for QuicChannel {
+impl ChannelTrait for QuicChannel {
     type Error = CoreError;
     type CallCtx<'ctx> = CallContext;
     type ReadyCtx<'ctx> = ExecutionView<'ctx>;
@@ -369,6 +369,6 @@ impl TransportConnectionTrait for QuicChannel {
 #[allow(dead_code)]
 fn _assert_quic_transport_connection()
 where
-    QuicChannel: TransportConnectionTrait<Error = CoreError>,
+    QuicChannel: ChannelTrait<Error = CoreError>,
 {
 }

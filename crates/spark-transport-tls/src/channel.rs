@@ -14,8 +14,7 @@ use crate::{
     util::run_with_context,
 };
 use spark_core::transport::{
-    BackpressureDecision, BackpressureMetrics, ShutdownDirection,
-    TransportConnection as TransportConnectionTrait,
+    BackpressureDecision, BackpressureMetrics, Channel as ChannelTrait, ShutdownDirection,
 };
 
 /// TLS 通道对象，封装握手后的加密读写能力。
@@ -205,7 +204,7 @@ impl TlsChannel {
     }
 }
 
-impl TransportConnectionTrait for TlsChannel {
+impl ChannelTrait for TlsChannel {
     type Error = CoreError;
     type CallCtx<'ctx> = CallContext;
     type ReadyCtx<'ctx> = Context<'ctx>;
@@ -300,6 +299,6 @@ impl TransportConnectionTrait for TlsChannel {
 #[allow(dead_code)]
 fn _assert_tls_transport_connection()
 where
-    TlsChannel: TransportConnectionTrait<Error = CoreError>,
+    TlsChannel: ChannelTrait<Error = CoreError>,
 {
 }

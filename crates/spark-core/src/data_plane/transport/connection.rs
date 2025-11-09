@@ -109,7 +109,7 @@ impl<'a> fmt::Debug for BackpressureMetrics<'a> {
     }
 }
 
-/// 统一的传输连接契约。
+/// 统一的传输通道契约。
 ///
 /// # 教案级注释
 ///
@@ -143,7 +143,7 @@ impl<'a> fmt::Debug for BackpressureMetrics<'a> {
 /// - Trait 要求 `Send + Sync + 'static`，在极端裸机环境可能需要额外封装；
 /// - `Buf`/`BufMut` trait 对象带来一次 vtable 跳转，但换取了跨模块的统一性；
 /// - 若实现需要更细粒度的控制（例如零拷贝），可在具体 crate 中提供扩展方法，但需保持此 trait 的稳定语义。
-pub trait TransportConnection: Send + Sync + 'static {
+pub trait Channel: Send + Sync + 'static {
     type Error: fmt::Debug + Send + Sync + 'static;
     type CallCtx<'ctx>;
     type ReadyCtx<'ctx>;

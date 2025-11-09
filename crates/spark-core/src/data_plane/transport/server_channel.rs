@@ -1,6 +1,6 @@
 use core::{fmt, future::Future};
 
-use super::{ShutdownDirection, TransportSocketAddr, connection::TransportConnection};
+use super::{ShutdownDirection, TransportSocketAddr, connection::Channel};
 use crate::Result;
 
 /// 传输层服务端通道（`ServerChannel`）接口。
@@ -10,13 +10,13 @@ use crate::Result;
 /// ## 意图（Why）
 /// - 为各类协议（TCP、TLS、QUIC 等）提供与 Netty `ServerSocketChannel`
 ///   一致的服务端通道抽象，使上层可以在不感知具体协议的情况下接受连接并执行优雅关闭；
-/// - 补充 [`TransportConnection`]，共同覆盖服务端监听通道与客户端通道的双向契约。
+/// - 补充 [`Channel`]，共同覆盖服务端监听通道与客户端通道的双向契约。
 ///
 /// ## 契约（What）
 /// - `Error`：结构化错误类型；
 /// - `AcceptCtx<'ctx>`：接受新连接时的上下文；
 /// - `ShutdownCtx<'ctx>`：执行关闭时的上下文；
-/// - `Connection`：接受后返回的连接类型，必须实现 [`TransportConnection`]；
+/// - `Connection`：接受后返回的连接类型，必须实现 [`Channel`]；
 /// - `AcceptFuture`：返回 `(Connection, TransportSocketAddr)` 的 Future；
 /// - `ShutdownFuture`：执行优雅关闭；
 /// - `scheme()`：返回协议标识；
@@ -38,7 +38,7 @@ pub trait ServerChannel: Send + Sync + 'static {
     type Error: fmt::Debug + Send + Sync + 'static;
     type AcceptCtx<'ctx>;
     type ShutdownCtx<'ctx>;
-    type Connection: TransportConnection;
+    type Connection: Channel;
 
     type AcceptFuture<'ctx>: Future<Output = Result<(Self::Connection, TransportSocketAddr), Self::Error>>
         + Send

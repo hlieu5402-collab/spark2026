@@ -6,7 +6,7 @@
 
 | 阶段 | 关键接口 | 核心角色 | 衔接要点 |
 | ---- | -------- | -------- | -------- |
-| 传输层 | [`TransportConnection::read/write`](../../crates/spark-core/src/data_plane/transport/connection.rs) | 传输实现（TCP/QUIC 等） | 依赖 `bytes::BufMut` / `Buf` trait 对象承接跨层缓冲。【F:crates/spark-core/src/data_plane/transport/connection.rs†L106-L196】 |
+| 传输层 | [`Channel::read/write`](../../crates/spark-core/src/data_plane/transport/connection.rs) | 传输实现（TCP/QUIC 等） | 依赖 `bytes::BufMut` / `Buf` trait 对象承接跨层缓冲。【F:crates/spark-core/src/data_plane/transport/connection.rs†L106-L196】 |
 | 缓冲层 | [`WritableBuffer`/`ReadableBuffer`](../../crates/spark-core/src/data_plane/buffer/writable.rs) | 池化缓冲 | 通过对 `dyn WritableBuffer` / `dyn ReadableBuffer` 实现 `BufMut`/`Buf`，实现零拷贝拼接。【F:crates/spark-core/src/data_plane/buffer/writable.rs†L60-L127】【F:crates/spark-core/src/data_plane/buffer/readable.rs†L82-L103】 |
 | 编码阶段 | [`EncodeContext::acquire_buffer`](../../crates/spark-core/src/data_plane/codec/encoder.rs) | 编解码器 | 统一从缓冲分配器租借写缓冲，返回 `Box<ErasedSparkBufMut>`。【F:crates/spark-core/src/data_plane/codec/encoder.rs†L120-L125】 |
 | 编码输出 | [`EncodedPayload`](../../crates/spark-core/src/data_plane/codec/encoder.rs) | Handler/传输层 | 将冻结后的 `Box<ErasedSparkBuf>` 继续向下游传递，保持零拷贝。【F:crates/spark-core/src/data_plane/codec/encoder.rs†L297-L327】 |
@@ -16,7 +16,7 @@
 
 ## 2. 亮点
 
-1. **接口对齐业界共识**：`TransportConnection` 直接使用 `bytes::Buf/BufMut`，使得任何兼容 `bytes` 的实现都能无缝接入。【F:crates/spark-core/src/data_plane/transport/connection.rs†L127-L177】
+1. **接口对齐业界共识**：`Channel` 直接使用 `bytes::Buf/BufMut`，使得任何兼容 `bytes` 的实现都能无缝接入。【F:crates/spark-core/src/data_plane/transport/connection.rs†L127-L177】
 2. **缓冲层适配到位**：`dyn ReadableBuffer`/`dyn WritableBuffer` 上的 `Buf`/`BufMut` 实现把内部错误转换为 panic，虽然缺少细粒度错误返回，但与 `bytes` trait 的语义对齐，确保 Transport 不需要了解 Spark 内部的错误码体系。【F:crates/spark-core/src/data_plane/buffer/readable.rs†L82-L103】【F:crates/spark-core/src/data_plane/buffer/writable.rs†L104-L127】
 3. **上下文聚合资源**：`EncodeContext` 把分配器、预算、递归深度统一封装，配合 `BufferAllocator` trait 隔离了具体池实现，便于在 Handler 中注入。【F:crates/spark-core/src/data_plane/codec/encoder.rs†L120-L215】
 4. **Pipeline 示例明确**：`Context::buffer_pool()` 的示例伪码展示了“租借 → 编码 → freeze → 写出”的标准流程，为业务 Handler 提供了教学式引导。【F:crates/spark-core/src/data_plane/pipeline/context.rs†L25-L115】
