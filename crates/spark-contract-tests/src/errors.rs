@@ -405,7 +405,7 @@ impl ExtensionsMap for NoopExtensions {
 }
 
 struct RecordingContext {
-    controller: Arc<RecordingController>,
+    controller_view: Arc<dyn Pipeline<HandleId = PipelineHandleId>>,
     channel: Arc<RecordingChannel>,
     buffer_pool: NoopBufferPool,
     logger: NoopLogger,
@@ -427,8 +427,10 @@ impl RecordingContext {
             [0x22; TraceContext::SPAN_ID_LENGTH],
             TraceFlags::new(TraceFlags::SAMPLED),
         );
+        let controller_view: Arc<dyn Pipeline<HandleId = PipelineHandleId>> =
+            controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>;
         Self {
-            controller,
+            controller_view,
             channel,
             buffer_pool: NoopBufferPool,
             logger: NoopLogger,
@@ -446,8 +448,8 @@ impl Context for RecordingContext {
         self.channel.as_ref()
     }
 
-    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
-        self.controller.as_ref()
+    fn pipeline(&self) -> &Arc<dyn Pipeline<HandleId = PipelineHandleId>> {
+        &self.controller_view
     }
 
     fn executor(&self) -> &dyn TaskExecutor {

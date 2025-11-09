@@ -11,11 +11,12 @@ use crate::{
     runtime::{TaskExecutor, TimeDriver},
     sealed::Sealed,
 };
+use alloc::sync::Arc;
 
 /// Handler 访问运行时能力与事件流的统一入口。
 ///
 /// # 契约维度速览
-/// - **语义**：提供 `channel`、`controller`、`executor` 等接口，让 Handler 能够读写消息、调度异步任务并访问核心服务。
+/// - **语义**：提供 `channel`、`pipeline`、`executor` 等接口，让 Handler 能够读写消息、调度异步任务并访问核心服务。
 /// - **错误**：写入失败返回 [`CoreError`](crate::CoreError)，常见错误码：`pipeline.write_closed`、`pipeline.buffer_unavailable`。
 /// - **并发**：Trait 要求 `Send + Sync`；引用可跨线程短期借用，但需遵守生命周期约束并避免长期持有裸引用。
 /// - **背压**：`write` 返回 [`WriteSignal`](super::WriteSignal)，调用方应依据其中的 [`BackpressureSignal`](crate::contract::BackpressureSignal) 调整速率。
@@ -36,7 +37,7 @@ use crate::{
 /// - 通过对象安全 Trait，支持动态装配 Handler/Middleware，同时保留 `no_std` 可用性。
 ///
 /// # 契约说明（What）
-/// - `channel` / `controller`：返回当前连接与控制面引用，便于查询状态或转发事件。
+/// - `channel` / `pipeline`：返回当前连接与调度核心引用，便于查询状态或转发事件。
 /// - `executor` / `timer`：异步调度能力，保障 Handler 中长耗时操作不会阻塞事件循环。
 /// - `buffer_pool`：租借编解码缓冲，需遵循“租借即还”原则。
 /// - `trace_context` / `metrics` / `logger`：可观测性三件套，方便 Handler 打点、打日志、串联分布式追踪。
@@ -50,7 +51,7 @@ use crate::{
 ///
 /// # 线程安全与生命周期说明
 /// - Trait 约束为 `Send + Sync` 而非 `'static`：上下文仅在单次事件调度中存活，由控制器管理释放；
-/// - `channel()` / `controller()` 返回的引用可跨线程复用，因为底层对象满足 `Send + Sync + 'static`；
+/// - `channel()` / `pipeline()` 返回的引用可跨线程复用，因为底层对象满足 `Send + Sync + 'static`；
 /// - 若实现需要在事件回调外持有 Context，应先克隆必要的数据（如 `Arc`），避免悬垂引用。
 ///
 /// # 风险提示（Trade-offs）
@@ -60,8 +61,18 @@ pub trait Context: Send + Sync + Sealed {
     /// 当前通道引用。
     fn channel(&self) -> &dyn Channel;
 
-    /// 当前控制器引用。
-    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId>;
+    /// 当前 Pipeline 引用。
+    ///
+    /// # 教案级说明
+    /// - **意图（Why）**：Handler 通过该接口访问 Pipeline 控制面，以便在事件流中执行热插拔、广播等高级操作。
+    /// - **逻辑（How）**：返回值为 `Arc<dyn Pipeline>` 的共享引用，调用方若需长期持有可自行 `Arc::clone`；上下文自身仅负责暴露视图，不介入生命周期管理。
+    /// - **契约（What）**：
+    ///   - **输入**：隐式输入为当前上下文 `self`，必须已绑定到具体的 Pipeline 调度实例；
+    ///   - **输出**：返回指向 Pipeline 的共享指针视图，保证对象满足 `Send + Sync + 'static`；
+    ///   - **前置条件**：调用前 Pipeline 必须已完成初始化并绑定到上下文；
+    ///   - **后置条件**：调用不会改变 Pipeline 状态，但允许调用方进一步触发调度；
+    /// - **权衡（Trade-offs）**：选择返回 `&Arc<_>` 而非 `&dyn _`，以便 Handler 在必要时克隆强引用，避免临时构造 `Arc` 带来的额外分配。
+    fn pipeline(&self) -> &Arc<dyn Pipeline<HandleId = PipelineHandleId>>;
 
     /// 执行器引用。
     fn executor(&self) -> &dyn TaskExecutor;

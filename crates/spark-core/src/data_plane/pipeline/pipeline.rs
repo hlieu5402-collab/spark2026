@@ -1136,6 +1136,7 @@ impl ChainBuilder for HotSwapInitializerBuilder<'_> {
 /// 事件调度时注入 Handler 的上下文实现。
 struct HotSwapContext {
     controller: Arc<HotSwapPipeline>,
+    controller_view: Arc<dyn Pipeline<HandleId = PipelineHandleId>>,
     channel: Arc<dyn Channel>,
     services: CoreServices,
     call_context: CallContext,
@@ -1156,8 +1157,11 @@ impl HotSwapContext {
         next_index: usize,
     ) -> Self {
         let logger = InstrumentedLogger::new(Arc::clone(&services.logger), trace_context.clone());
+        let controller_view: Arc<dyn Pipeline<HandleId = PipelineHandleId>> =
+            controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>;
         Self {
             controller,
+            controller_view,
             channel,
             services: services.clone(),
             call_context: call_context.clone(),
@@ -1171,7 +1175,8 @@ impl HotSwapContext {
 
 // SAFETY: HotSwapContext 内的字段满足以下条件：
 // - ## Why：为了让 Handler 在任意调度线程上复用上下文，该类型需实现 `Send`/`Sync`；
-// - ## How：除 `controller` 外，其余字段均为 `Arc`、`Clone` 或原子类型，天然线程安全。
+// - ## How：`controller` 与 `controller_view` 分别保存具体实现与 `Arc<dyn Pipeline>` 视图，二者皆由 `Arc` 托管；
+//   其余字段均为 `Arc`、`Clone` 或原子类型，天然线程安全。
 // 教案级线程安全说明：HotSwapContext
 // - **Why**：Handler 需要在线程间安全地共享上下文，特别是在读/写事件穿梭时；
 // - **How**：`controller`、`channel` 等共享状态统一封装为 `Arc`，配合原子自增 `next_index` 保证并发调度一致性；
@@ -1183,8 +1188,8 @@ impl PipelineContext for HotSwapContext {
         self.channel.as_ref()
     }
 
-    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
-        self.controller.as_ref()
+    fn pipeline(&self) -> &Arc<dyn Pipeline<HandleId = PipelineHandleId>> {
+        &self.controller_view
     }
 
     fn executor(&self) -> &dyn crate::runtime::TaskExecutor {

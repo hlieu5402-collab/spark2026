@@ -8,7 +8,7 @@ mod tests {
                 any::Any,
                 sync::{
                     atomic::{AtomicBool, AtomicUsize, Ordering},
-                    Mutex,
+                    Arc, Mutex,
                 },
             };
 
@@ -116,11 +116,18 @@ mod tests {
             struct FakeContext<'a> {
                 call_ctx: &'a CallContext,
                 executor: &'a ImmediateExecutor,
+                pipeline: Arc<dyn spark_core::pipeline::Pipeline<
+                    HandleId = spark_core::pipeline::controller::PipelineHandleId,
+                >>,
             }
 
             impl<'a> FakeContext<'a> {
                 fn new(call_ctx: &'a CallContext, executor: &'a ImmediateExecutor) -> Self {
-                    Self { call_ctx, executor }
+                    Self {
+                        call_ctx,
+                        executor,
+                        pipeline: Arc::new(RecordingController::default()) as Arc<dyn spark_core::pipeline::Pipeline<HandleId = spark_core::pipeline::controller::PipelineHandleId>>,
+                    }
                 }
             }
 
@@ -129,8 +136,8 @@ mod tests {
                     panic!("测试桩未实现 channel()：语法糖示例不应调用该方法");
                 }
 
-                fn controller(&self) -> &dyn spark_core::pipeline::Pipeline<HandleId = spark_core::pipeline::controller::PipelineHandleId> {
-                    panic!("测试桩未实现 controller()：语法糖示例不应调用该方法");
+                fn pipeline(&self) -> &Arc<dyn spark_core::pipeline::Pipeline<HandleId = spark_core::pipeline::controller::PipelineHandleId>> {
+                    &self.pipeline
                 }
 
                 fn executor(&self) -> &dyn TaskExecutor {

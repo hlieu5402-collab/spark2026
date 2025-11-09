@@ -303,7 +303,7 @@ impl ExtensionsMap for ReadyExtensions {
 }
 
 struct ReadyContext {
-    controller: Arc<ReadyRecordingController>,
+    controller_view: Arc<dyn Pipeline<HandleId = PipelineHandleId>>,
     channel: Arc<ReadyChannel>,
     buffer_pool: NoopBufferPool,
     logger: NoopLogger,
@@ -325,8 +325,10 @@ impl ReadyContext {
             [0x22; TraceContext::SPAN_ID_LENGTH],
             TraceFlags::new(TraceFlags::SAMPLED),
         );
+        let controller_view: Arc<dyn Pipeline<HandleId = PipelineHandleId>> =
+            controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>;
         Self {
-            controller,
+            controller_view,
             channel,
             buffer_pool: NoopBufferPool,
             logger: NoopLogger,
@@ -344,8 +346,8 @@ impl Context for ReadyContext {
         self.channel.as_ref()
     }
 
-    fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
-        self.controller.as_ref()
+    fn pipeline(&self) -> &Arc<dyn Pipeline<HandleId = PipelineHandleId>> {
+        &self.controller_view
     }
 
     fn executor(&self) -> &dyn spark_core::runtime::TaskExecutor {
