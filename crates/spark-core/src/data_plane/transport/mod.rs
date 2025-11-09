@@ -25,10 +25,10 @@ pub mod endpoint;
 pub mod factory;
 pub mod handshake;
 pub mod intent;
-pub mod listener;
 pub mod metrics;
 pub mod params;
 pub mod server;
+pub mod server_channel;
 pub mod shutdown;
 pub mod traits;
 
@@ -45,10 +45,10 @@ pub use handshake::{
 pub use intent::{
     AvailabilityRequirement, ConnectionIntent, QualityOfService, SecurityMode, SessionLifecycle,
 };
-pub use listener::TransportListener;
 pub use metrics::{LinkDirection, TransportMetricsHook};
 pub use params::TransportParams;
 pub use server::{ListenerShutdown, describe_shutdown_target};
+pub use server_channel::ServerChannel;
 pub use shutdown::ShutdownDirection;
 pub use traits::generic::{ServerTransport, TransportFactory};
 pub use traits::object::{

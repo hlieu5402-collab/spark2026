@@ -208,10 +208,10 @@ pub use transport::{
     CapabilityBitmap, ConnectionIntent, DatagramEndpoint, DowngradeReport, DynServerTransport,
     DynTransportFactory, Endpoint, EndpointKind, HandshakeError, HandshakeErrorKind,
     HandshakeOffer, HandshakeOutcome, ListenerConfig, ListenerShutdown, NegotiationAuditContext,
-    QualityOfService, SecurityMode, ServerTransport, ServerTransportObject, SessionLifecycle,
-    TransportBuilder, TransportConnection, TransportFactory, TransportFactoryObject,
-    TransportListener, TransportParams, TransportSocketAddr, Version, describe_shutdown_target,
-    negotiate,
+    QualityOfService, SecurityMode, ServerChannel, ServerTransport, ServerTransportObject,
+    SessionLifecycle, TransportBuilder, TransportConnection, TransportFactory,
+    TransportFactoryObject, TransportParams, TransportSocketAddr, Version,
+    describe_shutdown_target, negotiate,
 };
 
 use alloc::boxed::Box;
