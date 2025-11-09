@@ -4,7 +4,7 @@
 ///
 /// ## 意图（Why）
 /// - 统一 TCP、TLS、QUIC 等协议在优雅收尾阶段的方向控制语义；
-/// - 为 `TransportConnection::shutdown` 与上层调用者提供一致的枚举类型，
+/// - 为 `Channel::shutdown` 与上层调用者提供一致的枚举类型，
 ///   避免业务侧直接依赖运行时特定的枚举（如 `std::net::Shutdown`）。
 ///
 /// ## 契约（What）

@@ -11,7 +11,7 @@ use spark_core::prelude::{
     TransportSocketAddr,
 };
 use spark_core::transport::{
-    BackpressureDecision, BackpressureMetrics, TransportConnection as TransportConnectionTrait,
+    BackpressureDecision, BackpressureMetrics, Channel as ChannelTrait,
 };
 use std::borrow::Cow;
 use std::{
@@ -237,7 +237,7 @@ impl TcpChannel {
                 warn!(
                     target: "spark_core::transport::tcp",
                     connection = %self.id(),
-                    "TransportConnection::read detected zero writable capacity; 上层需扩容或重新租借缓冲以避免空转"
+                    "Channel::read detected zero writable capacity; 上层需扩容或重新租借缓冲以避免空转"
                 );
                 return Ok(0);
             }
@@ -301,7 +301,7 @@ impl TcpChannel {
     ///
     /// ## 意图（Why）
     /// - 显式暴露 `flush`，让上层在批量写入后能强制冲刷套接字缓冲，
-    ///   与 `TransportConnection::flush` 契约对齐；
+    ///   与 `Channel::flush` 契约对齐；
     /// - 统一 TCP/TLS/QUIC 等实现的刷新语义，便于测试用例验证写入完成时机。
     ///
     /// ## 契约（What）
@@ -549,7 +549,7 @@ impl TcpChannel {
     }
 }
 
-impl TransportConnectionTrait for TcpChannel {
+impl ChannelTrait for TcpChannel {
     type Error = CoreError;
     type CallCtx<'ctx> = CallContext;
     type ReadyCtx<'ctx> = Context<'ctx>;
@@ -651,7 +651,7 @@ impl TransportConnectionTrait for TcpChannel {
 #[allow(dead_code)]
 fn _assert_tcp_transport_connection()
 where
-    TcpChannel: TransportConnectionTrait<Error = CoreError>,
+    TcpChannel: ChannelTrait<Error = CoreError>,
 {
 }
 

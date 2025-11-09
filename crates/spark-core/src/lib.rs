@@ -205,11 +205,11 @@ pub use status::{
 pub use status::RetryAfterThrottle;
 pub use transport::{
     AddressFamily, AvailabilityRequirement, BackpressureDecision, BackpressureMetrics, Capability,
-    CapabilityBitmap, ConnectionIntent, DatagramEndpoint, DowngradeReport, DynServerTransport,
-    DynTransportFactory, Endpoint, EndpointKind, HandshakeError, HandshakeErrorKind,
-    HandshakeOffer, HandshakeOutcome, ListenerConfig, ListenerShutdown, NegotiationAuditContext,
-    QualityOfService, SecurityMode, ServerChannel, ServerTransport, ServerTransportObject,
-    SessionLifecycle, TransportBuilder, TransportConnection, TransportFactory,
+    CapabilityBitmap, Channel as TransportChannel, ConnectionIntent, DatagramEndpoint,
+    DowngradeReport, DynServerTransport, DynTransportFactory, Endpoint, EndpointKind,
+    HandshakeError, HandshakeErrorKind, HandshakeOffer, HandshakeOutcome, ListenerConfig,
+    ListenerShutdown, NegotiationAuditContext, QualityOfService, SecurityMode, ServerChannel,
+    ServerTransport, ServerTransportObject, SessionLifecycle, TransportBuilder, TransportFactory,
     TransportFactoryObject, TransportParams, TransportSocketAddr, Version,
     describe_shutdown_target, negotiate,
 };
