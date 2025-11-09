@@ -41,11 +41,11 @@
 | 示例 | [`hot_swap` 集成测试](../crates/spark-core/tests/pipeline/hot_swap.rs#L40-L420) |
 | TCK | [`hot_swap::pipeline_state_transitions_are_ordered`](../crates/spark-contract-tests/src/hot_swap.rs#L430-L585) |
 
-## Middleware（管线中间件）
+## PipelineInitializer（管线初始化器）
 | 维度 | 链接 |
 | --- | --- |
-| Rustdoc | [`spark_core::pipeline::middleware`](https://docs.rs/spark-core/latest/spark_core/pipeline/middleware/index.html) |
-| 示例 | [`ChainBuilder::register_inbound`](../crates/spark-core/src/data_plane/pipeline/middleware.rs#L52-L118) |
+| Rustdoc | [`spark_core::pipeline::initializer`](https://docs.rs/spark-core/latest/spark_core/pipeline/initializer/index.html) |
+| 示例 | [`ChainBuilder::register_inbound`](../crates/spark-core/src/data_plane/pipeline/initializer.rs#L52-L118) |
 | TCK | [`observability::middleware_emits_expected_attributes`](../crates/spark-contract-tests/src/observability.rs#L210-L332) |
 
 ## Service（服务接口）
@@ -289,8 +289,8 @@ covers = [
   "spark_core::pipeline::ExtensionsMap",
   "spark_core::pipeline::HandlerRegistry",
   "spark_core::pipeline::InboundHandler",
-  "spark_core::pipeline::Middleware",
-  "spark_core::pipeline::MiddlewareDescriptor",
+  "spark_core::pipeline::PipelineInitializer",
+  "spark_core::pipeline::InitializerDescriptor",
   "spark_core::pipeline::OutboundHandler",
   "spark_core::pipeline::Pipeline",
   "spark_core::pipeline::PipelineFactory",
@@ -321,28 +321,28 @@ covers = [
   "spark_core::pipeline::instrument::HandlerSpanTracer",
   "spark_core::pipeline::instrument::HandlerTracerError",
   "spark_core::pipeline::instrument::InstrumentedLogger",
-  "spark_core::pipeline::middleware::ChainBuilder",
-  "spark_core::pipeline::middleware::Middleware",
-  "spark_core::pipeline::middleware::MiddlewareDescriptor",
+  "spark_core::pipeline::initializer::ChainBuilder",
+  "spark_core::pipeline::initializer::PipelineInitializer",
+  "spark_core::pipeline::initializer::InitializerDescriptor",
 ]
 
 [[contract]]
-term = "Middleware"
+term = "PipelineInitializer"
 rustdoc = [
-  { name = "spark_core::pipeline::middleware", url = "https://docs.rs/spark-core/latest/spark_core/pipeline/middleware/index.html" },
+  { name = "spark_core::pipeline::initializer", url = "https://docs.rs/spark-core/latest/spark_core/pipeline/initializer/index.html" },
 ]
 examples = [
-  { name = "ChainBuilder::register_inbound", path = "../crates/spark-core/src/data_plane/pipeline/middleware.rs#L52-L118" },
+  { name = "ChainBuilder::register_inbound", path = "../crates/spark-core/src/data_plane/pipeline/initializer.rs#L52-L118" },
 ]
 tck = [
   { name = "observability::middleware_emits_expected_attributes", path = "../crates/spark-contract-tests/src/observability.rs#L210-L332" },
 ]
 covers = [
-  "spark_core::pipeline::Middleware",
-  "spark_core::pipeline::MiddlewareDescriptor",
-  "spark_core::pipeline::middleware::ChainBuilder",
-  "spark_core::pipeline::middleware::Middleware",
-  "spark_core::pipeline::middleware::MiddlewareDescriptor",
+  "spark_core::pipeline::PipelineInitializer",
+  "spark_core::pipeline::InitializerDescriptor",
+  "spark_core::pipeline::initializer::ChainBuilder",
+  "spark_core::pipeline::initializer::PipelineInitializer",
+  "spark_core::pipeline::initializer::InitializerDescriptor",
 ]
 
 [[contract]]

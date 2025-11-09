@@ -33,13 +33,13 @@
 ## Pipeline（处理链）
 - **定位**：`spark_core::pipeline` 提供 Handler 链、控制器、上下文与热插拔能力，连接编解码、路由与服务执行。 
 - **Rustdoc**：[`spark_core::pipeline`](https://docs.rs/spark-core/latest/spark_core/pipeline/index.html)、[`spark-pipeline`](https://docs.rs/spark-pipeline/latest/spark_pipeline/)。
-- **示例**：[`hot_swap` 集成测试](../crates/spark-core/tests/pipeline/hot_swap.rs#L40-L420) 展示 `Pipeline`、`Middleware` 与 `CoreServices` 协同实现零停机热替换。 
+- **示例**：[`hot_swap` 集成测试](../crates/spark-core/tests/pipeline/hot_swap.rs#L40-L420) 展示 `Pipeline`、`PipelineInitializer` 与 `CoreServices` 协同实现零停机热替换。 
 - **TCK**：[`hot_swap::pipeline_state_transitions_are_ordered`](../crates/spark-contract-tests/src/hot_swap.rs#L430-L585) 验证 epoch 切换与事件顺序。
 
-## Middleware（管线中间件）
-- **定位**：`Middleware` 及其描述符定义在 Handler 链中插入横切逻辑（鉴权、观测、熔断）的扩展点。 
-- **Rustdoc**：[`spark_core::pipeline::middleware`](https://docs.rs/spark-core/latest/spark_core/pipeline/middleware/index.html)。
-- **示例**：[`ChainBuilder::register_inbound`](../crates/spark-core/src/data_plane/pipeline/middleware.rs#L52-L118) 说明如何在链路中组装中间件。 
+## PipelineInitializer（管线中间件）
+- **定位**：`PipelineInitializer` 及其描述符定义在 Handler 链中插入横切逻辑（鉴权、观测、熔断）的扩展点。 
+- **Rustdoc**：[`spark_core::pipeline::initializer`](https://docs.rs/spark-core/latest/spark_core/pipeline/initializer/index.html)。
+- **示例**：[`ChainBuilder::register_inbound`](../crates/spark-core/src/data_plane/pipeline/initializer.rs#L52-L118) 说明如何在链路中组装中间件。 
 - **TCK**：[`observability::middleware_emits_expected_attributes`](../crates/spark-contract-tests/src/observability.rs#L210-L332) 检查中间件插桩的可观测性契约。
 
 ## Service（服务接口）

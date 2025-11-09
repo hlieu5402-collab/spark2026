@@ -889,7 +889,7 @@ impl Pipeline for NoopController {
 
     fn install_middleware(
         &self,
-        _: &dyn spark_core::pipeline::Middleware,
+        _: &dyn spark_core::pipeline::PipelineInitializer,
         _: &spark_core::runtime::CoreServices,
     ) -> spark_core::Result<(), CoreError> {
         Ok(())

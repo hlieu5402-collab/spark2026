@@ -4,7 +4,7 @@ use crate::{CoreError, runtime::CoreServices, sealed::Sealed};
 
 use super::handler::{self, InboundHandler, OutboundHandler};
 
-/// 描述 Middleware 或 Handler 的元数据，辅助链路编排与可观测性。
+/// 描述 PipelineInitializer 或 Handler 的元数据，辅助链路编排与可观测性。
 ///
 /// # 设计背景（Why）
 /// - 借鉴 OpenTelemetry Attributes、Envoy Filter Metadata、Tower Layer Describe API，帮助平台编排系统识别组件用途。
@@ -15,13 +15,13 @@ use super::handler::{self, InboundHandler, OutboundHandler};
 /// - `category`：可选分类（如 `security`、`codec`、`routing`）。
 /// - `summary`：人类可读描述，便于平台 UI 展示。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MiddlewareDescriptor {
+pub struct InitializerDescriptor {
     name: Cow<'static, str>,
     category: Cow<'static, str>,
     summary: Cow<'static, str>,
 }
 
-impl MiddlewareDescriptor {
+impl InitializerDescriptor {
     /// 构造新的描述对象。
     pub fn new(
         name: impl Into<Cow<'static, str>>,
@@ -61,7 +61,7 @@ impl MiddlewareDescriptor {
     }
 }
 
-/// Middleware 装配链路时的注册接口。
+/// PipelineInitializer 装配链路时的注册接口。
 ///
 /// # 设计背景（Why）
 /// - 模仿 Express/Koa 中间件的“下一步”模式与 Tower Layer 的 `Layer::layer` 概念，将 Handler 注册过程显式化。
@@ -92,24 +92,24 @@ pub trait ChainBuilder: Sealed {
     }
 }
 
-/// Middleware 合约：以声明式方式将 Handler 注入 Pipeline。
+/// PipelineInitializer 合约：以声明式方式将 Handler 注入 Pipeline。
 ///
 /// # 契约维度速览
 /// - **语义**：`configure` 接口负责描述 Handler 链路拓扑，`descriptor` 提供自描述元数据，保证热更新与 introspection 的一致性。
-/// - **错误**：`configure` 返回 [`CoreError`]；常见错误码为 `pipeline.middleware_conflict`、`pipeline.middleware_init_failed`。
-/// - **并发**：Middleware 实例需 `Send + Sync`；`configure` 可能在多个线程同时调用，内部状态必须以 `Arc`/锁保护或保持无状态。
-/// - **背压**：中间件应在 Handler 内遵守 [`BackpressureSignal`](crate::contract::BackpressureSignal) 语义，不在装配阶段自行短路背压。
+/// - **错误**：`configure` 返回 [`CoreError`]；常见错误码沿用 `pipeline.middleware_conflict`、`pipeline.middleware_init_failed`，以兼容既有监控指标。
+/// - **并发**：PipelineInitializer 实例需 `Send + Sync`；`configure` 可能在多个线程同时调用，内部状态必须以 `Arc`/锁保护或保持无状态。
+/// - **背压**：装配阶段的控制逻辑需遵守 [`BackpressureSignal`](crate::contract::BackpressureSignal) 语义，不在装配阶段自行短路背压。
 /// - **超时**：若装配需要访问外部配置，应使用 `CoreServices::timer` 与 [`CallContext::deadline()`](crate::contract::CallContext::deadline) 控制超时，超时即返回错误。
 /// - **取消**：当 Pipeline 关闭或部署回滚触发取消时，装配过程需检查取消标记并提前退出，避免遗留半初始化 Handler。
 /// - **观测标签**：`descriptor` 返回的 `name`/`category`/`summary` 将作为统一的观测标签，建议遵循 `vendor.component` 命名规范。
 /// - **示例(伪码)**：
 ///   ```text
-///   middleware.configure(chain, services)?
+///   initializer.configure(chain, services)?
 ///   chain.register_inbound("authz", Box::new(AuthzHandler::new(policy)))
 ///   ```
 ///
 /// # 设计背景（Why）
-/// - 综合 Express Middleware、Envoy Filter、gRPC Interceptor、Tower Layer 的经验，通过 `configure` 方法实现可重入、可组合的链路装配。
+/// - 综合 Netty ChannelInitializer、Express Middleware、Envoy Filter、gRPC Interceptor、Tower Layer 的经验，通过 `configure` 方法实现可重入、可组合的链路装配。
 /// - 支持科研场景：可在 `configure` 中注入测量 Handler 或模型驱动的策略。
 ///
 /// # 契约说明（What）
@@ -118,11 +118,11 @@ pub trait ChainBuilder: Sealed {
 /// - `configure` 必须是幂等操作，以支持热更新或多次装配。
 ///
 /// # 风险提示（Trade-offs）
-/// - Middleware 不应在 `configure` 中执行阻塞操作；如需异步初始化，可将任务委托给 `CoreServices` 中的执行器。
+/// - PipelineInitializer 不应在 `configure` 中执行阻塞操作；如需异步初始化，可将任务委托给 `CoreServices` 中的执行器。
 /// - 若在 `configure` 中捕获状态，需确保其线程安全并避免循环依赖。
-pub trait Middleware: Send + Sync + 'static + Sealed {
+pub trait PipelineInitializer: Send + Sync + 'static + Sealed {
     /// 返回组件元数据。
-    fn descriptor(&self) -> MiddlewareDescriptor;
+    fn descriptor(&self) -> InitializerDescriptor;
 
     /// 在链路中注册 Handler。
     fn configure(

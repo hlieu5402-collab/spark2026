@@ -204,8 +204,8 @@ impl Logger for RecordingLogger {
 struct AlphaHandler;
 
 impl InboundHandler for AlphaHandler {
-    fn describe(&self) -> spark_core::pipeline::middleware::MiddlewareDescriptor {
-        spark_core::pipeline::middleware::MiddlewareDescriptor::new(
+    fn describe(&self) -> spark_core::pipeline::initializer::InitializerDescriptor {
+        spark_core::pipeline::initializer::InitializerDescriptor::new(
             "tests.alpha",
             "observability",
             "一级 Handler：记录日志并继续传递",
@@ -240,8 +240,8 @@ impl InboundHandler for AlphaHandler {
 struct BetaHandler;
 
 impl InboundHandler for BetaHandler {
-    fn describe(&self) -> spark_core::pipeline::middleware::MiddlewareDescriptor {
-        spark_core::pipeline::middleware::MiddlewareDescriptor::new(
+    fn describe(&self) -> spark_core::pipeline::initializer::InitializerDescriptor {
+        spark_core::pipeline::initializer::InitializerDescriptor::new(
             "tests.beta",
             "observability",
             "二级 Handler：终止链路并记录日志",

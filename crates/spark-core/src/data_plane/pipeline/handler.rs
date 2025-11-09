@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 use crate::{CoreError, sealed::Sealed};
 
-use super::{context::Context, middleware::MiddlewareDescriptor};
+use super::{context::Context, initializer::InitializerDescriptor};
 
 use crate::buffer::PipelineMessage;
 use crate::observability::CoreUserEvent;
@@ -11,7 +11,7 @@ use crate::observability::CoreUserEvent;
 ///
 /// # 设计背景（Why）
 /// - 汇总 Netty `ChannelInboundHandler`、Envoy Stream Filter、gRPC Server Interceptor、Tower `Service` 调用链的经验，确保 Handler 能以细粒度响应事件。
-/// - 结合科研需求，引入 `MiddlewareDescriptor` 以支持静态分析、链路可视化。
+/// - 结合科研需求，引入 `InitializerDescriptor` 以支持静态分析、链路可视化。
 ///
 /// # 契约说明（What）
 /// - 所有方法均在 Pipeline 线程或执行上下文中调用，必须无阻塞或将耗时操作移交到运行时。
@@ -24,11 +24,11 @@ use crate::observability::CoreUserEvent;
 ///
 /// # 风险提示（Trade-offs）
 /// - 请避免在 Handler 内部持久化 `Context` 引用；若确有需要，需确保不会导致引用循环。
-/// - `on_read` 可能在高频调用下成为性能瓶颈，可结合 `MiddlewareDescriptor::stage` 信息调度到合适线程池。
+/// - `on_read` 可能在高频调用下成为性能瓶颈，可结合 `InitializerDescriptor::stage` 信息调度到合适线程池。
 pub trait InboundHandler: Send + Sync + 'static + Sealed {
     /// 返回 Handler 元数据，默认提供匿名描述，便于链路观测。
-    fn describe(&self) -> MiddlewareDescriptor {
-        MiddlewareDescriptor::anonymous("inbound-handler")
+    fn describe(&self) -> InitializerDescriptor {
+        InitializerDescriptor::anonymous("inbound-handler")
     }
 
     /// 通道活跃时调用。
@@ -69,8 +69,8 @@ pub trait InboundHandler: Send + Sync + 'static + Sealed {
 /// - 对性能敏感场景，应避免在写路径执行复杂序列化，可结合编解码器模块预处理。
 pub trait OutboundHandler: Send + Sync + 'static + Sealed {
     /// 返回 Handler 元数据，默认提供匿名描述。
-    fn describe(&self) -> MiddlewareDescriptor {
-        MiddlewareDescriptor::anonymous("outbound-handler")
+    fn describe(&self) -> InitializerDescriptor {
+        InitializerDescriptor::anonymous("outbound-handler")
     }
 
     /// 写入消息。
@@ -152,7 +152,7 @@ struct BorrowedInboundHandlerAdapter {
 }
 
 impl InboundHandler for BorrowedInboundHandlerAdapter {
-    fn describe(&self) -> MiddlewareDescriptor {
+    fn describe(&self) -> InitializerDescriptor {
         self.inner.describe()
     }
 
@@ -191,7 +191,7 @@ struct BorrowedOutboundHandlerAdapter {
 }
 
 impl OutboundHandler for BorrowedOutboundHandlerAdapter {
-    fn describe(&self) -> MiddlewareDescriptor {
+    fn describe(&self) -> InitializerDescriptor {
         self.inner.describe()
     }
 

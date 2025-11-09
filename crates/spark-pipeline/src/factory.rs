@@ -36,7 +36,7 @@ use crate::PipelineController;
 ///     - `middleware` 迭代顺序将直接映射为装配顺序。
 ///   - `build` 成功返回后，控制器已装配完所有中间件并可立即响应事件。
 /// - **风险与权衡（Trade-offs & Gotchas）**：
-///   - 工厂内部持有 `Arc<dyn Channel>` 与 `Arc<dyn Middleware>`，构造与 `build` 均存在常数次
+///   - 工厂内部持有 `Arc<dyn Channel>` 与 `Arc<dyn PipelineInitializer>`，构造与 `build` 均存在常数次
 ///     `Arc::clone` 开销；
 ///   - 若中间件的 `configure` 实现非幂等，重复调用 `build` 可能导致链路状态不一致，
 ///     因此调用方应确保单个工厂仅用于单条连接；
@@ -49,7 +49,7 @@ pub struct DefaultPipelineFactory {
     /// 连接级调用上下文，携带取消/截止/预算等契约。
     call_context: CallContext,
     /// 按顺序存放的中间件列表，确保装配顺序确定。
-    middleware: Vec<Arc<dyn Middleware>>,
+    middleware: Vec<Arc<dyn PipelineInitializer>>,
 }
 
 impl DefaultPipelineFactory {
@@ -68,13 +68,13 @@ impl DefaultPipelineFactory {
     ///   - 返回的工厂缓存全部依赖，后续调用 [`Self::build`] 时无需再次收集参数；
     ///   - 中间件会被按提供顺序存储，便于在诊断时追溯链路拓扑。
     /// - **设计考量（Trade-offs）**：
-    ///   - 采用 `IntoIterator<Item = Arc<dyn Middleware>>` 作为输入，允许调用方在不同容器
+    ///   - 采用 `IntoIterator<Item = Arc<dyn PipelineInitializer>>` 作为输入，允许调用方在不同容器
     ///     间灵活转换，但会产生一次 `collect` 分配；
     ///   - 通过派生 `Clone`，便于测试或诊断时复制工厂并记录状态。
     pub fn new(
         channel: Arc<dyn Channel>,
         call_context: CallContext,
-        middleware: impl IntoIterator<Item = Arc<dyn Middleware>>,
+        middleware: impl IntoIterator<Item = Arc<dyn PipelineInitializer>>,
     ) -> Self {
         Self {
             channel,
