@@ -3,14 +3,14 @@ use core::{fmt, future::Future};
 use super::{ShutdownDirection, TransportSocketAddr, connection::TransportConnection};
 use crate::Result;
 
-/// 传输层监听器接口。
+/// 传输层服务端通道（`ServerChannel`）接口。
 ///
 /// # 教案级注释
 ///
 /// ## 意图（Why）
-/// - 为各类协议（TCP、TLS、QUIC 等）提供统一的监听器抽象，
-///   使上层可以在不感知具体协议的情况下接受连接并执行优雅关闭；
-/// - 补充 [`TransportConnection`]，共同覆盖服务端监听与客户端通道的双向契约。
+/// - 为各类协议（TCP、TLS、QUIC 等）提供与 Netty `ServerSocketChannel`
+///   一致的服务端通道抽象，使上层可以在不感知具体协议的情况下接受连接并执行优雅关闭；
+/// - 补充 [`TransportConnection`]，共同覆盖服务端监听通道与客户端通道的双向契约。
 ///
 /// ## 契约（What）
 /// - `Error`：结构化错误类型；
@@ -20,7 +20,7 @@ use crate::Result;
 /// - `AcceptFuture`：返回 `(Connection, TransportSocketAddr)` 的 Future；
 /// - `ShutdownFuture`：执行优雅关闭；
 /// - `scheme()`：返回协议标识；
-/// - `local_addr()`：查询监听地址；
+/// - `local_addr()`：查询服务端通道的监听地址；
 /// - `accept()`：接受新连接并附带对端地址；
 /// - `shutdown()`：根据方向执行关闭；
 /// - **前置条件**：上下文生命周期需覆盖 Future 执行时间；
@@ -32,9 +32,9 @@ use crate::Result;
 /// - 返回的地址使用 [`TransportSocketAddr`] 保持跨协议一致。
 ///
 /// ## 风险提示（Trade-offs）
-/// - 某些协议的监听器可能无法支持精细的半关闭，此时实现者应记录日志并返回适当错误；
+/// - 某些协议的服务端通道可能无法支持精细的半关闭，此时实现者应记录日志并返回适当错误；
 /// - Trait 要求 `Send + Sync + 'static`，若运行在受限环境需增加适配层。
-pub trait TransportListener: Send + Sync + 'static {
+pub trait ServerChannel: Send + Sync + 'static {
     type Error: fmt::Debug + Send + Sync + 'static;
     type AcceptCtx<'ctx>;
     type ShutdownCtx<'ctx>;
@@ -55,7 +55,7 @@ pub trait TransportListener: Send + Sync + 'static {
     /// 返回协议标识。
     fn scheme(&self) -> &'static str;
 
-    /// 查询监听地址。
+    /// 查询服务端通道监听地址。
     fn local_addr(&self) -> Result<TransportSocketAddr, Self::Error>;
 
     /// 接受新连接。

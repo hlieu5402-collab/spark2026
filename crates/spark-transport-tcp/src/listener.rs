@@ -5,7 +5,7 @@ use crate::{
 };
 use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use spark_core::transport::TransportBuilder;
-use spark_core::transport::{ShutdownDirection, TransportListener as TransportListenerTrait};
+use spark_core::transport::{ServerChannel as ServerChannelTrait, ShutdownDirection};
 use std::boxed::Box;
 use std::{future::Future, pin::Pin, time::Duration};
 use tokio::net::TcpListener as TokioTcpListener;
@@ -238,7 +238,7 @@ impl TransportBuilder for TcpListenerBuilder {
     }
 }
 
-impl TransportListenerTrait for TcpListener {
+impl ServerChannelTrait for TcpListener {
     type Error = CoreError;
     type AcceptCtx<'ctx> = CallContext;
     type ShutdownCtx<'ctx> = Context<'ctx>;
@@ -286,9 +286,9 @@ impl TransportListenerTrait for TcpListener {
 }
 
 #[allow(dead_code)]
-fn _assert_tcp_transport_listener()
+fn _assert_tcp_server_channel()
 where
-    TcpListener: TransportListenerTrait<Error = CoreError, Connection = TcpChannel>,
+    TcpListener: ServerChannelTrait<Error = CoreError, Connection = TcpChannel>,
 {
 }
 
