@@ -105,7 +105,7 @@ impl ReadyStateEvent {
 
 fn emit_ready_state(ctx: &dyn Context, state: ReadyState) {
     let event = ReadyStateEvent::new(state);
-    ctx.controller()
+    ctx.pipeline()
         .emit_user_event(CoreUserEvent::from_application_event(event));
 }
 

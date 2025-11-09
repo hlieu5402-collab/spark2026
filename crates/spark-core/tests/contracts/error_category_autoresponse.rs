@@ -441,7 +441,7 @@ mod tests {
             }
 
             struct RecordingContext {
-                controller: Arc<RecordingController>,
+                controller_view: Arc<dyn Pipeline<HandleId = PipelineHandleId>>,
                 channel: RecordingChannel,
                 buffer_pool: NoopBufferPool,
                 logger: NoopLogger,
@@ -459,9 +459,11 @@ mod tests {
                         [2; TraceContext::SPAN_ID_LENGTH],
                         TraceFlags::new(0),
                     );
+                    let controller_view: Arc<dyn Pipeline<HandleId = PipelineHandleId>> =
+                        controller.clone() as Arc<dyn Pipeline<HandleId = PipelineHandleId>>;
                     Self {
                         channel: RecordingChannel::new(controller.clone()),
-                        controller,
+                        controller_view,
                         buffer_pool: NoopBufferPool,
                         logger: NoopLogger,
                         metrics: NoopMetricsProvider,
@@ -478,8 +480,8 @@ mod tests {
                     &self.channel
                 }
 
-                fn controller(&self) -> &dyn Pipeline<HandleId = PipelineHandleId> {
-                    &*self.controller
+                fn pipeline(&self) -> &Arc<dyn Pipeline<HandleId = PipelineHandleId>> {
+                    &self.controller_view
                 }
 
                 fn executor(&self) -> &dyn TaskExecutor {

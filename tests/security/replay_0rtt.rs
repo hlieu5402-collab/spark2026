@@ -282,7 +282,7 @@ impl ExtensionsMap for NoopExtensions {
 
 /// `Context` 实现，代理通道/控制器并提供无副作用的观测与执行器。
 struct RecordingContext {
-    controller: Arc<RecordingController>,
+    controller_view: Arc<dyn PipelineController<HandleId = PipelineHandleId>>,
     channel: Arc<RecordingChannel>,
     buffer_pool: NoopBufferPool,
     logger: NoopLogger,
@@ -300,8 +300,10 @@ impl RecordingContext {
         call_context: CallContext,
     ) -> Self {
         let trace = TraceContext::generate();
+        let controller_view: Arc<dyn PipelineController<HandleId = PipelineHandleId>> =
+            controller.clone() as Arc<dyn PipelineController<HandleId = PipelineHandleId>>;
         Self {
-            controller,
+            controller_view,
             channel,
             buffer_pool: NoopBufferPool,
             logger: NoopLogger,
@@ -319,8 +321,8 @@ impl Context for RecordingContext {
         self.channel.as_ref()
     }
 
-    fn controller(&self) -> &dyn PipelineController<HandleId = PipelineHandleId> {
-        self.controller.as_ref()
+    fn pipeline(&self) -> &Arc<dyn PipelineController<HandleId = PipelineHandleId>> {
+        &self.controller_view
     }
 
     fn executor(&self) -> &dyn TaskExecutor {
