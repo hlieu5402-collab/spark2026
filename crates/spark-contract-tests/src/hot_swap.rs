@@ -12,7 +12,7 @@ use spark_core::observability::{
 use spark_core::pipeline::channel::{ChannelState, WriteSignal};
 use spark_core::pipeline::controller::{HotSwapPipeline, PipelineHandleId, handler_from_inbound};
 use spark_core::pipeline::handler::InboundHandler;
-use spark_core::pipeline::{Channel, ExtensionsMap, Pipeline, middleware::MiddlewareDescriptor};
+use spark_core::pipeline::{Channel, ExtensionsMap, Pipeline, initializer::InitializerDescriptor};
 use spark_core::runtime::{
     AsyncRuntime, CoreServices, MonotonicTimePoint, TaskCancellationStrategy, TaskExecutor,
     TaskHandle, TaskResult, TimeDriver,
@@ -390,8 +390,8 @@ impl RecordingInbound {
 }
 
 impl InboundHandler for RecordingInbound {
-    fn describe(&self) -> MiddlewareDescriptor {
-        MiddlewareDescriptor::new(
+    fn describe(&self) -> InitializerDescriptor {
+        InitializerDescriptor::new(
             self.name,
             "tck.hot-swap",
             "records pipeline events for hot swap verification",
@@ -468,8 +468,8 @@ impl BlockingRecordingInbound {
 }
 
 impl InboundHandler for BlockingRecordingInbound {
-    fn describe(&self) -> MiddlewareDescriptor {
-        MiddlewareDescriptor::new(
+    fn describe(&self) -> InitializerDescriptor {
+        InitializerDescriptor::new(
             self.name,
             "tck.hot-swap",
             "blocking recorder used for epoch barrier assertions",

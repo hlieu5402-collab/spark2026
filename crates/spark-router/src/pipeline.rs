@@ -7,7 +7,7 @@ use spark_core::{
     error::codes,
     observability::{Logger, OwnedAttributeSet},
     pipeline::{
-        Context, InboundHandler, extensions::ExtensionsMap, middleware::MiddlewareDescriptor,
+        Context, InboundHandler, extensions::ExtensionsMap, initializer::InitializerDescriptor,
     },
     router::{
         DynRouter, RouteDecisionObject, RouteError,
@@ -252,7 +252,7 @@ struct ServiceDispatchContext<'exec> {
 pub struct RouterHandler {
     router: Arc<dyn DynRouter>,
     context_builder: Arc<dyn RoutingContextBuilder>,
-    descriptor: MiddlewareDescriptor,
+    descriptor: InitializerDescriptor,
 }
 
 impl RouterHandler {
@@ -261,11 +261,11 @@ impl RouterHandler {
     /// # 参数说明
     /// - `router`：对象层路由器实现，负责根据 [`RoutingContext`] 返回服务绑定；
     /// - `context_builder`：提取路由上下文材料的扩展点；
-    /// - `descriptor`：用于链路 introspection 的元信息，如无特殊需求可传入 [`MiddlewareDescriptor::anonymous`] 结果。
+    /// - `descriptor`：用于链路 introspection 的元信息，如无特殊需求可传入 [`InitializerDescriptor::anonymous`] 结果。
     pub fn new(
         router: Arc<dyn DynRouter>,
         context_builder: Arc<dyn RoutingContextBuilder>,
-        descriptor: MiddlewareDescriptor,
+        descriptor: InitializerDescriptor,
     ) -> Self {
         Self {
             router,
@@ -338,7 +338,7 @@ impl RouterHandler {
 }
 
 impl InboundHandler for RouterHandler {
-    fn describe(&self) -> MiddlewareDescriptor {
+    fn describe(&self) -> InitializerDescriptor {
         self.descriptor.clone()
     }
 

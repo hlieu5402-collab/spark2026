@@ -10,7 +10,7 @@ use spark_core::{
         metrics::{InstrumentDescriptor, MetricsProvider},
     },
     pipeline::{
-        ChainBuilder, Middleware, MiddlewareDescriptor,
+        ChainBuilder, PipelineInitializer, InitializerDescriptor,
         channel::WriteSignal,
         handler::{InboundHandler, OutboundHandler},
     },
@@ -92,7 +92,7 @@ const ATTR_CLOSE_DEADLINE: &str = "spark.middleware.metrics.close_deadline";
 /// # 教案式说明
 /// - **意图（Why）**：在不同 Pipeline 中复用同一套指标打点时，允许根据部署环境调整
 ///   描述符与标签，避免硬编码字符串导致命名漂移。
-/// - **结构（How）**：记录 [`MiddlewareDescriptor`] 与链路注册标签，结构体实现 `Clone`
+/// - **结构（How）**：记录 [`InitializerDescriptor`] 与链路注册标签，结构体实现 `Clone`
 ///   以便在多条链路之间共享。
 /// - **契约（What）**：
 ///   - `descriptor`：用于控制面与可观测平台识别组件用途；
@@ -102,14 +102,14 @@ const ATTR_CLOSE_DEADLINE: &str = "spark.middleware.metrics.close_deadline";
 /// - **风险提示（Trade-offs）**：若同一链路多次装配该中间件，请确保标签唯一以避免覆盖。
 #[derive(Clone, Debug)]
 pub struct MetricsMiddlewareConfig {
-    pub descriptor: MiddlewareDescriptor,
+    pub descriptor: InitializerDescriptor,
     pub label: Cow<'static, str>,
 }
 
 impl Default for MetricsMiddlewareConfig {
     fn default() -> Self {
         Self {
-            descriptor: MiddlewareDescriptor::new(
+            descriptor: InitializerDescriptor::new(
                 "spark.middleware.metrics",
                 "observability",
                 "记录 Pipeline 关键事件的指标",
@@ -147,8 +147,8 @@ impl Default for MetricsMiddleware {
     }
 }
 
-impl Middleware for MetricsMiddleware {
-    fn descriptor(&self) -> MiddlewareDescriptor {
+impl PipelineInitializer for MetricsMiddleware {
+    fn descriptor(&self) -> InitializerDescriptor {
         self.config.descriptor.clone()
     }
 
@@ -181,12 +181,12 @@ struct MetricsHandler {
 }
 
 struct MetricsHandlerInner {
-    descriptor: MiddlewareDescriptor,
+    descriptor: InitializerDescriptor,
     metrics: Arc<dyn MetricsProvider>,
 }
 
 impl MetricsHandler {
-    fn new(descriptor: MiddlewareDescriptor, metrics: Arc<dyn MetricsProvider>) -> Self {
+    fn new(descriptor: InitializerDescriptor, metrics: Arc<dyn MetricsProvider>) -> Self {
         Self {
             inner: Arc::new(MetricsHandlerInner {
                 descriptor,
@@ -312,7 +312,7 @@ impl MetricsHandler {
 }
 
 impl InboundHandler for MetricsHandler {
-    fn describe(&self) -> MiddlewareDescriptor {
+    fn describe(&self) -> InitializerDescriptor {
         self.inner.descriptor.clone()
     }
 
@@ -370,7 +370,7 @@ impl InboundHandler for MetricsHandler {
 }
 
 impl OutboundHandler for MetricsHandler {
-    fn describe(&self) -> MiddlewareDescriptor {
+    fn describe(&self) -> InitializerDescriptor {
         self.inner.descriptor.clone()
     }
 

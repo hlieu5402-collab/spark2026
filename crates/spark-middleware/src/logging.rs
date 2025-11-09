@@ -9,7 +9,7 @@ use spark_core::{
         logging::{LogRecord, LogSeverity, Logger},
     },
     pipeline::{
-        ChainBuilder, Middleware, MiddlewareDescriptor,
+        ChainBuilder, PipelineInitializer, InitializerDescriptor,
         handler::{InboundHandler, OutboundHandler},
     },
     runtime::CoreServices,
@@ -27,7 +27,7 @@ const ATTR_EVENT: &str = "spark.middleware.logging.event";
 /// # 教案式说明
 /// - **意图（Why）**：在不同业务场景下，日志的目标、级别与注册标签各不相同。配置结构将这些
 ///   差异外部化，使中间件本身保持无状态并可复用。
-/// - **结构（How）**：携带 `MiddlewareDescriptor`、注册标签 `label`、日志目标 `target` 与默认
+/// - **结构（How）**：携带 `InitializerDescriptor`、注册标签 `label`、日志目标 `target` 与默认
 ///   日志级别 `severity`。`label` 用于在 `ChainBuilder` 中识别 Handler；`target` 对应
 ///   `LogRecord::target`，方便在观测平台上筛选；`severity` 控制普通读写事件的输出级别。
 /// - **契约（What）**：
@@ -39,7 +39,7 @@ const ATTR_EVENT: &str = "spark.middleware.logging.event";
 ///   `severity` 控制输出或在上层设置采样。
 #[derive(Clone, Debug)]
 pub struct LoggingMiddlewareConfig {
-    pub descriptor: MiddlewareDescriptor,
+    pub descriptor: InitializerDescriptor,
     pub label: Cow<'static, str>,
     pub target: Cow<'static, str>,
     pub severity: LogSeverity,
@@ -48,7 +48,7 @@ pub struct LoggingMiddlewareConfig {
 impl Default for LoggingMiddlewareConfig {
     fn default() -> Self {
         Self {
-            descriptor: MiddlewareDescriptor::new(
+            descriptor: InitializerDescriptor::new(
                 "spark.middleware.logging",
                 "observability",
                 "记录 Pipeline 入站/出站消息的结构化日志",
@@ -89,8 +89,8 @@ impl Default for LoggingMiddleware {
     }
 }
 
-impl Middleware for LoggingMiddleware {
-    fn descriptor(&self) -> MiddlewareDescriptor {
+impl PipelineInitializer for LoggingMiddleware {
+    fn descriptor(&self) -> InitializerDescriptor {
         self.config.descriptor.clone()
     }
 
@@ -117,7 +117,7 @@ struct LoggingHandler {
 }
 
 struct LoggingHandlerInner {
-    descriptor: MiddlewareDescriptor,
+    descriptor: InitializerDescriptor,
     target: Cow<'static, str>,
     severity: LogSeverity,
     logger: Arc<dyn Logger>,
@@ -125,7 +125,7 @@ struct LoggingHandlerInner {
 
 impl LoggingHandler {
     fn new(
-        descriptor: MiddlewareDescriptor,
+        descriptor: InitializerDescriptor,
         target: Cow<'static, str>,
         severity: LogSeverity,
         logger: Arc<dyn Logger>,
@@ -192,7 +192,7 @@ impl LoggingHandler {
 }
 
 impl InboundHandler for LoggingHandler {
-    fn describe(&self) -> MiddlewareDescriptor {
+    fn describe(&self) -> InitializerDescriptor {
         self.inner.descriptor.clone()
     }
 
@@ -307,7 +307,7 @@ impl InboundHandler for LoggingHandler {
 }
 
 impl OutboundHandler for LoggingHandler {
-    fn describe(&self) -> MiddlewareDescriptor {
+    fn describe(&self) -> InitializerDescriptor {
         self.inner.descriptor.clone()
     }
 

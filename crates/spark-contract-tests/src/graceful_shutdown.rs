@@ -1390,7 +1390,7 @@ impl Pipeline for NoopController {
 
     fn install_middleware(
         &self,
-        _: &dyn spark_core::pipeline::Middleware,
+        _: &dyn spark_core::pipeline::PipelineInitializer,
         _: &CoreServices,
     ) -> spark_core::Result<(), spark_core::error::CoreError> {
         Ok(())

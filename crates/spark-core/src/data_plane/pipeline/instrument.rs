@@ -3,7 +3,7 @@ use core::fmt;
 
 use crate::observability::{LogRecord, Logger, TraceContext};
 
-use super::{controller::HandlerDirection, middleware::MiddlewareDescriptor};
+use super::{controller::HandlerDirection, initializer::InitializerDescriptor};
 
 use spin::Mutex;
 
@@ -11,13 +11,13 @@ use spin::Mutex;
 ///
 /// # 教案式说明
 /// - **意图（Why）**：在桥接 OpenTelemetry 或其他追踪后端时，需要一份结构化的 Handler 描述，以便生成具备可读性的 Span 名称与属性。
-/// - **逻辑（How）**：聚合 Handler 的方向（入站/出站）、注册时的标签以及 [`MiddlewareDescriptor`] 中声明的附加元信息。
+/// - **逻辑（How）**：聚合 Handler 的方向（入站/出站）、注册时的标签以及 [`InitializerDescriptor`] 中声明的附加元信息。
 /// - **契约（What）**：所有字段均为只读引用，调用方不得在 Span 生命周期内释放底层字符串；方向值来自 [`HandlerDirection`] 枚举。
 #[derive(Clone, Copy, Debug)]
 pub struct HandlerSpanParams<'a> {
     pub direction: HandlerDirection,
     pub label: &'a str,
-    pub descriptor: &'a MiddlewareDescriptor,
+    pub descriptor: &'a InitializerDescriptor,
 }
 
 impl<'a> HandlerSpanParams<'a> {
@@ -26,7 +26,7 @@ impl<'a> HandlerSpanParams<'a> {
     pub fn new(
         direction: HandlerDirection,
         label: &'a str,
-        descriptor: &'a MiddlewareDescriptor,
+        descriptor: &'a InitializerDescriptor,
     ) -> Self {
         Self {
             direction,
@@ -154,7 +154,7 @@ fn active_tracer() -> Option<Arc<dyn HandlerSpanTracer>> {
 /// 为入站 Handler 创建 Span，若未安装追踪实现则回退为本地生成的子上下文。
 pub(crate) fn start_inbound_span(
     label: &str,
-    descriptor: &MiddlewareDescriptor,
+    descriptor: &InitializerDescriptor,
     parent: &TraceContext,
 ) -> HandlerSpan {
     start_handler_span(HandlerDirection::Inbound, label, descriptor, parent)
@@ -172,7 +172,7 @@ pub(crate) fn start_inbound_span(
 #[allow(dead_code)]
 pub(crate) fn start_outbound_span(
     label: &str,
-    descriptor: &MiddlewareDescriptor,
+    descriptor: &InitializerDescriptor,
     parent: &TraceContext,
 ) -> HandlerSpan {
     start_handler_span(HandlerDirection::Outbound, label, descriptor, parent)
@@ -181,7 +181,7 @@ pub(crate) fn start_outbound_span(
 fn start_handler_span(
     direction: HandlerDirection,
     label: &str,
-    descriptor: &MiddlewareDescriptor,
+    descriptor: &InitializerDescriptor,
     parent: &TraceContext,
 ) -> HandlerSpan {
     if let Some(tracer) = active_tracer() {

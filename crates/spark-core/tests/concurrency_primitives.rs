@@ -379,7 +379,7 @@ impl Pipeline for NullController {
 
     fn install_middleware(
         &self,
-        _middleware: &dyn spark_core::pipeline::middleware::Middleware,
+        _middleware: &dyn spark_core::pipeline::initializer::PipelineInitializer,
         _services: &CoreServices,
     ) -> spark_core::Result<(), CoreError> {
         Ok(())

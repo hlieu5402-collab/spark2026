@@ -7,7 +7,7 @@ use spark_core::{
     contract::{CloseReason, Deadline},
     observability::{attributes::KeyValue, logging::Logger},
     pipeline::{
-        ChainBuilder, Middleware, MiddlewareDescriptor,
+        ChainBuilder, PipelineInitializer, InitializerDescriptor,
         channel::WriteSignal,
         handler::{InboundHandler, OutboundHandler},
     },
@@ -95,19 +95,19 @@ impl fmt::Debug for CodecTransform {
 ///
 /// # 教案式说明
 /// - **意图（Why）**：在装配阶段显式描述编解码组件的来源与用途，便于观测与审计。
-/// - **结构（How）**：包含 [`MiddlewareDescriptor`] 与注册标签 `label`，与其他中间件保持一致。
+/// - **结构（How）**：包含 [`InitializerDescriptor`] 与注册标签 `label`，与其他中间件保持一致。
 /// - **契约（What）**：`label` 需在同一 Pipeline 内唯一；`descriptor` 建议遵循 `vendor.component` 命名。
 /// - **风险提示（Trade-offs）**：若同一链路安装多个编解码器，请确保标签唯一并在描述中区分用途。
 #[derive(Clone, Debug)]
 pub struct CodecMiddlewareConfig {
-    pub descriptor: MiddlewareDescriptor,
+    pub descriptor: InitializerDescriptor,
     pub label: Cow<'static, str>,
 }
 
 impl Default for CodecMiddlewareConfig {
     fn default() -> Self {
         Self {
-            descriptor: MiddlewareDescriptor::new(
+            descriptor: InitializerDescriptor::new(
                 "spark.middleware.codec",
                 "codec",
                 "将 Pipeline 消息在字节与业务类型间转换",
@@ -147,8 +147,8 @@ impl CodecMiddleware {
     }
 }
 
-impl Middleware for CodecMiddleware {
-    fn descriptor(&self) -> MiddlewareDescriptor {
+impl PipelineInitializer for CodecMiddleware {
+    fn descriptor(&self) -> InitializerDescriptor {
         self.config.descriptor.clone()
     }
 
@@ -173,12 +173,12 @@ impl Middleware for CodecMiddleware {
 /// - **契约（What）**：实现 [`InboundHandler`] 与 [`OutboundHandler`]，保持线程安全与幂等性。
 #[derive(Clone)]
 struct CodecHandler {
-    descriptor: MiddlewareDescriptor,
+    descriptor: InitializerDescriptor,
     transform: CodecTransform,
 }
 
 impl CodecHandler {
-    fn new(descriptor: MiddlewareDescriptor, transform: CodecTransform) -> Self {
+    fn new(descriptor: InitializerDescriptor, transform: CodecTransform) -> Self {
         Self {
             descriptor,
             transform,
@@ -217,7 +217,7 @@ impl CodecHandler {
 }
 
 impl InboundHandler for CodecHandler {
-    fn describe(&self) -> MiddlewareDescriptor {
+    fn describe(&self) -> InitializerDescriptor {
         self.descriptor.clone()
     }
 
@@ -262,7 +262,7 @@ impl InboundHandler for CodecHandler {
 }
 
 impl OutboundHandler for CodecHandler {
-    fn describe(&self) -> MiddlewareDescriptor {
+    fn describe(&self) -> InitializerDescriptor {
         self.descriptor.clone()
     }
 

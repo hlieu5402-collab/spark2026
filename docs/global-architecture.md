@@ -1,7 +1,7 @@
 # Spark 全局架构设计蓝图
 
 ## 1. 愿景与设计原则
-- **研究与工程并重**：以 `spark-core` 的 `Pipeline`、`Handler`、`Middleware` 契约为核心，既能满足生产级稳定性，也能快速迭代科研算法原型。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L343-L451】【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L8-L83】【F:crates/spark-core/src/data_plane/pipeline/middleware.rs†L8-L102】
+- **研究与工程并重**：以 `spark-core` 的 `Pipeline`、`Handler`、`PipelineInitializer` 契约为核心，既能满足生产级稳定性，也能快速迭代科研算法原型。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L343-L451】【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L8-L83】【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L8-L102】
 - **全生命周期治理**：设计覆盖需求立项、开发测试、部署运营、观测优化、弹性扩缩以及退役封存，确保各阶段有明确输入输出与责任人。
 - **API 契约优先**：所有控制面交互通过稳定版本化 API 暴露，并保证开发、运维、测试三类用户的协作体验。
 - **极致可观测与可操作性**：借助 `RouteCatalog`、`RoutingContext` 等路由元信息，结合 `PipelineEvent` 广播机制，实现系统级自解释能力。【F:crates/spark-core/src/data_plane/router/mod.rs†L1-L31】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L121】
@@ -19,11 +19,11 @@
 | 退役封存 | 下线业务流程，清理资源与合规存档 | 归档计划、依赖清单 | 退役报告、配置快照 | 架构师、SRE | `POST /v1/pipelines/{id}:decommission` |
 
 
-> **说明**：以上阶段均通过同一套 API 管理，保证配置在控制平面可追溯，且运行时遵循 `CoreServices` 提供的执行环境与资源治理能力。【F:crates/spark-core/src/data_plane/pipeline/middleware.rs†L69-L102】
+> **说明**：以上阶段均通过同一套 API 管理，保证配置在控制平面可追溯，且运行时遵循 `CoreServices` 提供的执行环境与资源治理能力。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L69-L102】
 
 ## 3. 全业务流程与数据流
 1. **入口路由判定**：接入层将请求封装为 `RoutingContext`，通过 `Router` 引擎匹配 `RouteCatalog` 与 `RoutingIntent`，决策目标 `Service` 与 Pipeline 配置。【F:crates/spark-core/src/data_plane/router/mod.rs†L1-L31】
-2. **Pipeline 装配**：控制面读取 `PipelineTemplate`，调用 `Middleware::configure` 向 `Pipeline` 注入入站/出站 `Handler`，并为每个 Handler 注册元数据。【F:crates/spark-core/src/data_plane/pipeline/middleware.rs†L45-L102】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L343-L451】
+2. **Pipeline 装配**：控制面读取 `PipelineTemplate`，调用 `PipelineInitializer::configure` 向 `Pipeline` 注入入站/出站 `Handler`，并为每个 Handler 注册元数据。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L45-L102】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L343-L451】
 3. **运行时事件循环**：`Pipeline` 广播 `PipelineEventKind`，驱动 `InboundHandler` 与 `OutboundHandler` 执行，期间可通过 `CoreServices` 委派异步任务或资源。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L451】【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L8-L83】
 4. **业务服务调用**：在 Handler 链末端，`Service` 抽象负责与业务逻辑交互，遵循 Tower 风格的 `poll_ready` / `call` 模式，保证背压控制与协程调度兼容。【F:crates/spark-core/src/data_plane/service.rs†L1-L52】
 5. **观测与治理**：运行时持续向观测面推送 `PipelineEvent`、Pipeline 注册表快照与路由统计信息，用于仪表板、告警与自动化优化。
@@ -32,7 +32,7 @@
 ## 4. Pipeline、Handler、Middleware、Router 关系
 - **Router**：负责请求级决策，选择 `RouteBinding` 并指派 Pipeline 模板。其输出决定后续 Pipeline 应加载的 Handler 拓扑与 Service 实例。【F:crates/spark-core/src/data_plane/router/mod.rs†L1-L31】
 - **Pipeline 控制器**：在数据面承载 Handler 调度，维护入站/出站链路、事件广播与 Handler Registry，为观测面提供 introspection。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L451】
-- **Middleware**：声明式组装 Handler，持有 `CoreServices` 上下文以访问运行时能力，负责将策略、编解码、观测等横切关注点注入 Pipeline。【F:crates/spark-core/src/data_plane/pipeline/middleware.rs†L45-L102】
+- **PipelineInitializer**：声明式组装 Handler，持有 `CoreServices` 上下文以访问运行时能力，负责将策略、编解码、观测等横切关注点注入 Pipeline。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L45-L102】
 - **Handler**：细化入站 (`InboundHandler`) 与出站 (`OutboundHandler`) 逻辑，处理业务协议、背压、异常与用户事件，支撑全双工通信。【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L8-L83】
 - **Pipeline 链路**：由 Pipeline 控制器管理的 Handler 序列，既可以静态配置，也支持运行时热装配，确保请求处理路径与响应路径的对称性。
 
@@ -65,7 +65,7 @@ Service (Tower Trait)
 ### 5.2 对运维友好
 - **声明式部署**：`POST /v1/deployments` 接受 Git Commit + 模板引用，平台根据 `CoreServices` 的执行环境自动滚动更新，支持 `canaryPercent`、`maxUnavailable` 参数。
 - **可观测性 API**：`GET /v1/telemetry/events` 流式返回 `PipelineEvent`，`GET /v1/pipelines/{id}/registry` 返回 Handler 拓扑快照，便于快速排障。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L451】
-- **回滚与审计**：`POST /v1/deployments/{id}:rollback` 与 `GET /v1/audit/logs` 提供完整审计链，结合 `MiddlewareDescriptor` 元信息快速定位变更影响。【F:crates/spark-core/src/data_plane/pipeline/middleware.rs†L8-L43】
+- **回滚与审计**：`POST /v1/deployments/{id}:rollback` 与 `GET /v1/audit/logs` 提供完整审计链，结合 `InitializerDescriptor` 元信息快速定位变更影响。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L8-L43】
 - **弹性策略管理**：`POST /v1/scale-plans` 支持 CPU、延迟阈值、突发流量预测等条件，结合路由层自动扩缩。
 
 ### 5.3 对测试友好
@@ -89,7 +89,7 @@ Service (Tower Trait)
 - **一致的资源路径**：遵循 `/v1/{资源}/{标识}` 命名，提供 `?view=summary|full`、`pageToken` 等查询参数，满足 UI 与脚本需求。
 - **幂等与事务保障**：关键写操作均要求客户端提供 `requestId`，服务端实现去重；跨资源更新采用 Saga 模式回滚。
 - **实时反馈**：所有长时任务（测试、部署、仿真）返回 `operationId` 并支持 `GET /v1/operations/{id}` 轮询状态，或通过 SSE/WebSocket 订阅进度。
-- **智能默认值**：API 根据 `MiddlewareDescriptor.category` 自动推断监控模板、日志采集策略，减少表单填写工作量。
+- **智能默认值**：API 根据 `InitializerDescriptor.category` 自动推断监控模板、日志采集策略，减少表单填写工作量。
 - **强类型 Schema**：公开 OpenAPI + AsyncAPI 文档，并提供 Rust/Go/TypeScript SDK，确保多语言团队使用顺滑。
 - **类型安全扩展点**：`PipelineMessage::from_user` 与 `CoreUserEvent::from_application_event` 提供统一的对象安全封装，避免 `Any` 下转型遗漏错误处理。
 

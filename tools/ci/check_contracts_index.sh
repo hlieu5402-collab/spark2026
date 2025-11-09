@@ -127,7 +127,7 @@ TARGET_PREFIXES = {
     "Codec": ["spark_core::codec::"],
     "Transport": ["spark_core::transport::"],
     "Pipeline": ["spark_core::pipeline::"],
-    "Middleware": ["spark_core::pipeline::Middleware", "spark_core::pipeline::middleware::"],
+    "PipelineInitializer": ["spark_core::pipeline::PipelineInitializer", "spark_core::pipeline::initializer::"],
     "Service": ["spark_core::service::"],
     "Router": ["spark_core::router::"],
     "Context": [

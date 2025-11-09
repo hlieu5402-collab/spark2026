@@ -36,7 +36,7 @@ use crate::{
 ///
 /// # 行为逻辑（How）
 /// 1. 宿主在通道初始化阶段调用 [`build`](PipelineFactory::build)。
-/// 2. 泛型实现根据 [`CoreServices`] 装配 Handler/Middleware，返回具体的 [`Pipeline`] 实例。
+/// 2. 泛型实现根据 [`CoreServices`] 装配 Handler/PipelineInitializer，返回具体的 [`Pipeline`] 实例。
 /// 3. 返回值由调用方直接持有，不经 `Box<dyn Pipeline>` 擦除，因此后续调用保持零虚分派。
 ///
 /// # 契约说明（What）
@@ -64,7 +64,7 @@ pub trait PipelineFactory: Send + Sync + 'static + Sealed {
     ///
     /// ## 契约约束（Contract）
     /// - **前置条件**：调用方需确保 Pipeline 尚未进入事件循环；
-    /// - **后置条件**：若返回 `Ok(controller)`，则控制器可立即用于注册 Handler/Middleware，且必须是线程安全的。
+    /// - **后置条件**：若返回 `Ok(controller)`，则控制器可立即用于注册 Handler/PipelineInitializer，且必须是线程安全的。
     fn build(&self, core_services: &CoreServices) -> crate::Result<Self::Pipeline, CoreError>;
 }
 
@@ -90,7 +90,7 @@ pub trait DynPipelineFactory: Send + Sync + Sealed {
     /// 构建对象层控制器句柄。
     ///
     /// ## 输入（Parameters）
-    /// - `core_services`: [`CoreServices`] 的只读引用，提供 Handler/Middleware 所需的共享运行时。
+    /// - `core_services`: [`CoreServices`] 的只读引用，提供 Handler/PipelineInitializer 所需的共享运行时。
     ///
     /// ## 执行流程（Logic）
     /// - 实现者装配底层控制器；
@@ -198,10 +198,10 @@ impl Pipeline for PipelineHandle {
 
     fn install_middleware(
         &self,
-        middleware: &dyn crate::pipeline::Middleware,
+        initializer: &dyn crate::pipeline::PipelineInitializer,
         services: &crate::runtime::CoreServices,
     ) -> crate::Result<(), CoreError> {
-        self.inner.install_middleware(middleware, services)
+        self.inner.install_middleware(initializer, services)
     }
 
     fn emit_channel_activated(&self) {
