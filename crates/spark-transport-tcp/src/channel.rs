@@ -38,7 +38,7 @@ use tracing::warn;
 ///
 /// ## 体系定位（Architecture）
 /// - 该结构位于传输实现层，对 `TcpChannel` 的构造及检查流程提供只读依赖；
-/// - `TcpListener::accept_with_config`、`TcpChannel::connect_with_config` 使用它决定每条
+/// - `TcpServerChannel::accept_with_config`、`TcpChannel::connect_with_config` 使用它决定每条
 ///   连接的 `SO_LINGER` 行为，从而影响关闭阶段的资源回收时序。
 ///
 /// ## 核心逻辑（How）

@@ -7,7 +7,7 @@
 
 ## 公共接口入口
 - [`src/lib.rs`](./src/lib.rs)：导出 `TlsAcceptor`, `TlsChannel` 等核心类型。
-- [`src/acceptor.rs`](./src/acceptor.rs)：包装 `rustls` 接受器并连接到 `TcpListener`，处理握手与 ALPN。
+- [`src/acceptor.rs`](./src/acceptor.rs)：包装 `rustls` 接受器并连接到 `TcpServerChannel`，处理握手与 ALPN。
 - [`src/channel.rs`](./src/channel.rs)：实现加密数据流的 `poll_ready`、`read`、`write`、`close_graceful` 与 `close_force`。
 - [`src/hot_reload.rs`](./src/hot_reload.rs)：基于 `ArcSwap` 提供证书与密钥的热更新能力。
 - [`src/error.rs`](./src/error.rs)：定义 `TlsError`/`TlsHandshakeError` 并映射到 `ErrorCategory`。

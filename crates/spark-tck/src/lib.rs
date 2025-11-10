@@ -310,7 +310,9 @@ pub mod sdp;
 #[cfg(all(test, feature = "transport-tests"))]
 mod transport_graceful {
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};
-    use spark_transport_tcp::{ShutdownDirection, TcpChannel, TcpListener, TcpSocketConfig};
+    use spark_transport_tcp::{
+        ShutdownDirection, TcpChannel, TcpServerChannel, TcpSocketConfig,
+    };
     use std::{net::SocketAddr, time::Duration};
     use tokio::time::sleep;
 
@@ -346,7 +348,7 @@ mod transport_graceful {
     #[tokio::test(flavor = "multi_thread")]
     async fn tcp_graceful_half_close() {
         let bind_addr: SocketAddr = "127.0.0.1:0".parse().expect("invalid bind addr");
-        let listener = TcpListener::bind(TransportSocketAddr::from(bind_addr))
+        let listener = TcpServerChannel::bind(TransportSocketAddr::from(bind_addr))
             .await
             .expect("bind listener");
         let local_addr = listener.local_addr();
@@ -442,7 +444,7 @@ pub mod transport {
     use tokio_rustls::TlsConnector;
 
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};
-    use spark_transport_tcp::TcpListener;
+    use spark_transport_tcp::TcpServerChannel;
     use spark_transport_tls::TlsAcceptor;
     use spark_transport_udp::{SipViaRportDisposition, UdpEndpoint};
 
@@ -525,7 +527,7 @@ pub mod transport {
     }
 
     async fn perform_tls_round(
-        listener: &TcpListener,
+        listener: &TcpServerChannel,
         acceptor: &TlsAcceptor,
         server_addr: SocketAddr,
         host: &str,
@@ -963,7 +965,7 @@ pub mod transport {
             generate_server_config("localhost").context("初始化第二个证书失败")?;
 
         let hot_reload = HotReloadingServerConfig::new(initial_config);
-        let listener = TcpListener::bind("127.0.0.1:0")
+        let listener = TcpServerChannel::bind("127.0.0.1:0")
             .await
             .context("监听 TLS 端口失败")?;
         let listen_addr = listener.local_addr().context("读取监听地址失败")?;
@@ -1116,7 +1118,7 @@ pub mod transport {
     /// TLS 握手与读写行为验证。
     pub mod tls_handshake {
         use super::{
-            Result, TcpListener, TlsAcceptor, TransportSocketAddr, anyhow, build_client_config,
+            Result, TcpServerChannel, TlsAcceptor, TransportSocketAddr, anyhow, build_client_config,
             build_server_config, perform_tls_round, transport_to_std,
         };
 
@@ -1124,7 +1126,7 @@ pub mod transport {
         async fn sni_selection_and_io() -> spark_core::Result<()> {
             let (server_config, alpha_cert, beta_cert) = build_server_config()?;
             let acceptor = TlsAcceptor::new(server_config);
-            let listener = TcpListener::bind(TransportSocketAddr::V4 {
+            let listener = TcpServerChannel::bind(TransportSocketAddr::V4 {
                 addr: [127, 0, 0, 1],
                 port: 0,
             })
@@ -1169,7 +1171,7 @@ pub mod transport {
     /// 验证 ALPN 协商结果是否对上层可见。
     pub mod tls_alpn_route {
         use super::{
-            Result, TcpListener, TlsAcceptor, TransportSocketAddr, anyhow, build_client_config,
+            Result, TcpServerChannel, TlsAcceptor, TransportSocketAddr, anyhow, build_client_config,
             build_server_config, perform_tls_round, transport_to_std,
         };
 
@@ -1177,7 +1179,7 @@ pub mod transport {
         async fn negotiated_protocol_exposed() -> spark_core::Result<()> {
             let (server_config, alpha_cert, _) = build_server_config()?;
             let acceptor = TlsAcceptor::new(server_config);
-            let listener = TcpListener::bind(TransportSocketAddr::V4 {
+            let listener = TcpServerChannel::bind(TransportSocketAddr::V4 {
                 addr: [127, 0, 0, 1],
                 port: 0,
             })
