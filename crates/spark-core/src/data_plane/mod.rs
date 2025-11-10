@@ -21,6 +21,7 @@
 pub mod buffer;
 pub mod codec;
 pub mod pipeline;
+pub use pipeline::initializer;
 pub mod protocol;
 pub mod service;
 pub mod transport;
