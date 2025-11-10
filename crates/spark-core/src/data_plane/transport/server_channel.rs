@@ -1,6 +1,6 @@
 use core::{fmt, future::Future};
 
-use super::{ShutdownDirection, TransportSocketAddr, channel::Channel};
+use super::{TransportSocketAddr, connection::Channel, server::ListenerShutdown};
 use crate::Result;
 
 /// 传输层服务端通道（`ServerChannel`）接口。
@@ -22,13 +22,12 @@ use crate::Result;
 /// - `scheme()`：返回协议标识；
 /// - `local_addr()`：查询服务端通道的监听地址；
 /// - `accept()`：接受新连接并附带对端地址；
-/// - `shutdown()`：根据方向执行关闭；
+/// - `shutdown()`：依据 [`ListenerShutdown`] 计划执行优雅关闭；
 /// - **前置条件**：上下文生命周期需覆盖 Future 执行时间；
 /// - **后置条件**：Future 成功完成即表示操作符合协议语义。
 ///
 /// ## 解析逻辑（How）
 /// - 采用 GAT 约束，允许实现直接返回 `async` 块；
-/// - `ShutdownDirection` 指示关闭方向，确保调用者显式选择策略；
 /// - 返回的地址使用 [`TransportSocketAddr`] 保持跨协议一致。
 ///
 /// ## 风险提示（Trade-offs）
@@ -65,6 +64,6 @@ pub trait ServerChannel: Send + Sync + 'static {
     fn shutdown<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::ShutdownCtx<'ctx>,
-        direction: ShutdownDirection,
+        plan: ListenerShutdown,
     ) -> Self::ShutdownFuture<'ctx>;
 }

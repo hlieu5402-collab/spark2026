@@ -2,101 +2,15 @@ use alloc::sync::Arc;
 use core::future::Future;
 
 use crate::{
-    CoreError, cluster::ServiceDiscovery, context::Context, pipeline::Channel, sealed::Sealed,
+    CoreError, cluster::ServiceDiscovery, context::Context, contract::CallContext,
+    pipeline::Channel, sealed::Sealed,
 };
 
 use crate::pipeline::factory::PipelineFactory as GenericPipelineFactory;
 
 use super::super::{
-    TransportSocketAddr, factory::ListenerConfig, intent::ConnectionIntent,
-    server::ListenerShutdown,
+    factory::ListenerConfig, intent::ConnectionIntent, server_channel::ServerChannel,
 };
-
-/// 泛型层的监听器合约，描述服务端优雅关闭语义。
-///
-/// # 契约维度速览
-/// - **语义**：统一监听生命周期 —— 启动后 `local_addr` 暴露绑定地址，`shutdown` 推进优雅关闭直至链接排空。
-/// - **错误**：所有失败返回 [`CoreError`]，常用错误码：`transport.bind_failed`、`transport.shutdown_failed`。
-/// - **并发**：实现需 `Send + Sync`，允许在多个控制协程中并发查询地址与发起关闭；内部状态更新需保持原子性。
-/// - **背压**：在关闭阶段可结合 [`BackpressureSignal::ShutdownPending`](crate::contract::BackpressureSignal::ShutdownPending) 向上游广播背压。
-/// - **超时**：`ListenerShutdown` 携带截止时间；实现应在 Future 中尊重 `deadline`，超时后返回 `CoreError`。
-/// - **取消**：`Context` 包含取消信号；Future 执行期间须监听 `ctx.cancellation()` 并在取消时停止等待。
-/// - **观测标签**：统一记录 `transport.listener`, `transport.addr`, `transport.shutdown_phase`，便于诊断关闭耗时。
-/// - **示例(伪码)**：
-///   ```text
-///   addr = listener.local_addr(ctx)
-///   metrics.record("listener.active", addr)
-///   await listener.shutdown(ctx, plan)
-///   ```
-///
-/// # 设计初衷（Why）
-/// - 为内建传输实现提供零虚分派路径，在热路径（大规模建连/关闭）下避免对象层额外开销。
-/// - 保持与对象层 [`super::object::DynServerTransport`] 等价的语义，方便插件或脚本重用相同行为。
-///
-/// # 行为逻辑（How）
-/// - `local_addr` 返回监听绑定地址，供注册中心或观测模块使用；
-/// - `shutdown` 接收 [`ListenerShutdown`]，执行优雅关闭并返回可等待的 Future；
-/// - Future 的具体类型由实现决定，调用方在泛型层可以零成本等待。
-///
-/// # 契约说明（What）
-/// - **前置条件**：调用前监听器必须成功启动；
-/// - **后置条件**：Future 成功完成表示监听器不再接受新连接，并按照计划处理既有会话；
-/// - **错误处理**：失败时返回结构化 [`CoreError`]，应包含错误码与诊断信息。
-///
-/// # 风险提示（Trade-offs）
-/// - 若底层平台不支持优雅关闭，需在 Future 中返回明确错误，避免调用方误判；
-/// - 实现者应关注关闭流程中的资源释放，防止内存/句柄泄漏。
-pub trait ServerTransport: Send + Sync + 'static + Sealed {
-    /// 关闭 Future 的具体类型。
-    type ShutdownFuture<'a>: Future<Output = crate::Result<(), CoreError>> + Send + 'a
-    where
-        Self: 'a;
-
-    /// 返回本地监听地址。
-    ///
-    /// # 教案级注释
-    ///
-    /// ## 意图（Why）
-    /// - 读取监听器绑定的套接字地址，供监控与注册中心上报使用。
-    /// - 虽然该查询本身与取消/预算无关，但保持签名一致使得上层可以统一传递 [`Context`]。
-    ///
-    /// ## 逻辑（How）
-    /// - 仅返回内部缓存的地址信息，不触发网络操作。
-    ///
-    /// ## 契约（What）
-    /// - `ctx`: [`Context`]，读取路径中的取消/超时约束；此处仅用于保持接口一致性，函数自身不会消费它。
-    /// - **前置条件**：监听器已成功绑定并持有有效地址。
-    /// - **后置条件**：返回的 [`TransportSocketAddr`] 恒等于实际监听地址；不修改 `ctx`。
-    ///
-    /// ## 考量（Trade-offs）
-    /// - 统一签名避免对象层/泛型层在调度时分支判断。
-    /// - 若未来需要依据 `ctx` 调整行为（例如按调用方预算选择不同指标采样），可直接复用该参数。
-    fn local_addr(&self, ctx: &Context<'_>) -> TransportSocketAddr;
-
-    /// 根据计划执行优雅关闭。
-    ///
-    /// # 教案级注释
-    ///
-    /// ## 意图（Why）
-    /// - 在优雅关闭流程中继承调用方的取消、截止时间与预算约束，确保传输层遵守统一的控制语义；
-    /// - 将 [`ShutdownGraceful`](crate::contract::ShutdownGraceful) 转换为监听器可执行的计划，使
-    ///   上层的状态机信号与底层操作保持一致。
-    ///
-    /// ## 逻辑（How）
-    /// - 实现者应在 Future 内部监听 `ctx` 的取消信号或剩余预算，必要时提前终止关闭流程并返回错误。
-    ///
-    /// ## 契约（What）
-    /// - `ctx`: [`Context`] 视图，携带调用方的取消、截止与预算；生命周期需覆盖整个 Future。
-    /// - `plan`: [`ListenerShutdown`]，定义关闭策略；通常由
-    ///   [`ShutdownGraceful`](crate::contract::ShutdownGraceful) 派生而来；
-    /// - 返回：满足执行约束的 Future，完成即表示关闭完成或失败；执行成功后应向上层发出
-    ///   [`BackpressureSignal::ShutdownPending`](crate::contract::BackpressureSignal::ShutdownPending)
-    ///   → `ShutdownEnforced` 的状态流。
-    ///
-    /// ## 考量（Trade-offs）
-    /// - 若 `ctx` 中的截止时间过短，Future 可尽早失败，以避免阻塞更高层的恢复逻辑。
-    fn shutdown(&self, ctx: &Context<'_>, plan: ListenerShutdown) -> Self::ShutdownFuture<'_>;
-}
 
 /// 泛型层传输工厂，统一建连与监听流程。
 ///
@@ -121,12 +35,12 @@ pub trait ServerTransport: Send + Sync + 'static + Sealed {
 ///
 /// # 行为逻辑（How）
 /// - `scheme` 返回协议标识（如 `tcp`/`quic`）；
-/// - `bind` 结合 [`ListenerConfig`] 与 Pipeline 工厂构造监听器，返回具体 [`ServerTransport`]；
+/// - `bind` 结合 [`ListenerConfig`] 与 Pipeline 工厂构造监听器，返回具体 [`ServerChannel`]；
 /// - `connect` 根据 [`ConnectionIntent`] 建立客户端通道，返回实现 [`Channel`] 的类型；
 /// - 需要与 [`Arc<GenericPipelineFactory>`] 协同，以装配 Pipeline。
 ///
 /// # 契约说明（What）
-/// - **关联类型**：`Channel`/`Server` 必须分别实现 [`Channel`] 与 [`ServerTransport`]；
+/// - **关联类型**：`Channel`/`Server` 必须分别实现 [`Channel`] 与 [`ServerChannel`]；
 /// - **前置条件**：调用方需保证 `ListenerConfig::endpoint` 与工厂 `scheme` 匹配；
 /// - **后置条件**：成功返回的监听器/通道在语义上等同于对象层的 `Dyn` 版本；
 /// - **错误处理**：失败需返回 [`CoreError`]，并填写错误码提示运维动作。
@@ -138,7 +52,12 @@ pub trait TransportFactory: Send + Sync + 'static + Sealed {
     /// 客户端通道类型。
     type Channel: Channel;
     /// 服务端监听器类型。
-    type Server: ServerTransport;
+    type Server: for<'ctx> ServerChannel<
+            Error = CoreError,
+            Connection = Self::Channel,
+            AcceptCtx<'ctx> = CallContext,
+            ShutdownCtx<'ctx> = Context<'ctx>,
+        >;
 
     /// 绑定流程返回的 Future 类型。
     type BindFuture<'a, P>: Future<Output = crate::Result<Self::Server, CoreError>> + Send + 'a
@@ -184,7 +103,7 @@ pub trait TransportFactory: Send + Sync + 'static + Sealed {
     /// - `ctx`: 贯穿绑定流程的执行上下文。
     /// - `config`: [`ListenerConfig`]，描述监听参数。
     /// - `pipeline_factory`: Pipeline 装配工厂。
-    /// - 返回：构建完成的 [`ServerTransport`]。
+    /// - 返回：构建完成的 [`ServerChannel`]，其中 `Connection` 等于 `Self::Channel`，确保监听器接收的通道类型与客户端建连保持一致。
     ///
     /// ## 考量（Trade-offs）
     /// - 若绑定耗时，及时响应 `ctx` 可提升系统在缩容/回滚时的敏捷性。

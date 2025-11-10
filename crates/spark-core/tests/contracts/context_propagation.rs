@@ -35,7 +35,8 @@ use spark_core::status::{ReadyCheck, ReadyState};
 use spark_core::transport::factory::ListenerConfig;
 use spark_core::transport::intent::{ConnectionIntent, QualityOfService, SecurityMode, SessionLifecycle};
 use spark_core::transport::server::ListenerShutdown;
-use spark_core::transport::traits::generic::{ServerTransport, TransportFactory};
+use spark_core::transport::traits::generic::TransportFactory;
+use spark_core::transport::ServerChannel;
 use spark_core::transport::{Endpoint, TransportSocketAddr};
 use spark_core::{CoreError, SparkError};
 use spark_core::security::IdentityDescriptor;
@@ -700,7 +701,7 @@ impl RecordingTransportFactory {
 
 impl TransportFactory for RecordingTransportFactory {
     type Channel = TestChannel;
-    type Server = TestServerTransport;
+    type Server = TestServerChannel;
 
     type BindFuture<'a, P> = core::future::Ready<spark_core::Result<Self::Server, CoreError>>
     where
@@ -731,7 +732,7 @@ impl TransportFactory for RecordingTransportFactory {
             .lock()
             .expect("传输阶段锁应可用")
             .push(StageObservation::from_execution(Stage::TransportBind, ctx));
-        core::future::ready(Ok(TestServerTransport::new(
+        core::future::ready(Ok(TestServerChannel::new(
             Arc::clone(&self.events),
             self.addr,
         )))
@@ -755,34 +756,73 @@ impl TransportFactory for RecordingTransportFactory {
     }
 }
 
-/// 记录 `local_addr` 访问的伪 ServerTransport。
-struct TestServerTransport {
+/// 记录 `ServerChannel` 调用的伪实现。
+struct TestServerChannel {
     events: Arc<Mutex<Vec<StageObservation>>>,
     addr: TransportSocketAddr,
 }
 
-impl TestServerTransport {
+impl TestServerChannel {
     fn new(events: Arc<Mutex<Vec<StageObservation>>>, addr: TransportSocketAddr) -> Self {
         Self { events, addr }
     }
 }
 
-impl ServerTransport for TestServerTransport {
-    type ShutdownFuture<'a> = core::future::Ready<spark_core::Result<(), CoreError>> where Self: 'a;
+impl ServerChannel for TestServerChannel {
+    type Error = CoreError;
+    type AcceptCtx<'ctx> = CallContext;
+    type ShutdownCtx<'ctx> = Context<'ctx>;
+    type Connection = TestChannel;
 
-    fn local_addr(&self, ctx: &Context<'_>) -> TransportSocketAddr {
+    type AcceptFuture<'ctx>
+        = core::future::Ready<spark_core::Result<(Self::Connection, TransportSocketAddr), CoreError>>
+    where
+        Self: 'ctx,
+        Self::AcceptCtx<'ctx>: 'ctx;
+
+    type ShutdownFuture<'ctx>
+        = core::future::Ready<spark_core::Result<(), CoreError>>
+    where
+        Self: 'ctx,
+        Self::ShutdownCtx<'ctx>: 'ctx;
+
+    fn scheme(&self) -> &'static str {
+        "deterministic-transport"
+    }
+
+    fn local_addr(&self, ctx: &Context<'_>) -> spark_core::Result<TransportSocketAddr, CoreError> {
         self.events
             .lock()
             .expect("传输阶段锁应可用")
             .push(StageObservation::from_execution(Stage::TransportServerLocal, ctx));
-        self.addr
+        Ok(self.addr)
     }
 
-    fn shutdown(
-        &self,
-        _ctx: &Context<'_>,
+    fn accept<'ctx>(&'ctx self, ctx: &'ctx Self::AcceptCtx<'ctx>) -> Self::AcceptFuture<'ctx> {
+        self.events
+            .lock()
+            .expect("传输阶段锁应可用")
+            .push(StageObservation::from_call(Stage::TransportBind, ctx));
+
+        core::future::ready(Ok((
+            TestChannel::new(
+                "server-channel".to_string(),
+                Arc::clone(&self.events),
+                self.addr,
+            ),
+            self.addr,
+        )))
+    }
+
+    fn shutdown<'ctx>(
+        &'ctx self,
+        ctx: &'ctx Self::ShutdownCtx<'ctx>,
         _plan: ListenerShutdown,
-    ) -> Self::ShutdownFuture<'_> {
+    ) -> Self::ShutdownFuture<'ctx> {
+        self.events
+            .lock()
+            .expect("传输阶段锁应可用")
+            .push(StageObservation::from_execution(Stage::TransportServerLocal, ctx));
         core::future::ready(Ok(()))
     }
 }
