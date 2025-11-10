@@ -12,6 +12,8 @@
 - [`src/status/mod.rs`](./src/status/mod.rs)：维护 `ReadyState` 状态机、`BusyReason` 与 `RetryAdvice`，用于背压、退避与半关闭流程。
 - [`src/error.rs`](./src/error.rs)：提供 `CoreError`、`DomainError`、`ErrorCategory` 及编码常量；所有扩展 crate 需通过 `IntoCoreError` 对齐分类。
 - [`src/codec/mod.rs`](./src/codec/mod.rs)：定义 `Codec`/`DecodeOutcome` 接口与 `CodecRegistry` 注册机制，连接编解码扩展与运行时。
+- [`src/data_plane/pipeline/mod.rs`](./src/data_plane/pipeline/mod.rs)：定义 `Pipeline`、`Channel`、`PipelineEvent` 等控制面契约，取代旧的 `Controller`、`Router` 概念。
+- [`src/data_plane/pipeline/initializer.rs`](./src/data_plane/pipeline/initializer.rs)：提供 `PipelineInitializer`、`ChainBuilder` 等装配器，统一覆盖 Layer/Middleware/Interceptor 场景。
 - [`src/host/mod.rs`](./src/host/mod.rs) 与 [`src/runtime/mod.rs`](./src/runtime/mod.rs)：规定宿主生命周期、组件注册与任务调度 API，是 `transport` 与 `sdk` 层实现的基线。
 
 ## 状态机与错误域
