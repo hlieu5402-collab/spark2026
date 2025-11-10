@@ -88,6 +88,17 @@ pub use crate::{
     },
     future::{BoxFuture, BoxStream, Stream},
     observability::{CoreUserEvent, LogRecord, Logger, TraceContext},
+    // 教案级说明：统一透出“Pipeline 三件套”。
+    // Why: 对外暴露重构后的 `Pipeline` 栈，而非旧的 Controller/Middleware/Router 名称，
+    //       让依赖方在导入 Prelude 时即可与新版控制面语义对齐。
+    // How: 依次 re-export `Channel`（连接生命周期抽象）、`Pipeline`（事件调度核心）
+    //       以及 `PipelineInitializer`（装配期配置驱动入口），维持与 data_plane::pipeline
+    //       模块的命名一致性，从而避免二次封装导致的概念漂移。
+    // What: 在调用方执行 `use spark_core::prelude::*;` 时，可直接获取上述类型构建管线；
+    //       前置条件为 pipeline 模块已由上游装配实现，后置条件是调用方可依赖这些契约
+    //       完成 Handler/Transport 的组合。
+    // Trade-offs: 牺牲对旧名称的向后兼容导出，换取语义明确的 API 面；边界场景为旧版仍依赖
+    //             Controller 名称的业务，需要转向 `spark_core::pipeline::controller` 兼容映射。
     pipeline::{Channel, Pipeline, PipelineInitializer},
     runtime::{CoreServices, JoinHandle, MonotonicTimePoint},
     service::{
