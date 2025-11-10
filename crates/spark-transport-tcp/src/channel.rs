@@ -6,15 +6,17 @@ use crate::{
 use bytes::{Buf, BufMut};
 use core::slice;
 use socket2::SockRef;
+use spark_core::pipeline::PipelineInitializer;
 use spark_core::prelude::{
     CallContext, Context, CoreError, PollReady, ReadyCheck, ReadyState, ShutdownDirection,
     TransportSocketAddr,
 };
 use spark_core::transport::{
-    BackpressureDecision, BackpressureMetrics, Channel as ChannelTrait,
+    BackpressureDecision, BackpressureMetrics, Channel as ChannelTrait, HandshakeOutcome,
 };
 use std::borrow::Cow;
 use std::{
+    fmt,
     io::{self, IoSlice},
     net::Shutdown as StdShutdown,
     ops::DerefMut,
@@ -91,6 +93,35 @@ struct TcpChannelInner {
     peer_addr: TransportSocketAddr,
     local_addr: TransportSocketAddr,
     config: TcpSocketConfig,
+    pipeline: Mutex<Option<PipelineBinding>>,
+}
+
+/// 记录 L1 协商与初始化器的绑定关系。
+///
+/// # 教案级注释
+///
+/// ## 意图（Why）
+/// - 将 `ServerChannel` 在握手阶段产出的 `HandshakeOutcome` 与所选
+///   [`PipelineInitializer`] 下沉至 `TcpChannel`，确保后续 Pipeline 装配
+///   能够读取到协商结果；
+/// - 避免在上层重复执行协议协商或重新选择初始化器，维持 L1 → L2 责任边界。
+///
+/// ## 契约（What）
+/// - `handshake`：`Arc<HandshakeOutcome>`，保留协商出的版本与能力位；
+/// - `initializer`：`Arc<dyn PipelineInitializer>`，指向应当装配的链路配置；
+/// - 结构体本身只在互斥锁内短期持有，调用方应在读取后克隆 `Arc`。
+struct PipelineBinding {
+    handshake: Arc<HandshakeOutcome>,
+    initializer: Arc<dyn PipelineInitializer>,
+}
+
+impl fmt::Debug for PipelineBinding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PipelineBinding")
+            .field("handshake_version", &self.handshake.version())
+            .field("initializer_descriptor", &self.initializer.descriptor())
+            .finish()
+    }
 }
 
 /// TCP 通道的最小实现，封装读写、半关闭与背压探测。
@@ -167,6 +198,7 @@ impl TcpChannel {
                 peer_addr,
                 local_addr,
                 config,
+                pipeline: Mutex::new(None),
             }),
         })
     }
@@ -547,6 +579,56 @@ impl TcpChannel {
         })
         .await
     }
+
+    /// 记录握手结果与选定的 [`PipelineInitializer`]，供后续 Pipeline 装配读取。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 将 L1 协商成果与初始化器选择结果固化到通道对象中，避免上层重复协商；
+    /// - 为后续 Pipeline 构建器提供读取接口，确保装配阶段能够基于既定策略配置 Handler。
+    ///
+    /// ## 契约（What）
+    /// - `outcome`：协议握手产出的 [`HandshakeOutcome`]；
+    /// - `initializer`：待装配的 [`PipelineInitializer`]；
+    /// - 若同一连接重复调用，则返回结构化错误以提示调用方检查逻辑。
+    pub fn bind_pipeline_initializer(
+        &self,
+        outcome: HandshakeOutcome,
+        initializer: Arc<dyn PipelineInitializer>,
+    ) -> spark_core::Result<(), CoreError> {
+        let mut guard = self
+            .inner
+            .pipeline
+            .lock()
+            .map_err(|_| error::pipeline_attach_poisoned())?;
+        if guard.is_some() {
+            return Err(error::pipeline_attach_conflict());
+        }
+        *guard = Some(PipelineBinding {
+            handshake: Arc::new(outcome),
+            initializer,
+        });
+        Ok(())
+    }
+
+    /// 返回已记录的握手结果，供 Pipeline 装配或诊断逻辑读取。
+    pub fn handshake_outcome(&self) -> Option<Arc<HandshakeOutcome>> {
+        self.inner
+            .pipeline
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|binding| Arc::clone(&binding.handshake)))
+    }
+
+    /// 返回装配所需的 [`PipelineInitializer`]。
+    pub fn pipeline_initializer(&self) -> Option<Arc<dyn PipelineInitializer>> {
+        self.inner.pipeline.lock().ok().and_then(|guard| {
+            guard
+                .as_ref()
+                .map(|binding| Arc::clone(&binding.initializer))
+        })
+    }
 }
 
 impl ChannelTrait for TcpChannel {
@@ -670,5 +752,118 @@ async fn read_until_eof(stream: &mut TokioTcpStream) -> io::Result<()> {
             Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
             Err(err) => return Err(err),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use spark_core::pipeline::{ChainBuilder, InitializerDescriptor, PipelineInitializer};
+    use spark_core::platform::runtime::CoreServices;
+    use spark_core::transport::{CapabilityBitmap, DowngradeReport, HandshakeOutcome, Version};
+    use tokio::join;
+
+    #[derive(Clone, Default)]
+    struct TestInitializer {
+        label: &'static str,
+    }
+
+    impl TestInitializer {
+        const fn new(label: &'static str) -> Self {
+            Self { label }
+        }
+    }
+
+    impl PipelineInitializer for TestInitializer {
+        fn descriptor(&self) -> InitializerDescriptor {
+            InitializerDescriptor::new(self.label, "tests", "tcp channel pipeline binding")
+        }
+
+        fn configure(
+            &self,
+            _chain: &mut dyn ChainBuilder,
+            _services: &CoreServices,
+        ) -> spark_core::Result<(), CoreError> {
+            Ok(())
+        }
+    }
+
+    async fn build_channel() -> TcpChannel {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test listener");
+        let local_addr = listener.local_addr().expect("query listener addr");
+        let (client, server) = join!(
+            tokio::net::TcpStream::connect(local_addr),
+            listener.accept()
+        );
+        let _client_stream = client.expect("connect test client");
+        let (stream, peer_addr) = server.expect("accept test server");
+        TcpChannel::from_parts(
+            stream,
+            TransportSocketAddr::from(local_addr),
+            TransportSocketAddr::from(peer_addr),
+            TcpSocketConfig::default(),
+        )
+        .expect("construct TcpChannel")
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bind_pipeline_initializer_stores_metadata() {
+        let channel = build_channel().await;
+        let version = Version::new(1, 0, 0);
+        let capabilities = CapabilityBitmap::empty();
+        let downgrade = DowngradeReport::new(CapabilityBitmap::empty(), CapabilityBitmap::empty());
+        let initializer: Arc<dyn PipelineInitializer> =
+            Arc::new(TestInitializer::new("tcp.tests.initializer"));
+
+        channel
+            .bind_pipeline_initializer(
+                HandshakeOutcome::new(version, capabilities, downgrade),
+                Arc::clone(&initializer),
+            )
+            .expect("bind pipeline metadata");
+
+        let stored_outcome = channel
+            .handshake_outcome()
+            .expect("handshake outcome stored");
+        assert_eq!(stored_outcome.version(), version);
+        assert_eq!(stored_outcome.capabilities(), capabilities);
+        assert!(stored_outcome.downgrade().is_lossless());
+
+        let stored_initializer = channel
+            .pipeline_initializer()
+            .expect("pipeline initializer stored");
+        assert!(Arc::ptr_eq(&stored_initializer, &initializer));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bind_pipeline_initializer_rejects_duplicates() {
+        let channel = build_channel().await;
+        let version = Version::new(1, 0, 0);
+        let downgrade = DowngradeReport::new(CapabilityBitmap::empty(), CapabilityBitmap::empty());
+        let first_initializer: Arc<dyn PipelineInitializer> =
+            Arc::new(TestInitializer::new("tcp.tests.first"));
+        channel
+            .bind_pipeline_initializer(
+                HandshakeOutcome::new(version, CapabilityBitmap::empty(), downgrade),
+                Arc::clone(&first_initializer),
+            )
+            .expect("first binding succeeds");
+
+        let second_initializer: Arc<dyn PipelineInitializer> =
+            Arc::new(TestInitializer::new("tcp.tests.second"));
+        let error = channel
+            .bind_pipeline_initializer(
+                HandshakeOutcome::new(
+                    version,
+                    CapabilityBitmap::empty(),
+                    DowngradeReport::new(CapabilityBitmap::empty(), CapabilityBitmap::empty()),
+                ),
+                second_initializer,
+            )
+            .expect_err("duplicate binding should fail");
+
+        assert_eq!(error.code(), error::PIPELINE_ATTACH.code);
     }
 }
