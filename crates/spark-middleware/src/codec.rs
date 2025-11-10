@@ -7,7 +7,7 @@ use spark_core::{
     contract::{CloseReason, Deadline},
     observability::{attributes::KeyValue, logging::Logger},
     pipeline::{
-        ChainBuilder, PipelineInitializer, InitializerDescriptor,
+        ChainBuilder, Channel, InitializerDescriptor, PipelineInitializer,
         channel::WriteSignal,
         handler::{InboundHandler, OutboundHandler},
     },
@@ -155,6 +155,7 @@ impl PipelineInitializer for CodecMiddleware {
     fn configure(
         &self,
         chain: &mut dyn ChainBuilder,
+        _channel: &dyn Channel,
         _services: &CoreServices,
     ) -> spark_core::Result<(), CoreError> {
         let handler = CodecHandler::new(self.config.descriptor.clone(), self.transform.clone());

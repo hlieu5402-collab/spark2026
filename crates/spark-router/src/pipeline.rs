@@ -7,7 +7,7 @@ use spark_core::{
     error::codes,
     observability::{Logger, OwnedAttributeSet},
     pipeline::{
-        ChainBuilder, Context, Handler, HandlerDirection, InboundHandler,
+        ChainBuilder, Channel, Context, Handler, HandlerDirection, InboundHandler,
         PipelineInitializer, extensions::ExtensionsMap, initializer::InitializerDescriptor,
     },
     router::{
@@ -362,6 +362,7 @@ impl PipelineInitializer for ApplicationRouterInitializer {
     fn configure(
         &self,
         chain: &mut dyn ChainBuilder,
+        _channel: &dyn Channel,
         _services: &CoreServices,
     ) -> spark_core::Result<(), CoreError> {
         self.install_handler(chain);
