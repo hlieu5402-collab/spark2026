@@ -10,9 +10,7 @@ use spark_core::prelude::{
     CallContext, Context as ExecutionView, CoreError, PollReady, ReadyCheck, ReadyState,
     ShutdownDirection, TransportSocketAddr,
 };
-use spark_core::transport::{
-    BackpressureDecision, BackpressureMetrics, Channel as ChannelTrait,
-};
+use spark_core::transport::{BackpressureDecision, BackpressureMetrics, Channel};
 use std::borrow::Cow;
 use std::{
     pin::Pin,
@@ -267,7 +265,7 @@ impl QuicChannel {
     }
 }
 
-impl ChannelTrait for QuicChannel {
+impl Channel for QuicChannel {
     type Error = CoreError;
     type CallCtx<'ctx> = CallContext;
     type ReadyCtx<'ctx> = ExecutionView<'ctx>;
@@ -369,6 +367,6 @@ impl ChannelTrait for QuicChannel {
 #[allow(dead_code)]
 fn _assert_quic_channel_contract()
 where
-    QuicChannel: ChannelTrait<Error = CoreError>,
+    QuicChannel: Channel<Error = CoreError>,
 {
 }

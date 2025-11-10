@@ -11,9 +11,7 @@ use spark_core::prelude::{
     CallContext, Context, CoreError, PollReady, ReadyCheck, ReadyState, ShutdownDirection,
     TransportSocketAddr,
 };
-use spark_core::transport::{
-    BackpressureDecision, BackpressureMetrics, Channel as ChannelTrait, HandshakeOutcome,
-};
+use spark_core::transport::{BackpressureDecision, BackpressureMetrics, Channel, HandshakeOutcome};
 use std::borrow::Cow;
 use std::{
     fmt,
@@ -631,7 +629,7 @@ impl TcpChannel {
     }
 }
 
-impl ChannelTrait for TcpChannel {
+impl Channel for TcpChannel {
     type Error = CoreError;
     type CallCtx<'ctx> = CallContext;
     type ReadyCtx<'ctx> = Context<'ctx>;
@@ -733,7 +731,7 @@ impl ChannelTrait for TcpChannel {
 #[allow(dead_code)]
 fn _assert_tcp_channel_contract()
 where
-    TcpChannel: ChannelTrait<Error = CoreError>,
+    TcpChannel: Channel<Error = CoreError>,
 {
 }
 
