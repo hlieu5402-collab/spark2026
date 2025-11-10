@@ -48,7 +48,7 @@ pub use intent::{
 pub use metrics::{LinkDirection, TransportMetricsHook};
 pub use params::TransportParams;
 pub use server::{ListenerShutdown, describe_shutdown_target};
-pub use server_channel::ServerChannel;
+pub use server_channel::{PipelineInitializerSelector, ServerChannel};
 pub use shutdown::ShutdownDirection;
 pub use traits::generic::TransportFactory;
 pub use traits::object::{

@@ -6,40 +6,43 @@ use std::task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker};
 use std::time::Duration;
 
 use spark_core::buffer::{
-    BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage, ReadableBuffer, WritableBuffer,
+    BufferAllocator, ErasedSparkBuf, ErasedSparkBufMut, PipelineMessage, ReadableBuffer,
+    WritableBuffer,
 };
 use spark_core::codec::decoder::{DecodeContext, DecodeOutcome};
 use spark_core::codec::encoder::{EncodeContext, EncodedPayload};
 use spark_core::codec::metadata::{CodecDescriptor, ContentEncoding, ContentType};
 use spark_core::codec::Codec;
+use spark_core::context::Context;
 use spark_core::contract::{
     Budget, BudgetKind, CallContext, Cancellation, Deadline, SecurityContextSnapshot,
     DEFAULT_OBSERVABILITY_CONTRACT,
 };
-use spark_core::context::Context;
 use spark_core::error::codes;
 use spark_core::future::BoxFuture;
 use spark_core::observability::trace::{TraceContext, TraceFlags};
-use spark_core::pipeline::{
-    Channel, ChannelState, Pipeline, HandlerRegistry, WriteSignal,
-};
 use spark_core::pipeline::controller::PipelineHandleId;
+use spark_core::pipeline::{Channel, ChannelState, HandlerRegistry, Pipeline, WriteSignal};
 use spark_core::router::binding::{RouteBinding, RouteDecision};
 use spark_core::router::catalog::{RouteCatalog, RouteDescriptor};
 use spark_core::router::context::{RoutingContext, RoutingIntent, RoutingSnapshot};
 use spark_core::router::metadata::{MetadataKey, MetadataValue, RouteMetadata};
 use spark_core::router::route::{RouteId, RouteKind, RoutePattern, RouteSegment};
 use spark_core::router::{RouteError, Router};
+use spark_core::security::IdentityDescriptor;
 use spark_core::service::Service;
 use spark_core::status::{ReadyCheck, ReadyState};
 use spark_core::transport::factory::ListenerConfig;
-use spark_core::transport::intent::{ConnectionIntent, QualityOfService, SecurityMode, SessionLifecycle};
+use spark_core::transport::intent::{
+    ConnectionIntent, QualityOfService, SecurityMode, SessionLifecycle,
+};
 use spark_core::transport::server::ListenerShutdown;
 use spark_core::transport::traits::generic::TransportFactory;
 use spark_core::transport::ServerChannel;
-use spark_core::transport::{Endpoint, TransportSocketAddr};
+use spark_core::transport::{
+    Endpoint, HandshakeOffer, PipelineInitializerSelector, TransportSocketAddr, Version, negotiate,
+};
 use spark_core::{CoreError, SparkError};
-use spark_core::security::IdentityDescriptor;
 
 use super::support::{build_identity, monotonic, Lcg64};
 
@@ -82,13 +85,12 @@ fn context_propagation_contract_is_deterministic() {
     assert!(
         baseline
             .iter()
-            .any(|event| matches!(event.stage, Stage::ServicePollReady) && event.peer_identity.is_some()),
+            .any(|event| matches!(event.stage, Stage::ServicePollReady)
+                && event.peer_identity.is_some()),
         "服务阶段必须观察到对端身份"
     );
     assert!(
-        baseline
-            .iter()
-            .any(|event| event.trace_sampled.is_some()),
+        baseline.iter().any(|event| event.trace_sampled.is_some()),
         "上下文应记录追踪采样标记"
     );
 
@@ -101,10 +103,7 @@ fn context_propagation_contract_is_deterministic() {
             }
             _ if saw_cancel => {
                 if let Some(cancelled) = event.cancelled {
-                    assert!(
-                        cancelled,
-                        "取消触发后所有后续上下文都必须观察到取消状态"
-                    );
+                    assert!(cancelled, "取消触发后所有后续上下文都必须观察到取消状态");
                 }
             }
             _ => {}
@@ -222,9 +221,7 @@ fn execute_replay(seed: u64) -> Vec<StageObservation> {
         .with_security(security_choice.clone())
         .with_lifecycle(SessionLifecycle::BidirectionalStream);
 
-    let router_request = PipelineMessage::from_user(TestUserMessage {
-        tag: rng.next(),
-    });
+    let router_request = PipelineMessage::from_user(TestUserMessage { tag: rng.next() });
     let routing_snapshot = RoutingSnapshot::new(&catalog, 7);
     let routing_context = RoutingContext::new(
         call_context.execution(),
@@ -259,9 +256,7 @@ fn execute_replay(seed: u64) -> Vec<StageObservation> {
         &mut cancellation,
         CancelPoint::BeforeRouterRoute,
     );
-    router
-        .route(routing_context)
-        .expect("路由决策应成功");
+    router.route(routing_context).expect("路由决策应成功");
     stage_index += 1;
 
     let mut service_instance = service.clone();
@@ -286,9 +281,7 @@ fn execute_replay(seed: u64) -> Vec<StageObservation> {
         &mut cancellation,
         CancelPoint::BeforeServiceCall,
     );
-    let request_message = PipelineMessage::from_user(TestUserMessage {
-        tag: rng.next(),
-    });
+    let request_message = PipelineMessage::from_user(TestUserMessage { tag: rng.next() });
     let mut response_future = service_instance.call(call_context.clone(), request_message);
     let response = match Future::poll(Pin::new(&mut response_future), &mut task_cx) {
         Poll::Ready(Ok(msg)) => msg,
@@ -304,12 +297,14 @@ fn execute_replay(seed: u64) -> Vec<StageObservation> {
         &mut cancellation,
         CancelPoint::BeforeCodecEncode,
     );
-    let mut encode_ctx = EncodeContext::with_limits(&allocator, Some(&flow_budget), Some(256), None);
+    let mut encode_ctx =
+        EncodeContext::with_limits(&allocator, Some(&flow_budget), Some(256), None);
     let payload = codec
         .encode(&response, &mut encode_ctx)
         .expect("编码不应失败");
     let mut inbound_buffer: Box<dyn ReadableBuffer> = payload.into_buffer();
-    let mut decode_ctx = DecodeContext::with_limits(&allocator, Some(&flow_budget), Some(256), None);
+    let mut decode_ctx =
+        DecodeContext::with_limits(&allocator, Some(&flow_budget), Some(256), None);
     codec
         .decode(&mut *inbound_buffer, &mut decode_ctx)
         .expect("解码不应失败");
@@ -343,11 +338,8 @@ fn execute_replay(seed: u64) -> Vec<StageObservation> {
         &mut cancellation,
         CancelPoint::BeforeTransportConnect,
     );
-    let mut connect_future = transport_factory.connect(
-        &call_context.execution(),
-        connection_intent.clone(),
-        None,
-    );
+    let mut connect_future =
+        transport_factory.connect(&call_context.execution(), connection_intent.clone(), None);
     let _channel = match Future::poll(Pin::new(&mut connect_future), &mut task_cx) {
         Poll::Ready(Ok(channel)) => channel,
         Poll::Ready(Err(err)) => panic!("传输建连失败: {err:?}"),
@@ -526,7 +518,10 @@ struct RecordingServiceHandle {
 impl RecordingServiceHandle {
     fn new(events: Arc<Mutex<Vec<StageObservation>>>, flow_budget: Budget) -> Self {
         Self {
-            core: Arc::new(RecordingServiceCore { events, flow_budget }),
+            core: Arc::new(RecordingServiceCore {
+                events,
+                flow_budget,
+            }),
         }
     }
 }
@@ -541,7 +536,10 @@ impl RecordingServiceCore {
         self.events
             .lock()
             .expect("写入阶段快照时锁应可用")
-            .push(StageObservation::from_execution(Stage::ServicePollReady, ctx));
+            .push(StageObservation::from_execution(
+                Stage::ServicePollReady,
+                ctx,
+            ));
     }
 
     fn record_call(&self, ctx: &CallContext) {
@@ -603,7 +601,8 @@ impl Router<PipelineMessage> for RecordingRouter {
     fn route(
         &self,
         context: RoutingContext<'_, PipelineMessage>,
-    ) -> spark_core::Result<RouteDecision<Self::Service, PipelineMessage>, RouteError<Self::Error>> {
+    ) -> spark_core::Result<RouteDecision<Self::Service, PipelineMessage>, RouteError<Self::Error>>
+    {
         self.events
             .lock()
             .expect("路由阶段锁应可用")
@@ -665,7 +664,9 @@ impl Codec for RecordingCodec {
         if let PipelineMessage::User(message) = item {
             buffer.extend_from_slice(message.message_kind().as_bytes());
         }
-        Ok(EncodedPayload::from_buffer(Box::new(TestReadableBuffer::new(buffer))))
+        Ok(EncodedPayload::from_buffer(Box::new(
+            TestReadableBuffer::new(buffer),
+        )))
     }
 
     fn decode(
@@ -703,18 +704,25 @@ impl TransportFactory for RecordingTransportFactory {
     type Channel = TestChannel;
     type Server = TestServerChannel;
 
-    type BindFuture<'a, P> = core::future::Ready<spark_core::Result<Self::Server, CoreError>>
+    type BindFuture<'a, P>
+        = core::future::Ready<spark_core::Result<Self::Server, CoreError>>
     where
         Self: 'a,
         P: spark_core::pipeline::PipelineFactory + Send + Sync + 'static;
 
-    type ConnectFuture<'a> = core::future::Ready<spark_core::Result<Self::Channel, CoreError>> where Self: 'a;
+    type ConnectFuture<'a>
+        = core::future::Ready<spark_core::Result<Self::Channel, CoreError>>
+    where
+        Self: 'a;
 
     fn scheme(&self, ctx: &Context<'_>) -> &'static str {
         self.events
             .lock()
             .expect("传输阶段锁应可用")
-            .push(StageObservation::from_execution(Stage::TransportScheme, ctx));
+            .push(StageObservation::from_execution(
+                Stage::TransportScheme,
+                ctx,
+            ));
         "deterministic-transport"
     }
 
@@ -747,7 +755,10 @@ impl TransportFactory for RecordingTransportFactory {
         self.events
             .lock()
             .expect("传输阶段锁应可用")
-            .push(StageObservation::from_execution(Stage::TransportConnect, ctx));
+            .push(StageObservation::from_execution(
+                Stage::TransportConnect,
+                ctx,
+            ));
         core::future::ready(Ok(TestChannel::new(
             "channel-ctx".to_string(),
             Arc::clone(&self.events),
@@ -760,11 +771,55 @@ impl TransportFactory for RecordingTransportFactory {
 struct TestServerChannel {
     events: Arc<Mutex<Vec<StageObservation>>>,
     addr: TransportSocketAddr,
+    initializer_selector: Mutex<Option<Arc<PipelineInitializerSelector>>>,
 }
 
 impl TestServerChannel {
     fn new(events: Arc<Mutex<Vec<StageObservation>>>, addr: TransportSocketAddr) -> Self {
-        Self { events, addr }
+        Self {
+            events,
+            addr,
+            initializer_selector: Mutex::new(None),
+        }
+    }
+
+    /// 生成本地测试用的握手宣告。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 合约测试无需模拟真实网络协商，但仍需要稳定的握手输入，
+    ///   以便验证监听器与选择器之间的接口对接；
+    /// - 通过返回固定版本与空能力集合，确保测试具备确定性。
+    ///
+    /// ## 契约（What）
+    /// - 返回 [`HandshakeOffer`]，版本固定 `1.0.0`，能力位图为空；
+    /// - **前置条件**：无；
+    /// - **后置条件**：可直接传入 [`negotiate`] 获得 [`HandshakeOutcome`](spark_core::transport::HandshakeOutcome)。
+    fn handshake_offer(&self) -> HandshakeOffer {
+        HandshakeOffer::new(
+            Version::new(1, 0, 0),
+            spark_core::transport::CapabilityBitmap::empty(),
+            spark_core::transport::CapabilityBitmap::empty(),
+        )
+    }
+
+    /// 执行测试用握手协商。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 在无真实网络元数据的情况下，复用 handshake 模块以确保选择器能够读取
+    ///   与生产环境一致的 `HandshakeOutcome` 结构；
+    /// - 便于在合约测试中覆盖“协商失败”场景，只需调整本方法即可。
+    ///
+    /// ## 契约（What）
+    /// - 当前实现使用同一宣告作为本地与远端输入，`occurred_at` 固定为 0；
+    /// - 返回 [`HandshakeOutcome`](spark_core::transport::HandshakeOutcome)，错误直接 panic，
+    ///   因为测试期望协商必定成功。
+    fn perform_handshake(&self) -> spark_core::transport::HandshakeOutcome {
+        let offer = self.handshake_offer();
+        negotiate(&offer, &offer, 0, None).expect("test handshake must succeed")
     }
 }
 
@@ -775,7 +830,8 @@ impl ServerChannel for TestServerChannel {
     type Connection = TestChannel;
 
     type AcceptFuture<'ctx>
-        = core::future::Ready<spark_core::Result<(Self::Connection, TransportSocketAddr), CoreError>>
+        =
+        core::future::Ready<spark_core::Result<(Self::Connection, TransportSocketAddr), CoreError>>
     where
         Self: 'ctx,
         Self::AcceptCtx<'ctx>: 'ctx;
@@ -794,7 +850,10 @@ impl ServerChannel for TestServerChannel {
         self.events
             .lock()
             .expect("传输阶段锁应可用")
-            .push(StageObservation::from_execution(Stage::TransportServerLocal, ctx));
+            .push(StageObservation::from_execution(
+                Stage::TransportServerLocal,
+                ctx,
+            ));
         Ok(self.addr)
     }
 
@@ -803,6 +862,19 @@ impl ServerChannel for TestServerChannel {
             .lock()
             .expect("传输阶段锁应可用")
             .push(StageObservation::from_call(Stage::TransportBind, ctx));
+
+        if let Some(selector) = self
+            .initializer_selector
+            .lock()
+            .expect("初始化器选择器锁应可用")
+            .as_ref()
+            .cloned()
+        {
+            let outcome = self.perform_handshake();
+            // 说明：在测试桩中仅调用选择器以验证接口连通性，返回值无需装配实际 Pipeline。
+            let initializer = selector(&outcome);
+            let _descriptor = initializer.descriptor();
+        }
 
         core::future::ready(Ok((
             TestChannel::new(
@@ -814,6 +886,14 @@ impl ServerChannel for TestServerChannel {
         )))
     }
 
+    fn set_initializer_selector(&self, selector: Arc<PipelineInitializerSelector>) {
+        let mut guard = self
+            .initializer_selector
+            .lock()
+            .expect("初始化器选择器锁应可用");
+        *guard = Some(selector);
+    }
+
     fn shutdown<'ctx>(
         &'ctx self,
         ctx: &'ctx Self::ShutdownCtx<'ctx>,
@@ -822,7 +902,10 @@ impl ServerChannel for TestServerChannel {
         self.events
             .lock()
             .expect("传输阶段锁应可用")
-            .push(StageObservation::from_execution(Stage::TransportServerLocal, ctx));
+            .push(StageObservation::from_execution(
+                Stage::TransportServerLocal,
+                ctx,
+            ));
         core::future::ready(Ok(()))
     }
 }
@@ -837,7 +920,11 @@ struct TestChannel {
 }
 
 impl TestChannel {
-    fn new(id: String, events: Arc<Mutex<Vec<StageObservation>>>, addr: TransportSocketAddr) -> Self {
+    fn new(
+        id: String,
+        events: Arc<Mutex<Vec<StageObservation>>>,
+        addr: TransportSocketAddr,
+    ) -> Self {
         Self {
             id,
             events,
@@ -923,9 +1010,19 @@ struct NoopController;
 
 impl Pipeline for NoopController {
     type HandleId = PipelineHandleId;
-    fn register_inbound_handler(&self, _: &str, _: Box<dyn spark_core::pipeline::handler::InboundHandler>) {}
+    fn register_inbound_handler(
+        &self,
+        _: &str,
+        _: Box<dyn spark_core::pipeline::handler::InboundHandler>,
+    ) {
+    }
 
-    fn register_outbound_handler(&self, _: &str, _: Box<dyn spark_core::pipeline::handler::OutboundHandler>) {}
+    fn register_outbound_handler(
+        &self,
+        _: &str,
+        _: Box<dyn spark_core::pipeline::handler::OutboundHandler>,
+    ) {
+    }
 
     fn install_middleware(
         &self,
@@ -992,7 +1089,10 @@ impl HandlerRegistry for NoopRegistry {
 struct NoopAllocator;
 
 impl BufferAllocator for NoopAllocator {
-    fn acquire(&self, _min_capacity: usize) -> spark_core::Result<Box<ErasedSparkBufMut>, CoreError> {
+    fn acquire(
+        &self,
+        _min_capacity: usize,
+    ) -> spark_core::Result<Box<ErasedSparkBufMut>, CoreError> {
         Err(CoreError::new(
             codes::RUNTIME_INTERNAL,
             "allocator disabled for deterministic test",
@@ -1104,7 +1204,10 @@ struct DummyPipelineFactory;
 impl spark_core::pipeline::PipelineFactory for DummyPipelineFactory {
     type Pipeline = NoopController;
 
-    fn build(&self, _: &spark_core::runtime::CoreServices) -> spark_core::Result<Self::Pipeline, CoreError> {
+    fn build(
+        &self,
+        _: &spark_core::runtime::CoreServices,
+    ) -> spark_core::Result<Self::Pipeline, CoreError> {
         Ok(NoopController)
     }
 }
