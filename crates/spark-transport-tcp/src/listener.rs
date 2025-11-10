@@ -1,16 +1,16 @@
 use crate::{
+    TcpChannel, TcpSocketConfig,
     error::{self, map_io_error},
     util::{deadline_expired, monotonic_now, run_with_context, to_socket_addr},
-    TcpChannel, TcpSocketConfig,
 };
 use core::fmt;
+use spark_core::error::codes;
 use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use spark_core::transport::TransportBuilder;
 use spark_core::transport::{
-    CapabilityBitmap, HandshakeOffer, HandshakeOutcome, ListenerShutdown, PipelineInitializerSelector,
-    ServerChannel as ServerChannelTrait, Version, negotiate,
+    CapabilityBitmap, HandshakeOffer, HandshakeOutcome, ListenerShutdown,
+    PipelineInitializerSelector, ServerChannel as ServerChannelTrait, Version, negotiate,
 };
-use spark_core::error::codes;
 use std::boxed::Box;
 use std::sync::{Arc, RwLock};
 use std::{future::Future, pin::Pin, time::Duration};
@@ -188,13 +188,12 @@ impl TcpListener {
 
         let outcome = self.perform_handshake()?;
 
-        if let Some(selector) = self.selector_snapshot() {
-            let initializer = selector(&outcome);
-            // 说明：当前尚未将 TcpChannel 与 Pipeline 控制器集成，为保持接口对齐，
-            // 仅访问一次描述符以验证初始化器已正确选择。后续 T-系列任务将负责
-            // 将初始化器与真实 Pipeline 关联并调用 `configure`。
-            let _descriptor = initializer.descriptor();
-        }
+        let selector = self
+            .selector_snapshot()
+            .ok_or_else(error::pipeline_initializer_missing)?;
+        let initializer = selector(&outcome);
+        channel.bind_pipeline_initializer(outcome, initializer)?;
+
         Ok((channel, peer_addr))
     }
 }
@@ -403,8 +402,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use spark_core::transport::Version;
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};
     use std::net::SocketAddr;
+    use std::sync::Arc;
+    use tokio::join;
+
+    use spark_core::pipeline::{ChainBuilder, InitializerDescriptor, PipelineInitializer};
+    use spark_core::platform::runtime::CoreServices;
 
     /// 验证 `TcpListenerBuilder` 能够将自定义的 `linger` 配置写入监听器默认配置。
     #[tokio::test(flavor = "multi_thread")]
@@ -418,5 +423,83 @@ mod tests {
             .expect("build listener");
 
         assert_eq!(listener.default_socket_config().linger(), linger);
+    }
+
+    #[derive(Clone, Default)]
+    struct TestInitializer {
+        label: &'static str,
+    }
+
+    impl TestInitializer {
+        const fn new(label: &'static str) -> Self {
+            Self { label }
+        }
+    }
+
+    impl PipelineInitializer for TestInitializer {
+        fn descriptor(&self) -> InitializerDescriptor {
+            InitializerDescriptor::new(self.label, "tests", "tcp listener pipeline binding")
+        }
+
+        fn configure(
+            &self,
+            _chain: &mut dyn ChainBuilder,
+            _services: &CoreServices,
+        ) -> spark_core::Result<(), CoreError> {
+            Ok(())
+        }
+    }
+
+    /// 验证未配置初始化器选择器时，监听器会返回结构化错误避免继续处理。
+    #[tokio::test(flavor = "multi_thread")]
+    async fn accept_without_selector_returns_error() {
+        let addr: SocketAddr = "127.0.0.1:0".parse().expect("parse addr");
+        let listener = TcpListener::bind(TransportSocketAddr::from(addr))
+            .await
+            .expect("bind listener");
+        let call_ctx = CallContext::builder().build();
+        let socket_addr: SocketAddr = listener.local_addr().into();
+
+        let (client, outcome) = join!(
+            tokio::net::TcpStream::connect(socket_addr),
+            listener.accept(&call_ctx)
+        );
+        let _client_stream = client.expect("connect client");
+        let error = outcome.expect_err("missing selector should error");
+
+        assert_eq!(error.code(), error::PIPELINE_MISSING.code);
+    }
+
+    /// 验证监听器在握手后会将初始化器与握手结果绑定到通道上。
+    #[tokio::test(flavor = "multi_thread")]
+    async fn accept_binds_pipeline_metadata() {
+        let addr: SocketAddr = "127.0.0.1:0".parse().expect("parse addr");
+        let listener = TcpListener::bind(TransportSocketAddr::from(addr))
+            .await
+            .expect("bind listener");
+        let call_ctx = CallContext::builder().build();
+        let initializer: Arc<dyn PipelineInitializer> =
+            Arc::new(TestInitializer::new("tcp.tests.listener"));
+        let expected = Arc::clone(&initializer);
+        listener.set_initializer_selector(Arc::new(move |_outcome| Arc::clone(&initializer)));
+
+        let socket_addr: SocketAddr = listener.local_addr().into();
+        let (client, accepted) = join!(
+            tokio::net::TcpStream::connect(socket_addr),
+            listener.accept(&call_ctx)
+        );
+        let _client_stream = client.expect("connect client");
+        let (channel, _peer_addr) = accepted.expect("selector configured");
+
+        let handshake = channel
+            .handshake_outcome()
+            .expect("handshake outcome stored");
+        assert_eq!(handshake.version(), Version::new(1, 0, 0));
+        assert!(handshake.downgrade().is_lossless());
+
+        let stored_initializer = channel
+            .pipeline_initializer()
+            .expect("initializer stored on channel");
+        assert!(Arc::ptr_eq(&stored_initializer, &expected));
     }
 }

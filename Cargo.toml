@@ -3,6 +3,8 @@
 # 其余 crate 均以注释方式屏蔽，后续可按需逐步恢复。
 members = [
     "crates/spark-core",
+    "crates/spark-transport-tcp",
+    "crates/spark-deprecation-lint",
     # "crates/spark-codec-line",
     # "crates/spark-codec-rtcp",
     # "crates/spark-codec-rtp",
@@ -22,11 +24,9 @@ members = [
     # "crates/spark-macros",
     # "crates/spark-otel",
     # "crates/spark-transport-quic",
-    # "crates/spark-transport-tcp",
     # "crates/spark-transport-tls",
     # "crates/spark-transport-udp",
     # "crates/3p/tck-mock-transport",
-    # "crates/spark-deprecation-lint",
 ]
 exclude = ["crates/3p/spark2026-fuzz"]
 resolver = "2"
