@@ -62,7 +62,7 @@ pub use governance::{
 };
 
 pub mod data_plane;
-pub use data_plane::{buffer, codec, pipeline, protocol, router, service, transport};
+pub use data_plane::{buffer, codec, pipeline, protocol, service, transport};
 
 pub mod platform;
 #[cfg(feature = "std")]
@@ -163,11 +163,6 @@ pub use pipeline::{
     PipelineFactory, PipelineHandle, PipelineHandleId, PipelineInitializer, WriteSignal,
 };
 pub use protocol::{Event, Frame, Message};
-pub use router::{
-    DynRouter, RouteBinding, RouteBindingObject, RouteCatalog, RouteDecision, RouteDecisionObject,
-    RouteDescriptor, RouteError, RouteId, RouteKind, RouteMetadata, RoutePattern, RouteSegment,
-    RouteValidation, Router, RouterObject, RoutingContext, RoutingIntent, RoutingSnapshot,
-};
 pub use runtime::{
     AsyncRuntime, BlockingTaskSubmission, CoreServices, JoinHandle, LocalTaskSubmission,
     ManagedBlockingTask, ManagedLocalTask, ManagedSendTask, MonotonicTimePoint, SendTaskSubmission,
