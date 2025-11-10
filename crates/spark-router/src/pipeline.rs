@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, format, sync::Arc, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, format, sync::Arc, vec::Vec};
 use core::any::TypeId;
 
 use spark_core::{
@@ -7,15 +7,15 @@ use spark_core::{
     error::codes,
     observability::{Logger, OwnedAttributeSet},
     pipeline::{
-        Context, Handler, HandlerDirection, InboundHandler, extensions::ExtensionsMap,
-        initializer::InitializerDescriptor,
+        ChainBuilder, Context, Handler, HandlerDirection, InboundHandler,
+        PipelineInitializer, extensions::ExtensionsMap, initializer::InitializerDescriptor,
     },
     router::{
         DynRouter, RouteDecisionObject, RouteError,
         context::{RoutingContext, RoutingIntent, RoutingSnapshot},
         metadata::RouteMetadata,
     },
-    runtime::TaskExecutor,
+    runtime::{CoreServices, TaskExecutor},
     service::BoxService,
     transport::intent::ConnectionIntent,
 };
@@ -254,6 +254,198 @@ pub struct ApplicationRouter {
     router: Arc<dyn DynRouter>,
     context_builder: Arc<dyn RoutingContextBuilder>,
     descriptor: InitializerDescriptor,
+}
+
+/// 默认的 Handler 注册标签，供 [`ApplicationRouterInitializer`] 在装配阶段复用。
+const DEFAULT_HANDLER_LABEL: &str = "application-router";
+
+/// `ApplicationRouterInitializer` 负责在 Pipeline 初始化阶段注册 [`ApplicationRouter`] Handler。
+///
+/// # 教案级说明
+/// - **意图（Why）**：将 L2 路由 Handler 的装配逻辑封装成可复用的 [`PipelineInitializer`]，
+///   以便宿主或管道工厂无需重复编写样板代码即可安装应用层路由能力。
+/// - **体系位置（Where）**：处于 PipelineInitializer 链的末端，通常由连接握手或协议编解码
+///   中间件在完成上下文准备后按需注册；
+/// - **执行逻辑（How）**：
+///   1. 构造阶段捕获对象层 [`DynRouter`] 与上下文构造器；
+///   2. `configure` 调用时克隆内部的 [`ApplicationRouter`]，以 [`ChainBuilder::register_inbound`]
+///      注册到入站链路；
+///   3. 采用 teach-plan 注释明确输入输出及幂等约束，帮助调用方在多次装配场景下复用。
+/// - **契约（What）**：
+///   - `descriptor` 字段描述 PipelineInitializer 自身的元信息；
+///   - `handler_label` 控制注册到 Pipeline 时使用的标识；
+///   - `handler_descriptor` 通过 [`ApplicationRouter::describe`] 对外报告 Handler 元信息；
+/// - **权衡（Trade-offs & Gotchas）**：
+///   - 默认使用 `"application-router"` 作为 Handler 标签，若链路中存在多路路由器需显式调用
+///     [`Self::with_label`] 自定义；
+///   - 初始化器持有 [`ApplicationRouter`] 的克隆副本，每次 `configure` 调用都会产生一次结构体
+///     拷贝，代价可忽略但仍需注意幂等性；
+///   - 初始化器不直接访问 [`CoreServices`]，保留未来在装配阶段引入观测或运行时协作的扩展点。
+#[derive(Clone)]
+pub struct ApplicationRouterInitializer {
+    descriptor: InitializerDescriptor,
+    handler_label: Cow<'static, str>,
+    handler: ApplicationRouter,
+}
+
+impl ApplicationRouterInitializer {
+    /// 基于自定义上下文构造器创建初始化器。
+    ///
+    /// # 教案级注释
+    /// - **前置条件（Preconditions）**：
+    ///   - `router` 必须实现 [`DynRouter`] 并满足 `Arc` 共享语义；
+    ///   - `context_builder` 负责从 [`ExtensionsMap`] 或其他介质拼装路由上下文，应在 Handler
+    ///     执行前由上游组件准备所需材料；
+    ///   - `initializer_descriptor` 与 `handler_descriptor` 需准确反映组件职责，便于观测与调试。
+    /// - **执行步骤（How）**：
+    ///   1. 调用 [`ApplicationRouter::new`] 生成 Handler；
+    ///   2. 将 Handler 与默认标签封装到初始化器中；
+    ///   3. 返回可直接用于 [`PipelineInitializer`] 链的对象。
+    /// - **后置条件（Postconditions）**：返回的初始化器可多次调用 `configure`，每次都会以
+    ///   独立的 Handler 副本注册到 Pipeline。
+    pub fn new(
+        router: Arc<dyn DynRouter>,
+        context_builder: Arc<dyn RoutingContextBuilder>,
+        initializer_descriptor: InitializerDescriptor,
+        handler_descriptor: InitializerDescriptor,
+    ) -> Self {
+        Self {
+            descriptor: initializer_descriptor,
+            handler_label: Cow::Borrowed(DEFAULT_HANDLER_LABEL),
+            handler: ApplicationRouter::new(router, context_builder, handler_descriptor),
+        }
+    }
+
+    /// 使用默认的 [`ExtensionsRoutingContextBuilder`] 构造初始化器，简化常见场景。
+    ///
+    /// # 教案级注释
+    /// - **意图（Why）**：复用扩展存储驱动的上下文构造逻辑，避免调用方手动封装 `Arc`；
+    /// - **契约（What）**：`router` 与 `descriptor` 语义同 [`Self::new`]，返回对象即可直接用于
+    ///   `PipelineInitializer` 链；
+    /// - **风险提示（Trade-offs）**：默认构造器假设上游已通过 [`store_router_context`] 写入上下文，
+    ///   否则 Handler 会记录诊断日志并终止请求。
+    pub fn with_extensions_builder(
+        router: Arc<dyn DynRouter>,
+        initializer_descriptor: InitializerDescriptor,
+        handler_descriptor: InitializerDescriptor,
+    ) -> Self {
+        Self::new(
+            router,
+            Arc::new(ExtensionsRoutingContextBuilder::default()),
+            initializer_descriptor,
+            handler_descriptor,
+        )
+    }
+
+    /// 自定义 Handler 注册标签，便于在同一 Pipeline 内区分多路路由器。
+    pub fn with_label(mut self, label: impl Into<Cow<'static, str>>) -> Self {
+        self.handler_label = label.into();
+        self
+    }
+
+    /// 读取内部 Handler 的描述信息，协助在管线装配前准备观测配置。
+    pub fn handler_descriptor(&self) -> InitializerDescriptor {
+        self.handler.describe()
+    }
+
+    /// 将 Handler 注册到 [`ChainBuilder`]，供测试与装配流程复用。
+    fn install_handler(&self, chain: &mut dyn ChainBuilder) {
+        chain.register_inbound(&self.handler_label, Box::new(self.handler.clone()));
+    }
+}
+
+impl PipelineInitializer for ApplicationRouterInitializer {
+    fn descriptor(&self) -> InitializerDescriptor {
+        self.descriptor.clone()
+    }
+
+    fn configure(
+        &self,
+        chain: &mut dyn ChainBuilder,
+        _services: &CoreServices,
+    ) -> spark_core::Result<(), CoreError> {
+        self.install_handler(chain);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use spark_core::pipeline::{handler::OutboundHandler, ChainBuilder, InboundHandler};
+
+    #[derive(Default)]
+    struct RecordingChainBuilder {
+        registrations: alloc::vec::Vec<(alloc::string::String, InitializerDescriptor)>,
+    }
+
+    impl ChainBuilder for RecordingChainBuilder {
+        fn register_inbound(&mut self, label: &str, handler: Box<dyn InboundHandler>) {
+            self.registrations
+                .push((label.to_owned(), handler.describe()));
+        }
+
+        fn register_outbound(&mut self, _label: &str, _handler: Box<dyn OutboundHandler>) {}
+    }
+
+    #[test]
+    fn initializer_registers_router_handler_with_defaults() {
+        let router = Arc::new(crate::DefaultRouter::new());
+        let initializer_desc = InitializerDescriptor::new(
+            "test.router_initializer",
+            "routing",
+            "installs application router handler",
+        );
+        let handler_desc = InitializerDescriptor::new(
+            "test.application_router",
+            "routing",
+            "application router handler",
+        );
+        let initializer = ApplicationRouterInitializer::with_extensions_builder(
+            router,
+            initializer_desc.clone(),
+            handler_desc.clone(),
+        );
+
+        let mut builder = RecordingChainBuilder::default();
+        initializer.install_handler(&mut builder);
+
+        assert_eq!(builder.registrations.len(), 1);
+        let (label, descriptor) = &builder.registrations[0];
+        assert_eq!(label, DEFAULT_HANDLER_LABEL);
+        assert_eq!(descriptor, &handler_desc);
+        assert_eq!(initializer.descriptor(), initializer_desc);
+        assert_eq!(initializer.handler_descriptor(), handler_desc);
+    }
+
+    #[test]
+    fn initializer_allows_custom_labels() {
+        let router = Arc::new(crate::DefaultRouter::new());
+        let initializer_desc = InitializerDescriptor::new(
+            "test.router_initializer.custom",
+            "routing",
+            "installs router with custom label",
+        );
+        let handler_desc = InitializerDescriptor::new(
+            "test.application_router.custom",
+            "routing",
+            "application router handler",
+        );
+        let initializer = ApplicationRouterInitializer::with_extensions_builder(
+            router,
+            initializer_desc,
+            handler_desc.clone(),
+        )
+        .with_label("custom-router");
+
+        let mut builder = RecordingChainBuilder::default();
+        initializer.install_handler(&mut builder);
+
+        assert_eq!(builder.registrations.len(), 1);
+        let (label, descriptor) = &builder.registrations[0];
+        assert_eq!(label, "custom-router");
+        assert_eq!(descriptor, &handler_desc);
+    }
 }
 
 impl Clone for ApplicationRouter {

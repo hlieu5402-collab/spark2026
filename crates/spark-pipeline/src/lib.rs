@@ -50,9 +50,9 @@ pub mod router {
 }
 
 pub use spark_router::pipeline::{
-    AppRouterHandler, ApplicationRouter, ExtensionsRoutingContextBuilder, RouterContextSnapshot,
-    RouterContextState, RoutingContextBuilder, RoutingContextParts, load_router_context,
-    store_router_context,
+    AppRouterHandler, ApplicationRouter, ApplicationRouterInitializer,
+    ExtensionsRoutingContextBuilder, RouterContextSnapshot, RouterContextState,
+    RoutingContextBuilder, RoutingContextParts, load_router_context, store_router_context,
 };
 
 /// `PipelineController` 是 `spark-pipeline` 对外推荐的默认控制器实现。
