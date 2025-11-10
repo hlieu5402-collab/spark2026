@@ -5,7 +5,7 @@ use spark_core::{
     error::{CoreError, codes},
     transport::TransportSocketAddr,
 };
-use spark_transport_tcp::{TcpChannel, TcpListener};
+use spark_transport_tcp::{TcpChannel, TcpServerChannel};
 use std::{
     env, fmt,
     net::SocketAddr,
@@ -244,7 +244,7 @@ struct PercentileStats {
 /// # 教案式说明
 /// - **意图 (Why)**：封装“建连 → 预热 → 采样 → 汇总”全流程，保持 `main` 逻辑精简，并便于单元/集成测试复用该函数。
 /// - **逻辑 (How)**：
-///   1. 绑定本地回环地址，启动 `TcpListener` 并在后台协程中执行回显循环；
+///   1. 绑定本地回环地址，启动 `TcpServerChannel` 并在后台协程中执行回显循环；
 ///   2. 客户端建立 `TcpChannel`，执行若干次预热以稳定 TCP 缓冲；
 ///   3. 对每次往返测量耗时，累积样本；
 ///   4. 汇总为结构化统计并返回。
@@ -260,7 +260,7 @@ async fn run_payload_benchmark(
 ) -> spark_core::Result<PayloadReport, BenchError> {
     let total_iterations = cli.warmup_iterations + cli.iterations;
     let listener_addr = TransportSocketAddr::from(SocketAddr::from(([127, 0, 0, 1], 0)));
-    let listener = TcpListener::bind(listener_addr).await?;
+    let listener = TcpServerChannel::bind(listener_addr).await?;
     let bound_addr = listener.local_addr();
 
     let accept_ctx = CallContext::builder().build();
@@ -327,7 +327,7 @@ async fn run_payload_benchmark(
 ///   - **前置条件**：调用方负责保证 `payload_bytes > 0` 与 `total_iterations > 0`；
 ///   - **后置条件**：一旦返回，TCP 连接上的所有期望数据都已被处理。
 async fn run_server_loop(
-    listener: TcpListener,
+    listener: TcpServerChannel,
     accept_ctx: CallContext,
     server_ctx: CallContext,
     payload_bytes: usize,

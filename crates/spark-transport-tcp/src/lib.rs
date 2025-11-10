@@ -53,12 +53,12 @@ mod channel;
 #[cfg(feature = "runtime-tokio")]
 mod error;
 #[cfg(feature = "runtime-tokio")]
-mod listener;
+mod server_channel;
 #[cfg(feature = "runtime-tokio")]
 mod util;
 
 #[cfg(feature = "runtime-tokio")]
 pub use channel::{TcpChannel, TcpChannelParts, TcpSocketConfig};
 #[cfg(feature = "runtime-tokio")]
-pub use listener::{TcpListener, TcpListenerBuilder};
+pub use server_channel::{TcpServerChannel, TcpServerChannelBuilder};
 pub use spark_core::transport::ShutdownDirection;

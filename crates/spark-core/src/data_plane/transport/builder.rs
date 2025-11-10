@@ -36,7 +36,7 @@ use crate::{CoreError, context::Context};
 /// - 通过 [`Context`] 把取消、截止与预算语义延伸到构造阶段，避免慢启动或阻塞导致的资源占用。
 ///
 /// ## 契约（What）
-/// - `Output`：具体介质构造出的对象类型，例如 `TcpListener`、`UdpEndpoint`；要求实现 `Send + 'static`，以便后续跨线程使用；
+/// - `Output`：具体介质构造出的对象类型，例如 `TcpServerChannel`、`UdpEndpoint`；要求实现 `Send + 'static`，以便后续跨线程使用；
 /// - `BuildFuture<'ctx>`：构造流程返回的 Future 类型，需满足 `Send + 'ctx`，并在完成时给出 `Output` 或 [`CoreError`]；
 /// - `scheme()`：返回协议名（如 `"tcp"`），用于指标/日志标签；
 /// - `build(self, ctx)`：执行实际构建逻辑，需关注 `ctx` 的取消与截止状态。

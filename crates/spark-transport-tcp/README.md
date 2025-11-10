@@ -6,7 +6,7 @@
 - 作为其他传输实现（TLS、QUIC）的基线，输出统一的调度与观测指标。
 
 ## 公共接口入口
-- [`src/lib.rs`](./src/lib.rs)：导出 `TcpListener`, `TcpChannel` 及通道构造函数。
+- [`src/lib.rs`](./src/lib.rs)：导出 `TcpServerChannel`, `TcpChannel` 及通道构造函数。
 - [`src/channel.rs`](./src/channel.rs)：实现 `poll_ready`、`read`、`write`、`close_graceful`、`close_force` 等核心逻辑。
 - [`src/backpressure.rs`](./src/backpressure.rs)：采样 `WouldBlock` 次数、RTT 与缓冲容量，转换为 `ReadyState::{Busy, RetryAfter, BudgetExhausted}`。
 - [`src/error.rs`](./src/error.rs)：定义 `TcpError` 并映射到 `CoreError`/`ErrorCategory`。

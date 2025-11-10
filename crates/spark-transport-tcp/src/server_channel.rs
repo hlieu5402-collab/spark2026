@@ -9,7 +9,7 @@ use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use spark_core::transport::TransportBuilder;
 use spark_core::transport::{
     CapabilityBitmap, HandshakeOffer, HandshakeOutcome, ListenerShutdown,
-    PipelineInitializerSelector, ServerChannel as ServerChannelTrait, Version, negotiate,
+    PipelineInitializerSelector, ServerChannel, Version, negotiate,
 };
 use std::boxed::Box;
 use std::sync::{Arc, RwLock};
@@ -23,6 +23,9 @@ use tokio::net::TcpListener as TokioTcpListener;
 /// ## 意图 (Why)
 /// - 在不暴露 Tokio 具体类型的前提下，提供“监听 → 接受连接”的最小能力，
 ///   让上层能够以 `spark-core` 的契约管理生命周期与错误分类。
+/// - 对齐 `spark-core::transport::ServerChannel` 命名体系，将原 `TcpListener`
+///   语义提升为通用 ServerChannel，让传输层与 Netty 等框架的 `ServerChannel`
+///   概念保持一致。
 /// - `accept` 会继承 [`CallContext`] 的取消与截止语义，避免监听线程阻塞。
 ///
 /// ## 逻辑 (How)
@@ -43,28 +46,28 @@ use tokio::net::TcpListener as TokioTcpListener;
 /// ## 注意事项 (Trade-offs)
 /// - 当前实现未支持 `SO_REUSEPORT` 等高级套接字选项，后续可在绑定前扩展；
 /// - `accept` 在循环取消时依赖定时轮询，取消响应存在毫秒级延迟。
-pub struct TcpListener {
+pub struct TcpServerChannel {
     inner: TokioTcpListener,
     local_addr: TransportSocketAddr,
     default_config: TcpSocketConfig,
     initializer_selector: RwLock<Option<Arc<PipelineInitializerSelector>>>,
 }
 
-impl fmt::Debug for TcpListener {
+impl fmt::Debug for TcpServerChannel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let has_selector = self
             .initializer_selector
             .read()
             .map(|opt| opt.is_some())
             .unwrap_or(false);
-        f.debug_struct("TcpListener")
+        f.debug_struct("TcpServerChannel")
             .field("local_addr", &self.local_addr)
             .field("has_initializer_selector", &has_selector)
             .finish()
     }
 }
 
-impl TcpListener {
+impl TcpServerChannel {
     /// 绑定到指定地址并返回监听器。
     pub async fn bind(addr: TransportSocketAddr) -> spark_core::Result<Self, CoreError> {
         Self::bind_with_config(addr, TcpSocketConfig::default()).await
@@ -76,14 +79,14 @@ impl TcpListener {
     ///
     /// ## 意图（Why）
     /// - 支持在监听阶段就指定新连接的默认 `TcpSocketConfig`（例如 `SO_LINGER`），保证服务端在大量连接场景下仍能保持一致的关闭策略；
-    /// - 作为 Builder 模式的实际落地入口，让 `TcpListenerBuilder` 可以在构造时一次性注入介质特有配置。
+    /// - 作为 Builder 模式的实际落地入口，让 `TcpServerChannelBuilder` 可以在构造时一次性注入介质特有配置。
     ///
     /// ## 契约（What）
     /// - `addr`：监听的传输地址；
     /// - `default_config`：后续 `accept` 默认应用的 [`TcpSocketConfig`]；
-    /// - 返回：成功初始化的 [`TcpListener`]；失败时返回结构化 [`CoreError`]，错误码与原 `bind` 保持一致；
+    /// - 返回：成功初始化的 [`TcpServerChannel`]；失败时返回结构化 [`CoreError`]，错误码与原 `bind` 保持一致；
     /// - **前置条件**：调用方需在 Tokio 运行时中执行；
-    /// - **后置条件**：`TcpListener::default_socket_config` 返回的配置即为传入值。
+    /// - **后置条件**：`TcpServerChannel::default_socket_config` 返回的配置即为传入值。
     ///
     /// ## 逻辑（How）
     /// - 将 `TransportSocketAddr` 转换为标准库地址，调用 Tokio `bind`；
@@ -119,11 +122,11 @@ impl TcpListener {
     ///
     /// ## 意图（Why）
     /// - 让运维或测试在运行时快速确认新连接将继承的 `TcpSocketConfig`，避免逐个检查内核选项；
-    /// - 方便 Builder 与监听器之间共享状态：`TcpListenerBuilder` 设置的配置即可通过本方法验证。
+    /// - 方便 Builder 与监听器之间共享状态：`TcpServerChannelBuilder` 设置的配置即可通过本方法验证。
     ///
     /// ## 契约（What）
     /// - 返回值为 [`TcpSocketConfig`] 的只读引用，反映 `bind` 阶段指定的默认值；
-    /// - **前置条件**：监听器已通过 [`TcpListener::bind`] 或 [`TcpListener::bind_with_config`] 成功初始化；
+    /// - **前置条件**：监听器已通过 [`TcpServerChannel::bind`] 或 [`TcpServerChannel::bind_with_config`] 成功初始化；
     /// - **后置条件**：函数不会触发 I/O，也不会修改监听器内部状态。
     pub fn default_socket_config(&self) -> &TcpSocketConfig {
         &self.default_config
@@ -198,7 +201,7 @@ impl TcpListener {
     }
 }
 
-impl TcpListener {
+impl TcpServerChannel {
     /// 生成本地默认的握手宣告。
     ///
     /// # 教案级注释
@@ -269,7 +272,7 @@ impl TcpListener {
     }
 }
 
-/// `TcpListener` 的建造器，实现介质选项的下沉配置。
+/// `TcpServerChannel` 的建造器，实现介质选项的下沉配置。
 ///
 /// # 教案级注释
 ///
@@ -281,18 +284,18 @@ impl TcpListener {
 /// - `new`：以监听地址创建 Builder，默认配置等同于 [`TcpSocketConfig::default`]；
 /// - `with_default_socket_config`：显式替换默认配置；
 /// - `with_linger`：提供常见的快捷设置；
-/// - `build`：遵循 [`TransportBuilder`] 契约，若 [`Context`](spark_core::context::Context) 已取消则立即返回取消错误，否则调用 [`TcpListener::bind_with_config`]。
+/// - `build`：遵循 [`TransportBuilder`] 契约，若 [`Context`](spark_core::context::Context) 已取消则立即返回取消错误，否则调用 [`TcpServerChannel::bind_with_config`]。
 ///
 /// ## 风险提示（Trade-offs）
 /// - Builder 被消费后无法复用，若需不同配置请分别构建；
 /// - 当前仅封装 `linger`，后续扩展需保持方法命名一致性，以便阅读者快速识别。
 #[derive(Clone, Debug)]
-pub struct TcpListenerBuilder {
+pub struct TcpServerChannelBuilder {
     addr: TransportSocketAddr,
     default_config: TcpSocketConfig,
 }
 
-impl TcpListenerBuilder {
+impl TcpServerChannelBuilder {
     /// 基于监听地址创建 Builder。
     pub fn new(addr: TransportSocketAddr) -> Self {
         Self {
@@ -314,8 +317,8 @@ impl TcpListenerBuilder {
     }
 }
 
-impl TransportBuilder for TcpListenerBuilder {
-    type Output = TcpListener;
+impl TransportBuilder for TcpServerChannelBuilder {
+    type Output = TcpServerChannel;
 
     type BuildFuture<'ctx>
         = Pin<Box<dyn Future<Output = spark_core::Result<Self::Output, CoreError>> + Send + 'ctx>>
@@ -334,12 +337,12 @@ impl TransportBuilder for TcpListenerBuilder {
             if cancelled {
                 return Err(error::cancelled_error(error::BIND));
             }
-            TcpListener::bind_with_config(addr, config).await
+            TcpServerChannel::bind_with_config(addr, config).await
         })
     }
 }
 
-impl ServerChannelTrait for TcpListener {
+impl ServerChannel for TcpServerChannel {
     type Error = CoreError;
     type AcceptCtx<'ctx> = CallContext;
     type ShutdownCtx<'ctx> = Context<'ctx>;
@@ -370,7 +373,7 @@ impl ServerChannelTrait for TcpListener {
     }
 
     fn local_addr(&self) -> spark_core::Result<TransportSocketAddr, CoreError> {
-        Ok(TcpListener::local_addr(self))
+        Ok(TcpServerChannel::local_addr(self))
     }
 
     fn accept<'ctx>(&'ctx self, ctx: &'ctx Self::AcceptCtx<'ctx>) -> Self::AcceptFuture<'ctx> {
@@ -395,7 +398,7 @@ impl ServerChannelTrait for TcpListener {
 #[allow(dead_code)]
 fn _assert_tcp_server_channel()
 where
-    TcpListener: ServerChannelTrait<Error = CoreError, Connection = TcpChannel>,
+    TcpServerChannel: ServerChannel<Error = CoreError, Connection = TcpChannel>,
 {
 }
 
@@ -411,12 +414,12 @@ mod tests {
     use spark_core::pipeline::{ChainBuilder, InitializerDescriptor, PipelineInitializer};
     use spark_core::platform::runtime::CoreServices;
 
-    /// 验证 `TcpListenerBuilder` 能够将自定义的 `linger` 配置写入监听器默认配置。
+    /// 验证 `TcpServerChannelBuilder` 能够将自定义的 `linger` 配置写入监听器默认配置。
     #[tokio::test(flavor = "multi_thread")]
     async fn builder_applies_default_config() {
         let addr: SocketAddr = "127.0.0.1:0".parse().expect("parse addr");
         let linger = Some(Duration::from_secs(2));
-        let listener = TcpListenerBuilder::new(TransportSocketAddr::from(addr))
+        let listener = TcpServerChannelBuilder::new(TransportSocketAddr::from(addr))
             .with_linger(linger)
             .build(&CallContext::builder().build().execution())
             .await
@@ -454,7 +457,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn accept_without_selector_returns_error() {
         let addr: SocketAddr = "127.0.0.1:0".parse().expect("parse addr");
-        let listener = TcpListener::bind(TransportSocketAddr::from(addr))
+        let listener = TcpServerChannel::bind(TransportSocketAddr::from(addr))
             .await
             .expect("bind listener");
         let call_ctx = CallContext::builder().build();
@@ -474,7 +477,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn accept_binds_pipeline_metadata() {
         let addr: SocketAddr = "127.0.0.1:0".parse().expect("parse addr");
-        let listener = TcpListener::bind(TransportSocketAddr::from(addr))
+        let listener = TcpServerChannel::bind(TransportSocketAddr::from(addr))
             .await
             .expect("bind listener");
         let call_ctx = CallContext::builder().build();
