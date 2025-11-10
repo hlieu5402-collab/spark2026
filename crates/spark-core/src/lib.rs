@@ -62,7 +62,7 @@ pub use governance::{
 };
 
 pub mod data_plane;
-pub use data_plane::{buffer, codec, initializer, pipeline, protocol, service, transport};
+pub use data_plane::{buffer, codec, pipeline, initializer, protocol, service, transport};
 
 pub mod platform;
 #[cfg(feature = "std")]
