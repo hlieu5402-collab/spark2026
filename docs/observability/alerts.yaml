@@ -20,9 +20,9 @@ groups:
             最近 5 分钟内，服务 {{ $labels.service_name }} (route={{ $labels.route_id }}) 的错误率达到 {{ $value | humanizePercentage }}。
             请检查依赖或回滚风险变更。
 
-      - alert: SparkTransportConnectionFailures
+      - alert: SparkTransportChannelFailures
         expr: |
-          sum(increase(spark_transport_connection_failures[1m])) > 0
+          sum(increase(spark_transport_channel_failures[1m])) > 0
         for: 2m
         labels:
           severity: critical
