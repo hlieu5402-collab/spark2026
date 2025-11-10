@@ -297,7 +297,7 @@ impl ChannelTrait for TlsChannel {
 }
 
 #[allow(dead_code)]
-fn _assert_tls_transport_connection()
+fn _assert_tls_channel_contract()
 where
     TlsChannel: ChannelTrait<Error = CoreError>,
 {

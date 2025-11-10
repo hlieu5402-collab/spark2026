@@ -1,7 +1,7 @@
 # spark-transport-quic
 
 ## 职责边界
-- 基于 `quinn` 实现 QUIC 传输通道，提供多路流、0-RTT 与连接迁移能力，同时保持与 `spark-core::transport::connection` 契约一致。
+- 基于 `quinn` 实现 QUIC 传输通道，提供多路流、0-RTT 与连接迁移能力，同时保持与 `spark-core::transport::channel` 契约一致。
 - 注入 `CallContext` 的取消、截止与预算逻辑，确保每条流与连接共享统一的半关闭与背压语义。
 - 输出 `SecurityContextSnapshot`、路径验证与拥塞指标，便于观测与安全审计。
 

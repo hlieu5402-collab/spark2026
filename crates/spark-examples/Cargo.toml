@@ -33,6 +33,7 @@ std = ["alloc"]
 
 [dependencies]
 spark-core = { workspace = true, default-features = false, features = ["alloc"] }
+spark-hosting = { workspace = true, default-features = false, features = ["alloc"] }
 spin = { workspace = true, default-features = false, features = ["mutex"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

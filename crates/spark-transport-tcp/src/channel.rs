@@ -649,7 +649,7 @@ impl ChannelTrait for TcpChannel {
 }
 
 #[allow(dead_code)]
-fn _assert_tcp_transport_connection()
+fn _assert_tcp_channel_contract()
 where
     TcpChannel: ChannelTrait<Error = CoreError>,
 {

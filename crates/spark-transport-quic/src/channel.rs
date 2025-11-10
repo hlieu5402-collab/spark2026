@@ -367,7 +367,7 @@ impl ChannelTrait for QuicChannel {
 }
 
 #[allow(dead_code)]
-fn _assert_quic_transport_connection()
+fn _assert_quic_channel_contract()
 where
     QuicChannel: ChannelTrait<Error = CoreError>,
 {
