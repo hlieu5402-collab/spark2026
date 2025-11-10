@@ -10,4 +10,6 @@
 //! - **注意事项 (Trade-offs & Gotchas)**：兼容层牺牲了一部分命名的显式性，但换来路径
 //!   稳定性；未来若彻底移除旧接口，应在发布说明中明确告知并引导迁移到新的别名。
 
-pub use spark_router::pipeline::{AppRouterHandler, ApplicationRouter, RouterHandler};
+pub use spark_router::pipeline::{
+    AppRouterHandler, ApplicationRouter, ApplicationRouterInitializer, RouterHandler,
+};

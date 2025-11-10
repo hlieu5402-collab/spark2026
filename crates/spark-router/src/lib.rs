@@ -21,8 +21,9 @@ use spark_core::{SparkError, buffer::PipelineMessage};
 pub mod pipeline;
 
 pub use pipeline::{
-    ApplicationRouter, ExtensionsRoutingContextBuilder, RouterContextSnapshot, RouterContextState,
-    RoutingContextBuilder, RoutingContextParts, load_router_context, store_router_context,
+    ApplicationRouter, ApplicationRouterInitializer, ExtensionsRoutingContextBuilder,
+    RouterContextSnapshot, RouterContextState, RoutingContextBuilder, RoutingContextParts,
+    load_router_context, store_router_context,
 };
 
 /// 为兼容旧版 API 保留的别名：`AppRouterHandler`。
