@@ -6,7 +6,8 @@
 //! - **意图（Why）**：将 `spark-core` 中的热插拔控制器打包为独立 Crate，供业务侧或科研实验在不直接依赖
 //!   内核实现细节的情况下复用高性能调度能力。
 //! - **逻辑（How）**：通过类型别名与再导出，将 `HotSwapPipeline` 暴露为 `PipelineController`，并保留原有
-//!   API/特性开关；调用者只需在此 Crate 中构造控制器，即可获得完整的 Handler 管理与 Middleware 装配能力。
+//!   API/特性开关；调用者只需在此 Crate 中构造控制器，即可获得完整的 Handler 管理与 PipelineInitializer
+//!   （旧称 Middleware）装配能力。
 //! - **契约（What）**：Crate 默认启用 `alloc` 特性，可在 `no_std` 环境中运行；若启用 `std` 特性，将自动联动
 //!   `spark-core/std` 以提供更丰富的运行时支持。
 //! - **风险与权衡（Trade-offs）**：复用核心实现意味着链路语义与 `spark-core` 同步更新；若需实验性控制器，
