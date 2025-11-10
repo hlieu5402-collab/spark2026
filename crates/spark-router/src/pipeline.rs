@@ -20,14 +20,14 @@ use spark_core::{
     transport::intent::ConnectionIntent,
 };
 
-/// AppRouterHandler 模块内使用的扩展存储键类型，占位以提供稳定的 `TypeId`。
+/// ApplicationRouter 模块内使用的扩展存储键类型，占位以提供稳定的 `TypeId`。
 struct RouterContextSlot;
 
 /// `RouterContextState` 聚合路由判定所需的上下文快照。
 ///
 /// # 教案式说明
 /// - **意图（Why）**：将跨组件收集的路由意图、连接属性与动态元数据集中管理，避免 Handler 彼此约定魔法字段。
-/// - **定位（Where）**：存放于 `Channel` 的 [`ExtensionsMap`] 中，供 [`AppRouterHandler`] 在入站阶段读取。
+/// - **定位（Where）**：存放于 `Channel` 的 [`ExtensionsMap`] 中，供 [`ApplicationRouter`] 在入站阶段读取。
 /// - **逻辑（How）**：提供快照式只读访问接口，并在需要时克隆出独立副本，确保在异步路由判定期间不会悬垂引用。
 /// - **契约（What）**：
 ///   - `intent`：请求方声明的路由意图，必须完整描述目标模式；
@@ -47,7 +47,7 @@ impl RouterContextState {
     /// # 教案式说明
     /// - **前置条件**：`intent` 必须指向合法的 [`RoutePattern`](spark_core::router::RoutePattern)，调用方应在上游完成语义校验；
     /// - **执行步骤**：初始化时动态元数据置空，留待后续组件补充；
-    /// - **后置条件**：返回的状态可立即存入扩展映射，并被 [`AppRouterHandler`] 读取。
+    /// - **后置条件**：返回的状态可立即存入扩展映射，并被 [`ApplicationRouter`] 读取。
     pub fn new(intent: RoutingIntent) -> Self {
         Self {
             intent,
@@ -92,7 +92,7 @@ impl RouterContextState {
     }
 }
 
-/// 供 [`AppRouterHandler`] 使用的只读快照。
+/// 供 [`ApplicationRouter`] 使用的只读快照。
 #[derive(Clone, Debug)]
 pub struct RouterContextSnapshot {
     pub intent: RoutingIntent,
@@ -154,7 +154,7 @@ impl RoutingContextParts {
     }
 }
 
-/// 为 [`AppRouterHandler`] 提供请求上下文所需材料的构造器契约。
+/// 为 [`ApplicationRouter`] 提供请求上下文所需材料的构造器契约。
 ///
 /// # 教案式说明
 /// - **意图（Why）**：不同接入层在 [`PipelineMessage`] 中承载上下文的方式各异，
@@ -215,7 +215,7 @@ impl RoutingContextBuilder for ExtensionsRoutingContextBuilder {
 ///
 /// # 教案式说明
 /// - **意图（Why）**：将执行器、调用上下文、写通道与日志器等多项依赖打包，
-///   既便于 [`AppRouterHandler::spawn_service_task`] 复用，也让参数列表控制在 Clippy 建议范围内。
+///   既便于 [`ApplicationRouter::spawn_service_task`] 复用，也让参数列表控制在 Clippy 建议范围内。
 /// - **逻辑（How）**：在 Handler 中就地构造 `ServiceDispatchContext`，
 ///   持有 [`spark_core::contract::CallContext`] 所有权，并克隆通道 `Arc` 与追踪上下文；随后交由异步任务消费。
 /// - **契约（What）**：
@@ -234,7 +234,7 @@ struct ServiceDispatchContext<'exec> {
     trace: spark_core::observability::TraceContext,
 }
 
-/// `AppRouterHandler` 负责终止入站事件并将请求转交给对象层 Router。
+/// `ApplicationRouter` 负责终止入站事件并将请求转交给对象层 Router。
 ///
 /// # 教案式说明
 /// - **意图（Why）**：将 Pipeline 最终的业务请求映射到 [`DynRouter`]，实现“Handler → Router → Service” 的桥接，
@@ -250,13 +250,13 @@ struct ServiceDispatchContext<'exec> {
 /// - **风险（Trade-offs）**：
 ///   - 通过 `unsafe` 延长 `Logger` 引用生命周期以便在异步任务中使用，
 ///     假定 `HotSwapContext` 内部使用 `Arc` 持有该资源；若未来上下文实现发生变化，需同步评估安全性。
-pub struct AppRouterHandler {
+pub struct ApplicationRouter {
     router: Arc<dyn DynRouter>,
     context_builder: Arc<dyn RoutingContextBuilder>,
     descriptor: InitializerDescriptor,
 }
 
-impl Clone for AppRouterHandler {
+impl Clone for ApplicationRouter {
     fn clone(&self) -> Self {
         Self {
             router: Arc::clone(&self.router),
@@ -266,7 +266,7 @@ impl Clone for AppRouterHandler {
     }
 }
 
-impl AppRouterHandler {
+impl ApplicationRouter {
     /// 构造新的路由处理器实例。
     ///
     /// # 参数说明
@@ -307,7 +307,7 @@ impl AppRouterHandler {
         let log_future = async move {
             if let Err(err) = service_task.await {
                 logger.error(
-                    "app-router-handler encountered error while invoking service",
+                    "application-router encountered error while invoking service",
                     Some(&err),
                     Some(&trace_for_log),
                 );
@@ -359,7 +359,7 @@ impl AppRouterHandler {
     }
 }
 
-impl Handler for AppRouterHandler {
+impl Handler for ApplicationRouter {
     fn direction(&self) -> HandlerDirection {
         HandlerDirection::Inbound
     }
@@ -369,12 +369,12 @@ impl Handler for AppRouterHandler {
     }
 
     fn clone_inbound(&self) -> Option<Arc<dyn InboundHandler>> {
-        let handler: Arc<AppRouterHandler> = Arc::new(self.clone());
+        let handler: Arc<ApplicationRouter> = Arc::new(self.clone());
         Some(handler)
     }
 }
 
-impl InboundHandler for AppRouterHandler {
+impl InboundHandler for ApplicationRouter {
     fn describe(&self) -> InitializerDescriptor {
         self.descriptor.clone()
     }
@@ -388,13 +388,47 @@ impl InboundHandler for AppRouterHandler {
             Ok(parts) => parts,
             Err(err) => {
                 ctx.logger().error(
-                    "app-router-handler failed to build routing context",
+                    "application-router failed to build routing context",
                     Some(&err),
                     Some(ctx.trace_context()),
                 );
                 return;
             }
         };
+
+        // --- 请求元数据审查逻辑 --------------------------------------------------------
+        // 教案式说明：
+        // 1. **意图 (Why)**：业务路由往往依赖帧头/动态标签等元数据。若消息缺乏这类字段，路由器
+        //    可能只得依赖默认路由或直接拒绝，为了在热路径中即时发现这类异常，我们在 Handler 内
+        //    主动检测并输出诊断日志。
+        // 2. **逻辑 (How)**：
+        //    - 调用 [`PipelineMessage::user_kind`] 获取业务帧类型；
+        //    - 读取 `RoutingContextParts::dynamic_metadata` 判断是否已填充标签；
+        //    - 若两者任一缺失，则输出 DEBUG 日志，帮助排查上游编解码/上下文构造器是否遗漏。
+        // 3. **契约 (What)**：
+        //    - 仅在 `message_kind` 或 `metadata` 缺失时记录日志，避免为健康流量增加噪音；
+        //    - 日志附带 `router.metadata_present`（布尔）与 `router.message_kind`（字符串）两个观测字段。
+        // 4. **权衡 (Trade-offs)**：
+        //    - 选择 DEBUG 级别以降低噪音，但依然为排查“路由意图缺失”问题提供第一手线索；
+        //    - 诊断逻辑只读数据，不会在消息路径上复制缓冲或修改上下文，确保性能损耗可忽略。
+        let message_kind = msg.user_kind();
+        let metadata_empty = parts.dynamic_metadata.iter().next().is_none();
+        if message_kind.is_none() || metadata_empty {
+            let mut attributes = OwnedAttributeSet::new();
+            attributes.push_owned(
+                "router.metadata_present",
+                !metadata_empty,
+            );
+            attributes.push_owned(
+                "router.message_kind",
+                message_kind.unwrap_or("<unknown>").to_owned(),
+            );
+            ctx.logger().debug_with_fields(
+                "application-router inspected inbound message metadata",
+                attributes.as_slice(),
+                Some(ctx.trace_context()),
+            );
+        }
 
         let routing_ctx = RoutingContext::new(
             ctx.execution_context(),
@@ -417,7 +451,7 @@ impl InboundHandler for AppRouterHandler {
                         .join("; ");
                     attributes.push_owned("router.warnings", joined);
                     ctx.logger().warn_with_fields(
-                        "app-router-handler received decision warnings",
+                        "application-router received decision warnings",
                         attributes.as_slice(),
                         Some(ctx.trace_context()),
                     );
@@ -446,7 +480,7 @@ impl InboundHandler for AppRouterHandler {
                     ),
                 };
                 ctx.logger().error(
-                    "app-router-handler failed to resolve route",
+                    "application-router failed to resolve route",
                     Some(&spark_error),
                     Some(ctx.trace_context()),
                 );
@@ -468,7 +502,7 @@ impl InboundHandler for AppRouterHandler {
 /// 将 [`Context`] 暂借的通道引用转换为拥有型 [`Arc`]。
 ///
 /// # 教案式说明
-/// - **意图（Why）**：`AppRouterHandler` 在异步任务中需要写回响应，必须延长 [`Channel`](spark_core::pipeline::channel::Channel)
+/// - **意图（Why）**：`ApplicationRouter` 在异步任务中需要写回响应，必须延长 [`Channel`](spark_core::pipeline::channel::Channel)
 ///   的生命周期；
 /// - **逻辑（How）**：利用 `HotSwapContext` 内部以 [`Arc`] 保存通道的事实，先手动增加强引用计数，再通过
 ///   [`Arc::from_raw`] 恢复拥有权，确保未来在任务结束时安全释放；
