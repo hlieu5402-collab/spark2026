@@ -3,7 +3,8 @@
 pub mod generic;
 pub mod object;
 
-pub use generic::{ServerTransport, TransportFactory};
+pub use super::server_channel::ServerChannel;
+pub use generic::TransportFactory;
 pub use object::{
-    DynServerTransport, DynTransportFactory, ServerTransportObject, TransportFactoryObject,
+    DynServerChannel, DynTransportFactory, ServerChannelObject, TransportFactoryObject,
 };

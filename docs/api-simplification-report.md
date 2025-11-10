@@ -12,7 +12,7 @@
 | ---- | ---------- | ---- | ---- | ---- |
 | T1 | `runtime::AsyncRuntime` + `runtime::TaskExecutor` + `runtime::TimeDriver` | 合并为 `AsyncRuntime` 的扩展特性或提供统一 facade | 三者在多数实现（Tokio、Glommio）中由同一运行时承担；调用方常常需要三者同时注入 | 可能降低对极简执行器的灵活度，需要通过 feature gate 保留精简实现 |
 | T2 | `pipeline::InboundHandler` + `pipeline::OutboundHandler` | 使用单一 `PipelineStage` Trait + 方向枚举 | 大量 Handler 同时实现两个 Trait，合并后可减少样板代码并允许共享状态机 | 合并后可能影响依赖泛型方向优化的实现，需要在新 Trait 中保留方向标识 |
-| T3 | `transport::ServerTransport` + `transport::Channel` | 提供 `TransportEndpoint` Facade | 两者在 QUIC/HTTP3 等协议中共享大量代码（握手、流管理、TLS 参数）；外观可对外隐藏实现细节 | Facade 需要覆盖所有生命周期方法，若实现差异过大（如仅客户端支持 0-RTT）可能导致接口臃肿 |
+| T3 | `transport::ServerChannel` + `transport::Channel` | 提供 `TransportEndpoint` Facade | 两者在 QUIC/HTTP3 等协议中共享大量代码（握手、流管理、TLS 参数）；外观可对外隐藏实现细节 | Facade 需要覆盖所有生命周期方法，若实现差异过大（如仅客户端支持 0-RTT）可能导致接口臃肿 |
 | T4 | `observability::Logger` + `observability::MetricsProvider` + `observability::OpsEventBus` | 引入 `ObservabilityFacade` | 在运行时注入服务时往往需要三者组合；统一 Facade 可减少依赖注入层的 Arc 克隆，并为扩展字段提供集中配置点 | Facade 容易变成“上帝对象”，需通过 trait object 组合或 builder 避免侵入性调整 |
 
 ## 3. 简化建议

@@ -4,7 +4,7 @@ use spark_core::{
     Result as CoreResult, async_trait,
     context::Context,
     pipeline::DynPipelineFactory,
-    transport::{DynServerTransport, DynTransportFactory, ListenerConfig},
+    transport::{DynServerChannel, DynTransportFactory, ListenerConfig},
 };
 
 /// `TransportFactoryExt` 为对象层传输工厂补充统一的 `listen` 语义。
@@ -18,7 +18,7 @@ use spark_core::{
 /// ## 解析逻辑 (How)
 /// - 接收 `Context` 以继承取消/截止约束；
 /// - 透传 `ListenerConfig` 与 Pipeline 工厂给传输实现，由其按协议完成监听器构建；
-/// - 返回对象层 [`DynServerTransport`]，供宿主保存并在后续执行关闭或观测操作。
+/// - 返回对象层 [`DynServerChannel`]，供宿主保存并在后续执行关闭或观测操作。
 ///
 /// ## 契约定义 (What)
 /// - `ctx`：调用时的执行上下文，要求生命周期覆盖监听器构建过程；
@@ -38,7 +38,7 @@ pub trait TransportFactoryExt {
         ctx: &Context<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynPipelineFactory>,
-    ) -> CoreResult<Box<dyn DynServerTransport>>;
+    ) -> CoreResult<Box<dyn DynServerChannel>>;
 }
 
 #[async_trait]
@@ -51,7 +51,7 @@ where
         ctx: &Context<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynPipelineFactory>,
-    ) -> CoreResult<Box<dyn DynServerTransport>> {
+    ) -> CoreResult<Box<dyn DynServerChannel>> {
         self.bind_dyn(ctx, config, pipeline_factory).await
     }
 }

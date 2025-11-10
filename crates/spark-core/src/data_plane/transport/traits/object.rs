@@ -1,30 +1,30 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use crate::{
-    CoreError, async_trait, cluster::ServiceDiscovery, context::Context, pipeline::Channel,
-    sealed::Sealed,
+    CoreError, async_trait, cluster::ServiceDiscovery, context::Context, contract::CallContext,
+    pipeline::Channel, sealed::Sealed,
 };
 
 use crate::pipeline::factory::{DynPipelineFactory, DynPipelineFactoryAdapter};
 
 use super::super::{
     TransportSocketAddr, factory::ListenerConfig, intent::ConnectionIntent,
-    server::ListenerShutdown,
+    server::ListenerShutdown, server_channel::ServerChannel,
 };
-use super::generic::{
-    ServerTransport as GenericServerTransport, TransportFactory as GenericTransportFactory,
-};
+use super::generic::TransportFactory as GenericTransportFactory;
 
 /// 对象层监听器接口，供插件系统与脚本运行时存放在 `dyn` 容器中。
 ///
 /// # 设计动机（Why）
 /// - 在运行时动态注册的传输实现需要统一的对象安全接口。
-/// - 与泛型层 [`GenericServerTransport`] 保持语义一致，便于同一实现跨层复用。
+/// - 与泛型层 [`ServerChannel`] 保持语义一致，便于同一实现跨层复用。
 ///
 /// # 行为逻辑（How）
-/// - `local_addr_dyn` 返回监听地址；
+/// - `scheme_dyn` 返回协议名；
+/// - `local_addr_dyn` 查询监听地址；
+/// - `accept_dyn` 接受新连接并返回对象层通道；
 /// - `shutdown_dyn` 执行优雅关闭并返回 `async fn` 结果；宏 [`crate::async_trait`] 会在对象层完成 Future 装箱；
-/// - 适配器 [`ServerTransportObject`] 将泛型实现桥接至对象层。
+/// - 适配器 [`ServerChannelObject`] 将泛型实现桥接至对象层。
 ///
 /// # 契约说明（What）
 /// - **前置条件**：监听器必须处于运行状态；
@@ -34,24 +34,51 @@ use super::generic::{
 /// # 风险提示（Trade-offs）
 /// - 对象层引入一次堆分配与虚表跳转；在性能敏感场景应优先考虑泛型接口。
 #[async_trait]
-pub trait DynServerTransport: Send + Sync + Sealed {
+pub trait DynServerChannel: Send + Sync + Sealed {
+    /// 返回协议标识。
+    fn scheme_dyn(&self) -> &'static str;
+
     /// 返回监听绑定地址。
     ///
     /// # 教案级注释
     ///
     /// ## 意图（Why）
-    /// - 维持与泛型层一致的上下文签名，使对象层桥接器可无差异透传 [`Context`]。
+    /// - 保留 [`Context`] 形参以维持接口对称，便于未来在对象层注入审计/观测逻辑；
+    ///   尽管当前泛型层的 `local_addr` 已不再消费上下文，但我们仍保留该入口以避免
+    ///   上层 API 发生二次破坏性变更。
     ///
     /// ## 逻辑（How）
-    /// - 调用内部泛型实现的 `local_addr`，并将 `ctx` 原样传递。
+    /// - 调用内部泛型实现的 `local_addr` 并返回其结果；
+    /// - `ctx` 暂未被使用，但会在对象层保留，保持未来扩展空间。
     ///
     /// ## 契约（What）
     /// - `ctx`: [`Context`]，当前仅用于接口统一；不会被消费。
-    /// - 返回：监听器绑定的 [`TransportSocketAddr`]。
+    /// - 返回：监听器绑定的 [`TransportSocketAddr`]，失败时给出 [`CoreError`]。
     ///
     /// ## 考量（Trade-offs）
     /// - 统一签名可在动态派发中避免特判，后续若需根据 `ctx` 记录审计信息亦可拓展。
-    fn local_addr_dyn(&self, ctx: &Context<'_>) -> TransportSocketAddr;
+    fn local_addr_dyn(&self, ctx: &Context<'_>) -> crate::Result<TransportSocketAddr, CoreError>;
+
+    /// 接受新的入站连接。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 在对象层保留与泛型实现一致的接受语义，使宿主可以直接获取对象安全的 [`Channel`] 实例；
+    /// - 允许调用方在 `CallContext` 上施加取消/截止约束，从而控制监听器的阻塞行为。
+    ///
+    /// ## 逻辑（How）
+    /// - 调用泛型层 [`ServerChannel::accept`]，
+    ///   再将返回的通道装箱为 `Box<dyn Channel>`；
+    /// - 对象层无需关心具体通道类型，仍能通过 [`Channel`] 契约执行读写或关闭操作。
+    ///
+    /// ## 契约（What）
+    /// - `ctx`: [`CallContext`]，提供取消与截止时间；
+    /// - 返回：监听器接受到的通道及其对端地址，失败时给出结构化 [`CoreError`]。
+    async fn accept_dyn(
+        &self,
+        ctx: &CallContext,
+    ) -> crate::Result<(Box<dyn Channel>, TransportSocketAddr), CoreError>;
 
     /// 根据计划执行优雅关闭。
     ///
@@ -78,16 +105,26 @@ pub trait DynServerTransport: Send + Sync + Sealed {
 }
 
 /// 将泛型监听器适配为对象层实现。
-pub struct ServerTransportObject<T>
+pub struct ServerChannelObject<T>
 where
-    T: GenericServerTransport,
+    T: for<'ctx> ServerChannel<
+            Error = CoreError,
+            AcceptCtx<'ctx> = CallContext,
+            ShutdownCtx<'ctx> = Context<'ctx>,
+        >,
+    T::Connection: Channel + 'static,
 {
     inner: Arc<T>,
 }
 
-impl<T> ServerTransportObject<T>
+impl<T> ServerChannelObject<T>
 where
-    T: GenericServerTransport,
+    T: for<'ctx> ServerChannel<
+            Error = CoreError,
+            AcceptCtx<'ctx> = CallContext,
+            ShutdownCtx<'ctx> = Context<'ctx>,
+        >,
+    T::Connection: Channel + 'static,
 {
     /// 构造新的对象层监听器包装器。
     pub fn new(inner: T) -> Self {
@@ -103,12 +140,29 @@ where
 }
 
 #[async_trait]
-impl<T> DynServerTransport for ServerTransportObject<T>
+impl<T> DynServerChannel for ServerChannelObject<T>
 where
-    T: GenericServerTransport,
+    T: for<'ctx> ServerChannel<
+            Error = CoreError,
+            AcceptCtx<'ctx> = CallContext,
+            ShutdownCtx<'ctx> = Context<'ctx>,
+        >,
+    T::Connection: Channel + 'static,
 {
-    fn local_addr_dyn(&self, ctx: &Context<'_>) -> TransportSocketAddr {
-        self.inner.local_addr(ctx)
+    fn scheme_dyn(&self) -> &'static str {
+        self.inner.scheme()
+    }
+
+    fn local_addr_dyn(&self, _ctx: &Context<'_>) -> crate::Result<TransportSocketAddr, CoreError> {
+        self.inner.local_addr()
+    }
+
+    async fn accept_dyn(
+        &self,
+        ctx: &CallContext,
+    ) -> crate::Result<(Box<dyn Channel>, TransportSocketAddr), CoreError> {
+        let (connection, addr) = self.inner.accept(ctx).await?;
+        Ok((Box::new(connection) as Box<dyn Channel>, addr))
     }
 
     async fn shutdown_dyn(
@@ -116,7 +170,7 @@ where
         ctx: &Context<'_>,
         plan: ListenerShutdown,
     ) -> crate::Result<(), CoreError> {
-        GenericServerTransport::shutdown(&*self.inner, ctx, plan).await
+        self.inner.shutdown(ctx, plan).await
     }
 }
 
@@ -182,7 +236,7 @@ pub trait DynTransportFactory: Send + Sync + Sealed {
         ctx: &Context<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynPipelineFactory>,
-    ) -> crate::Result<Box<dyn DynServerTransport>, CoreError>;
+    ) -> crate::Result<Box<dyn DynServerChannel>, CoreError>;
 
     /// 建立客户端通道。
     ///
@@ -249,11 +303,11 @@ where
         ctx: &Context<'_>,
         config: ListenerConfig,
         pipeline_factory: Arc<dyn DynPipelineFactory>,
-    ) -> crate::Result<Box<dyn DynServerTransport>, CoreError> {
+    ) -> crate::Result<Box<dyn DynServerChannel>, CoreError> {
         let adapter = DynPipelineFactoryAdapter::new(pipeline_factory);
         let server =
             GenericTransportFactory::bind(&*self.inner, ctx, config, Arc::new(adapter)).await?;
-        Ok(Box::new(ServerTransportObject::new(server)) as Box<dyn DynServerTransport>)
+        Ok(Box::new(ServerChannelObject::new(server)) as Box<dyn DynServerChannel>)
     }
 
     async fn connect_dyn(

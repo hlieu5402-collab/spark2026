@@ -5,7 +5,7 @@ use spark_core::{
     contract::CallContext,
     pipeline::DynPipelineFactory,
     runtime::CoreServices,
-    transport::{DynServerTransport, DynTransportFactory, ListenerConfig},
+    transport::{DynServerChannel, DynTransportFactory, ListenerConfig},
 };
 use spin::Mutex;
 
@@ -26,7 +26,7 @@ impl<T> PipelineFactory for T where T: DynPipelineFactory {}
 ///
 /// ## 解析逻辑 (How)
 /// - 构造阶段记录运行时依赖（`CoreServices`）、监听配置与对象层 `DynTransportFactory`；
-/// - `run` 方法根据默认 `CallContext` 派生 `Context`，调用扩展的 `listen` 启动监听器，并将返回的 `DynServerTransport` 缓存；
+/// - `run` 方法根据默认 `CallContext` 派生 `Context`，调用扩展的 `listen` 启动监听器，并将返回的 `DynServerChannel` 缓存；
 /// - 监听器缓存使用 `spin::Mutex` 封装，保证在 `no_std + alloc` 环境中同样安全；后续的优雅关闭可以复用该缓存。
 ///
 /// ## 契约定义 (What)
@@ -44,7 +44,7 @@ pub struct ExamplesServer {
     services: CoreServices,
     config: ListenerConfig,
     transport_factory: Arc<dyn DynTransportFactory>,
-    listener: Mutex<Option<Box<dyn DynServerTransport>>>,
+    listener: Mutex<Option<Box<dyn DynServerChannel>>>,
 }
 
 impl ExamplesServer {
@@ -82,8 +82,8 @@ impl ExamplesServer {
     /// ## 解析逻辑 (How)
     /// 1. 构造最小化的 [`CallContext`] 并派生 `Context`，确保 `listen` 调用遵循取消/截止契约；
     /// 2. 调用扩展方法 `TransportFactoryExt::listen`，将监听配置与 Pipeline 工厂交给传输实现；
-    /// 3. 使用内部 `Mutex` 缓存成功返回的 `DynServerTransport`，自动释放旧句柄；
-    /// 4. 暂未开启实际的接受循环——`DynServerTransport` 目前尚未公开 `accept` 契约，待后续任务补齐。
+    /// 3. 使用内部 `Mutex` 缓存成功返回的 `DynServerChannel`，自动释放旧句柄；
+    /// 4. 暂未开启实际的接受循环——`DynServerChannel` 目前尚未公开 `accept` 契约，待后续任务补齐。
     ///
     /// ## 契约定义 (What)
     /// - `controller_factory`: 负责构建 Pipeline 的对象层工厂，调用方需确保其中 Handler 满足线程安全；
@@ -94,7 +94,7 @@ impl ExamplesServer {
     /// ## 风险提示 (Trade-offs & Gotchas)
     /// - 当前缺乏实际的接受循环，因此调用者仍需结合外部任务或后续版本完成连接处理；
     /// - 若 `listen` 阶段失败，缓存保持原状，不会覆盖旧的监听器；
-    /// - TODO(ember-accept-loop)：待 `DynServerTransport` 暴露 `accept` 契约后，需要在此方法中启动异步循环创建 Pipeline，以避免长时间只监听不处理。
+    /// - TODO(ember-accept-loop)：待 `DynServerChannel` 暴露 `accept` 契约后，需要在此方法中启动异步循环创建 Pipeline，以避免长时间只监听不处理。
     pub async fn run(&self, controller_factory: Arc<dyn PipelineFactory>) -> CoreResult<()> {
         let call_context = CallContext::builder().build();
         let execution = call_context.execution();

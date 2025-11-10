@@ -50,7 +50,7 @@ pub use params::TransportParams;
 pub use server::{ListenerShutdown, describe_shutdown_target};
 pub use server_channel::ServerChannel;
 pub use shutdown::ShutdownDirection;
-pub use traits::generic::{ServerTransport, TransportFactory};
+pub use traits::generic::TransportFactory;
 pub use traits::object::{
-    DynServerTransport, DynTransportFactory, ServerTransportObject, TransportFactoryObject,
+    DynServerChannel, DynTransportFactory, ServerChannelObject, TransportFactoryObject,
 };

@@ -5,7 +5,10 @@ use crate::{
 };
 use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use spark_core::transport::TransportBuilder;
-use spark_core::transport::{ServerChannel as ServerChannelTrait, ShutdownDirection};
+use spark_core::transport::{
+    ListenerShutdown,
+    ServerChannel as ServerChannelTrait,
+};
 use std::boxed::Box;
 use std::{future::Future, pin::Pin, time::Duration};
 use tokio::net::TcpListener as TokioTcpListener;
@@ -279,7 +282,7 @@ impl ServerChannelTrait for TcpListener {
     fn shutdown<'ctx>(
         &'ctx self,
         _ctx: &'ctx Self::ShutdownCtx<'ctx>,
-        _direction: ShutdownDirection,
+        _plan: ListenerShutdown,
     ) -> Self::ShutdownFuture<'ctx> {
         Box::pin(async move { Ok(()) })
     }
