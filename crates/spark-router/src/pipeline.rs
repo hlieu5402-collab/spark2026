@@ -7,8 +7,8 @@ use spark_core::{
     error::codes,
     observability::{Logger, OwnedAttributeSet},
     pipeline::{
-        ChainBuilder, Context, Handler, HandlerDirection, InboundHandler,
-        PipelineInitializer, extensions::ExtensionsMap, initializer::InitializerDescriptor,
+        ChainBuilder, Context, Handler, HandlerDirection, InboundHandler, PipelineInitializer,
+        extensions::ExtensionsMap, initializer::InitializerDescriptor,
     },
     router::{
         DynRouter, RouteDecisionObject, RouteError,
@@ -348,6 +348,28 @@ impl ApplicationRouterInitializer {
         self.handler.describe()
     }
 
+    /// 暴露 Handler 契约对象，供运行时热插拔或自定义装配流程复用。
+    ///
+    /// # 教案级注释
+    /// - **意图（Why）**：当调用方希望绕过 `ChainBuilder::register_inbound`，直接使用
+    ///   [`Pipeline::add_handler_after`](spark_core::pipeline::Pipeline::add_handler_after)
+    ///   等 Handler 契约接口时，需要获得 `Arc<dyn Handler>`；
+    ///   `handler_arc` 提供统一出口，避免外部重复编写克隆逻辑；
+    /// - **体系位置（Where）**：运行在 `PipelineInitializer::configure` 或控制器热更新
+    ///   场景中，通常在判断是否启用应用路由后调用；
+    /// - **执行逻辑（How）**：
+    ///   1. 克隆内部的 [`ApplicationRouter`] 实例（保持幂等语义）；
+    ///   2. 调用 [`ApplicationRouter::handler_arc`] 将其转换为 `Arc<dyn Handler>`；
+    /// - **契约（What）**：
+    ///   - **返回值**：`Arc<dyn Handler>`，满足 `Send + Sync + 'static`，可安全传递至任意线程；
+    ///   - **前置条件**：初始化器内部的路由器与上下文构造器均保持有效；
+    ///   - **后置条件**：返回对象不会与初始化器共享可变状态，重复调用安全；
+    /// - **设计权衡（Trade-offs）**：每次调用都会克隆一次 Handler，代价为常数级 `Arc`/`Descriptor`
+    ///   拷贝，但换取了按需安装的灵活度；调用方若频繁使用，可自行缓存结果。
+    pub fn handler_arc(&self) -> Arc<dyn Handler> {
+        self.handler.handler_arc()
+    }
+
     /// 将 Handler 注册到 [`ChainBuilder`]，供测试与装配流程复用。
     fn install_handler(&self, chain: &mut dyn ChainBuilder) {
         chain.register_inbound(&self.handler_label, Box::new(self.handler.clone()));
@@ -372,7 +394,9 @@ impl PipelineInitializer for ApplicationRouterInitializer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spark_core::pipeline::{handler::OutboundHandler, ChainBuilder, InboundHandler};
+    use spark_core::pipeline::{
+        ChainBuilder, HandlerDirection, InboundHandler, handler::OutboundHandler,
+    };
 
     #[derive(Default)]
     struct RecordingChainBuilder {
@@ -445,6 +469,38 @@ mod tests {
         let (label, descriptor) = &builder.registrations[0];
         assert_eq!(label, "custom-router");
         assert_eq!(descriptor, &handler_desc);
+    }
+
+    #[test]
+    fn initializer_exposes_handler_arc_for_dynamic_installation() {
+        // 教案式说明：验证 `handler_arc` 所返回的 `Arc<dyn Handler>` 可直接暴露给运行时，
+        // 以满足 Pipeline 热插拔 API 对 Handler 契约的期待。
+        let router = Arc::new(crate::DefaultRouter::new());
+        let initializer_desc = InitializerDescriptor::new(
+            "test.router_initializer.arc",
+            "routing",
+            "installs router handler via handler_arc",
+        );
+        let handler_desc = InitializerDescriptor::new(
+            "test.application_router.arc",
+            "routing",
+            "application router handler arc",
+        );
+        let initializer = ApplicationRouterInitializer::with_extensions_builder(
+            router,
+            initializer_desc,
+            handler_desc.clone(),
+        );
+
+        let handler_arc = initializer.handler_arc();
+
+        assert_eq!(handler_arc.direction(), HandlerDirection::Inbound);
+        assert_eq!(handler_arc.descriptor(), handler_desc);
+
+        let inbound = handler_arc
+            .clone_inbound()
+            .expect("application router must expose inbound handler");
+        assert_eq!(inbound.describe(), handler_arc.descriptor());
     }
 }
 
@@ -577,6 +633,29 @@ impl ApplicationRouter {
     pub fn into_handler(self) -> Arc<dyn Handler> {
         Arc::new(self)
     }
+
+    /// 生成具备对象安全语义的 Handler 引用，供 PipelineInitializer 或热插拔逻辑复用。
+    ///
+    /// # 教案级注释
+    /// - **意图（Why）**：`ChainBuilder` 在旧版 API 中仅支持 `Box<dyn InboundHandler>` 注册；
+    ///   当调用方希望直接借助 [`Pipeline::add_handler_after`](spark_core::pipeline::Pipeline::add_handler_after)
+    ///   或其他 Handler 契约接口装配链路时，需要显式获取 `Arc<dyn Handler>`；
+    /// - **体系位置（Where）**：位于初始化器与运行时之间的桥接层，通常在 `PipelineInitializer::configure`
+    ///   内根据条件决定是否安装路由 Handler；
+    /// - **执行逻辑（How）**：
+    ///   1. 克隆内部的 [`ApplicationRouter`] 状态，确保返回值拥有独立所有权；
+    ///   2. 调用 [`Self::into_handler`] 将克隆体封装为 `Arc<dyn Handler>`；
+    ///   3. 将结果交给控制器或 `ChainBuilder`，由其负责写入管线拓扑；
+    /// - **契约（What）**：
+    ///   - **输入**：无需额外参数，方法在现有实例上工作；
+    ///   - **返回值**：满足 `Send + Sync + 'static` 的 `Arc<dyn Handler>`，可跨线程复用；
+    ///   - **前置条件**：内部的 Router、上下文构造器均须保持有效的 `Arc` 语义；
+    ///   - **后置条件**：调用方可多次调用本方法，每次都会得到独立的 Handler 副本；
+    /// - **设计权衡（Trade-offs）**：克隆 Handler 会产生常数次 `Arc::clone` 与 `InitializerDescriptor::clone`
+    ///   的开销，换取了按需装配的灵活性；若对性能极度敏感，可预先缓存返回值复用。
+    pub fn handler_arc(&self) -> Arc<dyn Handler> {
+        self.clone().into_handler()
+    }
 }
 
 impl Handler for ApplicationRouter {
@@ -589,7 +668,7 @@ impl Handler for ApplicationRouter {
     }
 
     fn clone_inbound(&self) -> Option<Arc<dyn InboundHandler>> {
-        let handler: Arc<ApplicationRouter> = Arc::new(self.clone());
+        let handler: Arc<dyn InboundHandler> = Arc::new(self.clone());
         Some(handler)
     }
 }
@@ -635,10 +714,7 @@ impl InboundHandler for ApplicationRouter {
         let metadata_empty = parts.dynamic_metadata.iter().next().is_none();
         if message_kind.is_none() || metadata_empty {
             let mut attributes = OwnedAttributeSet::new();
-            attributes.push_owned(
-                "router.metadata_present",
-                !metadata_empty,
-            );
+            attributes.push_owned("router.metadata_present", !metadata_empty);
             attributes.push_owned(
                 "router.message_kind",
                 message_kind.unwrap_or("<unknown>").to_owned(),
