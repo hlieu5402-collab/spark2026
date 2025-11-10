@@ -2,7 +2,7 @@
 
 > 本文针对 Spark 数据面的双层分离模型提供统一视图，
 > 聚焦 **装配时（L1）ServerChannel → PipelineInitializer → Pipeline** 与 **运行时（L2）Channel → Pipeline → Handler → L2 Router Handler → Service** 两条链路。
-> 目标是帮助平台团队、业务团队在新模型下完成 Listener 装配、请求调度与治理操作。
+> 目标是帮助平台团队、业务团队在新模型下完成 ServerChannel 装配、请求调度与治理操作。
 
 ## 1. 愿景与设计原则
 - **解耦握手与执行**：ServerChannel 在 L1 完成协议协商与 Pipeline 装配，L2 仅负责事件驱动执行，使监听器升级不再干扰业务处理链路。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L9-L122】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
@@ -64,8 +64,8 @@ Service (Tower Service / BoxService)
 ## 4. 装配时（L1）工作流细化
 1. **监听器启动**：平台通过 `TransportFactory::bind_dyn` 创建 ServerChannel，注入监听地址、握手协议与初始策略，然后调用 `set_initializer_selector` 绑定协商结果到具体 PipelineInitializer。【F:tools/baselines/spark-core.public-api.json†L500-L509】【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】
 2. **协商完成**：`ServerChannel::accept` 输出 `(Channel, TransportSocketAddr)` 与 `HandshakeOutcome`，监听器依 outcome 选择 PipelineInitializer 并构造 Pipeline 控制器。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L61-L114】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
-3. **Handler 编排**：`PipelineInitializer::configure` 使用 ChainBuilder 注册入站/出站 Handler，并结合 [`Channel`] 引用读取握手元数据，生成 Handler Registry 与 introspection 快照。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L134】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L123-L200】
-4. **部署回滚**：装配失败时，控制面依据 `CoreError` 分类回滚并广播失败事件，确保 Listener 在热更新期间保持可控状态。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L95-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L182-L200】
+3. **Handler 编排**：`PipelineInitializer::configure` 使用 ChainBuilder 注册入站/出站 Handler，生成 Handler Registry 与 introspection 快照，供观测面查询。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L123-L200】
+4. **部署回滚**：装配失败时，控制面依据 `CoreError` 分类回滚并广播失败事件，确保 ServerChannel 在热更新期间保持可控状态。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L95-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L182-L200】
 
 ## 5. 运行时（L2）工作流细化
 1. **事件驱动循环**：Channel 提供读写、背压与半关闭语义，Pipeline 监听 Channel 事件并驱动入站 Handler；出站链路负责批处理与刷新写入。【F:crates/spark-core/src/data_plane/transport/channel.rs†L146-L210】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
@@ -98,7 +98,7 @@ Service (Tower Service / BoxService)
 - **声明式部署**：部署 API 支持一次推送 ServerChannel + PipelineInitializer + Handler 版本，平台自动热更新监听器，保证 L1/L2 平滑过渡。
 - **可观测性**：`GET /v1/telemetry/events` 与 `GET /v1/pipelines/{id}/registry` 展示 PipelineEvent 与 Handler Registry 快照，帮助排查 L1/L2 问题。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L200】
 - **回滚与审计**：结合 InitializerDescriptor 与审计日志快速识别变更影响范围，支撑安全回滚。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L7-L61】
-- **弹性策略**：扩缩 API 依据 Channel 背压与 Service 就绪度调整 Listener 实例与执行器配额，保持服务稳定。
+- **弹性策略**：扩缩 API 依据 Channel 背压与 Service 就绪度调整 ServerChannel 实例与执行器配额，保持服务稳定。
 
 ### 7.3 测试体验
 - **环境隔离**：`X-Spark-Stage` 头与 CoreServices Profile 组合，保证沙箱 / 预发 / 生产隔离。
@@ -108,12 +108,12 @@ Service (Tower Service / BoxService)
 ## 8. 风险治理与缓解策略
 - **协商失败**：当 ServerChannel 无法根据 HandshakeOutcome 匹配 PipelineInitializer 时，应记录结构化错误并降级到安全模板，避免监听器停摆。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】
 - **装配冲突**：若 PipelineInitializer 幂等性不足导致 Handler 重复注册，可通过契约校验与回滚机制快速修复。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L95-L133】
-- **运行时背压**：Channel 的背压分类与 Service 的 `poll_ready` 信号需要纳入弹性策略，避免热点连接拖垮 Listener。【F:crates/spark-core/src/data_plane/transport/channel.rs†L146-L210】【F:crates/spark-core/src/data_plane/service/generic.rs†L6-L74】
+- **运行时背压**：Channel 的背压分类与 Service 的 `poll_ready` 信号需要纳入弹性策略，避免热点连接拖垮 ServerChannel。【F:crates/spark-core/src/data_plane/transport/channel.rs†L146-L210】【F:crates/spark-core/src/data_plane/service/generic.rs†L6-L74】
 - **路由异常**：ApplicationRouter 构建上下文或调用 Service 失败时会记录错误并终止请求，需要配合观测告警与灰度策略快速响应。【F:crates/spark-router/src/pipeline.rs†L214-L376】
 - **安全合规**：鉴权、审计、加密 Handler 必须在 PipelineInitializer 中显式排序，与 L2 Handler 共享最小必要信息以降低数据泄露风险。
 
 ## 9. 推进建议
-1. **先行改造 L1**：优先完成 ServerChannel 与 PipelineInitializer Selector 升级，确保所有 Listener 都能基于 HandshakeOutcome 挑选 Pipeline。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】
+1. **先行改造 L1**：优先完成 ServerChannel 与 PipelineInitializer Selector 升级，确保所有 ServerChannel 都能基于 HandshakeOutcome 挑选 Pipeline。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】
 2. **同步 L2 Router Handler**：将旧 Router 逻辑迁移到 ApplicationRouter，确保路由策略在 L2 Handler 中执行且与 Service 契约对齐。【F:crates/spark-router/src/pipeline.rs†L214-L376】
 3. **平台化赋能**：提供 CLI / SDK 生成 PipelineInitializer 模板、部署策略与监控仪表板，降低团队在新架构下的接入成本。
 4. **知识沉淀**：沉淀 Handler / Service / ApplicationRouter 的最佳实践与性能基准，重点关注握手成功率、路由命中率与背压处理。
