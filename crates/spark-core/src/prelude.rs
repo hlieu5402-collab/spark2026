@@ -15,7 +15,8 @@
 //! 1. **常量/别名 re-export**：直接透出核心错误类型与 `Result` 别名，
 //!    保持错误语义统一；
 //! 2. **契约类型聚合**：集中导出调用上下文（`CallContext` 等）、预算（`Budget*` 系列）、
-//!    管道扩展（`PipelineMessage` 等）以及运行时能力（`Context`、`CoreServices` 等）；
+//!    管道抽象（`Pipeline`、`Channel`、`PipelineInitializer`、`PipelineMessage` 等）以及运行时能力
+//!    （`Context`、`CoreServices` 等）；
 //! 3. **状态机语义**：包含 `status::ready` 中的核心判定枚举，支撑背压与管道调度；
 //! 4. **传输层契约**：将 `TransportSocketAddr`、`ShutdownDirection` 等常用结构一并暴露，
 //!    便于传输实现 crate 直接复用；
@@ -51,6 +52,8 @@
 ///   [`crate::protocol::Event`]、[`crate::protocol::Frame`]、[`crate::protocol::Message`];
 /// - 标识与配置：[`RequestId`]、[`CorrelationId`]、[`IdempotencyKey`]、[`Timeout`];
 /// - 状态语义：[`State`]、[`Status`];
+/// - 管线调度：[`crate::pipeline::Pipeline`]、[`crate::pipeline::PipelineInitializer`],
+///   [`crate::pipeline::Channel`]、[`crate::transport::ServerChannel`];
 /// - 辅助类型：[`NonEmptyStr`]、[`CloseReason`]、[`BudgetSet`]、[`TimeoutProfile`].
 ///
 /// ## 导出明细（How）
@@ -65,9 +68,12 @@
 ///   [`crate::IdempotencyKey`]、[`crate::Timeout`] 维护状态机与请求追踪；
 /// - **观测与运行时**：[`crate::runtime::CoreServices`]、[`crate::runtime::MonotonicTimePoint`],
 ///   [`crate::observability::Logger`]、[`crate::observability::TraceContext`] 提供运行期调度与观测能力；
-/// - **传输抽象**：[`crate::transport::TransportSocketAddr`]、[`crate::transport::ShutdownDirection`] 让传输实现保持一致行为；
-/// - **缓冲与服务装配**：[`crate::buffer::PipelineMessage`]、[`crate::buffer::ReadableBuffer`],
-///   [`crate::buffer::WritableBuffer`]、[`crate::service::BoxService`]、[`crate::service::Layer`] 等支撑流水线与服务组合。
+/// - **管线调度**：[`crate::pipeline::Pipeline`]、[`crate::pipeline::PipelineInitializer`],
+///   [`crate::pipeline::Channel`]、[`crate::buffer::PipelineMessage`] 描述连接生命周期与消息编解码；
+/// - **传输抽象**：[`crate::transport::ServerChannel`]、[`crate::transport::TransportSocketAddr`],
+///   [`crate::transport::ShutdownDirection`] 让监听器在协议协商后即可完成装配；
+/// - **缓冲与服务装配**：[`crate::buffer::ReadableBuffer`]、[`crate::buffer::WritableBuffer`],
+///   [`crate::service::BoxService`]、[`crate::service::Layer`] 等支撑流水线与服务组合。
 pub use crate::{
     async_trait,
     buffer::{
@@ -82,13 +88,14 @@ pub use crate::{
     },
     future::{BoxFuture, BoxStream, Stream},
     observability::{CoreUserEvent, LogRecord, Logger, TraceContext},
+    pipeline::{Channel, Pipeline, PipelineInitializer},
     runtime::{CoreServices, JoinHandle, MonotonicTimePoint},
     service::{
         AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,
         type_mismatch_error,
     },
     status::ready::{BusyReason, PollReady, ReadyCheck, ReadyState, RetryAdvice},
-    transport::{ShutdownDirection, TransportSocketAddr},
+    transport::{ServerChannel, ShutdownDirection, TransportSocketAddr},
     types::BudgetSet,
 };
 
