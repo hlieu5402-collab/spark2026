@@ -1,107 +1,112 @@
-# Spark 全局架构设计蓝图
+# Spark 全局架构设计蓝图（装配时 / 运行时双层版）
 
 ## 1. 愿景与设计原则
-- **研究与工程并重**：以 `spark-core` 的 `Pipeline`、`Handler`、`PipelineInitializer` 契约为核心，既能满足生产级稳定性，也能快速迭代科研算法原型。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L343-L451】【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L8-L83】【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L8-L102】
-- **全生命周期治理**：设计覆盖需求立项、开发测试、部署运营、观测优化、弹性扩缩以及退役封存，确保各阶段有明确输入输出与责任人。
-- **API 契约优先**：所有控制面交互通过稳定版本化 API 暴露，并保证开发、运维、测试三类用户的协作体验。
-- **极致可观测与可操作性**：借助 `RouteCatalog`、`RoutingContext` 等路由元信息，结合 `PipelineEvent` 广播机制，实现系统级自解释能力。【F:crates/spark-core/src/data_plane/router/mod.rs†L1-L31】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L121】
+- **装配 / 运行时解耦**：以 `ServerChannel` 握手层（L1）与 `Channel` 运行层（L2）协同，将协议协商、Pipeline 装配与请求调度分离，确保同一套 Handler/Service 可在多协议监听器下复用。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L9-L122】【F:crates/spark-core/src/data_plane/transport/channel.rs†L130-L210】
+- **Pipeline 契约中心化**：`PipelineInitializer`、`Pipeline` 与 `Handler` 形成“声明式装配 + 事件驱动执行”的骨架，上层策略与观测统一落在同一套 API 上。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L1-L200】【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L10-L148】
+- **服务访问收敛**：所有业务调用仍通过 Tower 风格的 `Service` 契约，背压、取消与预算语义与 Pipeline 上下文保持一致，确保运行时链路不受装配层变化影响。【F:crates/spark-core/src/data_plane/service/generic.rs†L6-L74】
+- **可观测性第一公民**：`InitializerDescriptor`、`PipelineEvent` 与 Router Handler 的上下文快照协同，构建从 L1 协商到 L2 路由的完整追踪链路。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L7-L61】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L121】【F:crates/spark-router/src/pipeline.rs†L26-L211】
 
-## 2. 生命周期一体化流程
+## 2. 双层运行模型总览
+Spark 的数据面拆分为两个互补层级：
+
+### 2.1 装配时（L1）链路
+```
+ServerChannel (握手/监听)
+  │  └─ set_initializer_selector(HandshakeOutcome → PipelineInitializer)
+  ▼
+PipelineInitializer (装配策略)
+  │  ├─ register_inbound/register_outbound
+  │  └─ descriptor() → 观测元数据
+  ▼
+Pipeline 控制器（生成 Handler Registry + PipelineEvent 广播）
+```
+- L1 层以 `ServerChannel::set_initializer_selector` 为切入点，根据协商结果挑选合适的 `PipelineInitializer`，继而构造 Pipeline 并登记 Handler 元数据。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
+- 控制面在此阶段注入安全、编解码、观测等横切 Handler，实现部署时的策略冻结；运行时只读取已经编排好的 Handler 队列，无需重新解析配置。
+
+### 2.2 运行时（L2）链路
+```
+Channel (连接级 IO)
+  │  └─ read/write/flush/backpressure
+  ▼
+Pipeline (事件循环)
+  │  └─ 调度 Inbound/Outbound Handler，广播 PipelineEvent
+  ▼
+Handlers
+  │  └─ 普通 Handler（鉴权/编解码/限流/...）
+  │  └─ ApplicationRouter (L2 路由 Handler)
+  ▼
+Service (Tower Service / BoxService)
+```
+- L2 层在 `Channel` 上驱动事件，Pipeline 控制器根据 Handler 注册表顺序执行入站/出站逻辑，并向下游 Handler 广播事件。【F:crates/spark-core/src/data_plane/transport/channel.rs†L146-L210】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
+- 当请求抵达链路尾端时，由 `ApplicationRouter` 这种 L2 Handler 决定具体服务绑定，并将请求托付给对象层 Router / Service，再将响应写回同一 Channel。【F:crates/spark-router/src/pipeline.rs†L214-L376】
+
+## 3. 生命周期一体化流程
 | 阶段 | 关键目标 | 输入 | 输出 | 主要角色 | 核心 API |
 | --- | --- | --- | --- | --- | --- |
 | 需求立项 | 明确业务域、流量模式、合规限制 | 业务需求、SLO、预估流量 | 架构决策记录、初始 `RoutingIntent` 草案 | 架构师、产品 | `POST /v1/intents` |
-| 架构设计 | 拆分数据面/控制面/观测面，定义 Handler/Middleware 组合 | 决策记录、跨领域约束 | `PipelineTemplate`、`RouteCatalog` 草案 | 架构师、平台 | `POST /v1/pipelines/templates` |
-| 开发实现 | 交付 Handler、Service、Router 实现，并完成自测 | 模板、Mock 数据 | 可部署的 Artifact、`ServiceDescriptor` | 开发、QA | `GET /v1/pipelines/templates/{id}`、`PUT /v1/services/{serviceId}` |
-| 集成测试 | 验证跨模块契约、观测链路与回滚策略 | Artifact、测试计划 | 测试报告、基线指标、回滚方案 | QA、SRE | `POST /v1/test-suites/run` |
-| 部署运营 | 部署至多环境，滚动升级 & 灰度 | 测试报告、部署策略 | 实际运行中的实例、变更记录 | SRE、平台 | `POST /v1/deployments`、`PATCH /v1/pipelines/{id}:activate` |
-| 观测优化 | 采集指标与事件，识别瓶颈 | 遥测数据、`PipelineEvent` 流 | 性能优化建议、异常告警 | 平台、研发 | `GET /v1/telemetry/events`、`GET /v1/pipelines/{id}/registry` |
-| 弹性扩缩 | 基于实时流量或预测自动调节资源 | 观测数据、弹性策略 | 更新后的资源配置、调度记录 | 平台、SRE | `POST /v1/scale-plans` |
-| 退役封存 | 下线业务流程，清理资源与合规存档 | 归档计划、依赖清单 | 退役报告、配置快照 | 架构师、SRE | `POST /v1/pipelines/{id}:decommission` |
+| 架构设计 | 拆分 L1/L2 职责，挑选 Handler/Service 契约 | 决策记录、跨领域约束 | `PipelineTemplate`、`InitializerDescriptor` 草案 | 架构师、平台 | `POST /v1/pipelines/templates` |
+| 开发实现 | 交付 PipelineInitializer、Handler、Service、Router Handler 实现并自测 | 模板、Mock 数据 | 可部署 Artifact、`ServiceDescriptor` | 开发、QA | `GET /v1/pipelines/templates/{id}`、`PUT /v1/services/{serviceId}` |
+| 集成测试 | 验证 L1 协商 + L2 路由链路、观测指标、回滚策略 | Artifact、测试计划 | 测试报告、基线指标、回滚方案 | QA、SRE | `POST /v1/test-suites/run` |
+| 部署运营 | 将新的 PipelineInitializer 与 Handler 发布到 ServerChannel，滚动升级 | 测试报告、部署策略 | 生效的监听器、Pipeline 注册表变更 | SRE、平台 | `POST /v1/deployments`、`PATCH /v1/pipelines/{id}:activate` |
+| 观测优化 | 采集握手成功率、PipelineEvent、路由耗时 | 遥测数据、`PipelineEvent` 流 | 性能优化建议、异常告警 | 平台、研发 | `GET /v1/telemetry/events`、`GET /v1/pipelines/{id}/registry` |
+| 弹性扩缩 | 基于 Channel 背压与服务就绪度动态扩缩资源 | 观测数据、弹性策略 | 更新的资源配置、调度记录 | 平台、SRE | `POST /v1/scale-plans` |
+| 退役封存 | 下线 PipelineInitializer/Handler/Service 并归档路由快照 | 归档计划、依赖清单 | 退役报告、配置快照 | 架构师、SRE | `POST /v1/pipelines/{id}:decommission` |
 
+> **说明**：生命周期中所有配置仍通过统一控制面 API 交付，L1/L2 的分离不会改变外部治理入口，部署后运行时仅消耗既定的 Pipeline 装配结果。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
 
-> **说明**：以上阶段均通过同一套 API 管理，保证配置在控制平面可追溯，且运行时遵循 `CoreServices` 提供的执行环境与资源治理能力。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L69-L102】
+## 4. 装配时（L1）工作流细化
+1. **监听器启动**：平台调用 `TransportFactory::bind_dyn` 创建 `ServerChannel`，并为其注入协商参数、监听地址等配置；随后设置 `PipelineInitializerSelector`，完成 L1 策略注入。【F:tools/baselines/spark-core.public-api.json†L500-L509】【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】
+2. **协商完成**：`ServerChannel::accept` 处理握手，输出 `(Channel, TransportSocketAddr)` 与 `HandshakeOutcome`。监听器根据 outcome 选择具体 `PipelineInitializer` 并初始化 Pipeline 控制器。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L61-L114】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
+3. **Handler 编排**：`PipelineInitializer::configure` 使用 `ChainBuilder` 注册入站/出站 Handler，构建最终的 Handler Registry 并生成 introspection 快照，供观测面查询。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L123-L200】
+4. **部署回滚**：若配置冲突或装配失败，控制面依据 `CoreError` 分类执行回滚，并通过事件总线广播失败信息，确保热更新流程可追踪。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L95-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L182-L200】
 
-## 3. 全业务流程与数据流
-1. **入口路由判定**：接入层将请求封装为 `RoutingContext`，通过 `Router` 引擎匹配 `RouteCatalog` 与 `RoutingIntent`，决策目标 `Service` 与 Pipeline 配置。【F:crates/spark-core/src/data_plane/router/mod.rs†L1-L31】
-2. **Pipeline 装配**：控制面读取 `PipelineTemplate`，调用 `PipelineInitializer::configure` 向 `Pipeline` 注入入站/出站 `Handler`，并为每个 Handler 注册元数据。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L45-L102】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L343-L451】
-3. **运行时事件循环**：`Pipeline` 广播 `PipelineEventKind`，驱动 `InboundHandler` 与 `OutboundHandler` 执行，期间可通过 `CoreServices` 委派异步任务或资源。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L451】【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L8-L83】
-4. **业务服务调用**：在 Handler 链末端，`Service` 抽象负责与业务逻辑交互，遵循 Tower 风格的 `poll_ready` / `call` 模式，保证背压控制与协程调度兼容。【F:crates/spark-core/src/data_plane/service.rs†L1-L52】
-5. **观测与治理**：运行时持续向观测面推送 `PipelineEvent`、Pipeline 注册表快照与路由统计信息，用于仪表板、告警与自动化优化。
-6. **回路优化**：根据观测数据触发策略引擎，可动态调整 `RoutingIntent`、重新装配 Middleware、更新 Service 版本或扩缩资源，实现闭环治理。
+## 5. 运行时（L2）工作流细化
+1. **事件驱动循环**：`Channel` 提供读写、背压和半关闭语义，Pipeline 监听 Channel 事件并驱动入站 Handler 执行；写路径由出站 Handler 协调批处理与刷新。【F:crates/spark-core/src/data_plane/transport/channel.rs†L146-L210】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L10-L92】
+2. **扩展上下文**：业务或平台组件可通过 `ExtensionsMap` 写入 `RouterContextState`，为 L2 路由 Handler 提供意图、连接元数据与动态标签。【F:crates/spark-router/src/pipeline.rs†L26-L211】
+3. **L2 路由决策**：`ApplicationRouter` 读取上下文、调用 `DynRouter` 完成路由判断，选取 `BoxService`，并将请求托付给运行时执行器，最终写回响应。【F:crates/spark-router/src/pipeline.rs†L214-L376】
+4. **服务调用与背压**：被选中的 `Service` 按 `poll_ready`/`call` 协议执行，若返回背压信号，`ApplicationRouter` 结合 Pipeline 事件通知上游执行重试或限流策略。【F:crates/spark-core/src/data_plane/service/generic.rs†L6-L74】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L121】
+5. **观测回路**：Pipeline 持续广播 `PipelineEventKind`，并暴露 Handler Registry 快照，帮助运维侧识别异常链路和时延热点。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L200】
 
-## 4. Pipeline、Handler、Middleware、Router 关系
-- **Router**：负责请求级决策，选择 `RouteBinding` 并指派 Pipeline 模板。其输出决定后续 Pipeline 应加载的 Handler 拓扑与 Service 实例。【F:crates/spark-core/src/data_plane/router/mod.rs†L1-L31】
-- **Pipeline 控制器**：在数据面承载 Handler 调度，维护入站/出站链路、事件广播与 Handler Registry，为观测面提供 introspection。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L451】
-- **PipelineInitializer**：声明式组装 Handler，持有 `CoreServices` 上下文以访问运行时能力，负责将策略、编解码、观测等横切关注点注入 Pipeline。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L45-L102】
-- **Handler**：细化入站 (`InboundHandler`) 与出站 (`OutboundHandler`) 逻辑，处理业务协议、背压、异常与用户事件，支撑全双工通信。【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L8-L83】
-- **Pipeline 链路**：由 Pipeline 控制器管理的 Handler 序列，既可以静态配置，也支持运行时热装配，确保请求处理路径与响应路径的对称性。
+## 6. 组件协作关系
+### 6.1 L1：ServerChannel、PipelineInitializer、Pipeline
+- **ServerChannel**：统一监听抽象，负责 L1 协商、PipelineInitializer 选择以及监听器生命周期管理。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L31-L122】
+- **PipelineInitializer**：负责声明式装配 Handler，输出 `InitializerDescriptor` 供监控使用，并保证幂等性与线程安全。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L133】
+- **Pipeline 控制器**：维护 Handler Registry、事件广播与热插拔能力，是运行时 introspection 的核心入口。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
 
-### 4.1 分层协作图（文字版）
-```
-Router (RouteEngine)
-  │  └─ RouteDecision → PipelineTemplateId
-  ▼
-Pipeline (per connection/stream)
-  │  ├─ Middleware.configure(chain, CoreServices)
-  │  │    ├─ register_inbound(label, Handler)
-  │  │    └─ register_outbound(label, Handler)
-  │  ├─ HandlerRegistry.snapshot()
-  │  └─ emit_*() → Handlers
-  ▼
-Handlers (Inbound/Outbound/Duplex)
-  │  ├─ 解码/鉴权/流控/观测
-  │  └─ 调用业务 Service
-  ▼
-Service (Tower Trait)
-```
+### 6.2 L2：Channel、Pipeline、Handler、ApplicationRouter、Service
+- **Channel**：提供连接级 IO 与背压判定，确保 Pipeline 能以统一语义调度不同协议实现。【F:crates/spark-core/src/data_plane/transport/channel.rs†L146-L210】
+- **Pipeline**：在运行时调度入站/出站 Handler，并保证事件顺序一致、异常可控。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
+- **Handler**：承担鉴权、编解码、观测等横切逻辑，保持与 Pipeline 上下文的零拷贝交互。【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L10-L148】
+- **ApplicationRouter（L2 Handler）**：在 Handler 链尾部执行路由决策，将请求映射到对象层 Service 并驱动异步调用，是旧 Router 逻辑在 L2 的延续。【F:crates/spark-router/src/pipeline.rs†L214-L376】
+- **Service**：实现业务调用契约，结合 `CallContext` 提供取消、预算与背压反馈，支撑多语言/多运行时扩展。【F:crates/spark-core/src/data_plane/service/generic.rs†L6-L74】
 
-## 5. API 契约设计
-### 5.1 对开发友好
-- **开放资源模型**：Pipeline、Handler、Service、Route 以 RESTful 资源表示，支持 `GET/POST/PUT/PATCH/DELETE` 全操作，便于脚本化与 SDK 生成。
-- **契约校验**：提供 `POST /v1/contracts/validate` 接口，输入 Handler 描述与依赖，返回静态分析结果与兼容性矩阵。
-- **仿真测试**：`POST /v1/simulations/run` 支持上传流量样本，返回 Latency/Throughput 分析，帮助开发在提交前识别瓶颈。
-- **版本管理**：所有资源附带 `version` 与 `compat` 字段，配合 `If-Match` 头实现乐观锁，避免多人协作冲突。
+## 7. API 契约设计
+### 7.1 开发体验
+- **资源模型**：ServerChannel、PipelineInitializer、Handler、Service、Router Handler 以 RESTful 资源管理，支持标准 CRUD 与版本控制，便于脚本化与 SDK 生成。
+- **契约校验**：`POST /v1/contracts/validate` 支持校验 PipelineInitializer 与 Handler 组合，确保装配时不破坏 L2 运行语义。
+- **仿真测试**：`POST /v1/simulations/run` 可模拟握手、装配与运行时事件，提前发现背压或路由瓶颈。
+- **版本管理**：所有资源暴露 `version` 与 `compat` 字段，配合 `If-Match`/`If-None-Match` 避免多人修改冲突。
 
-### 5.2 对运维友好
-- **声明式部署**：`POST /v1/deployments` 接受 Git Commit + 模板引用，平台根据 `CoreServices` 的执行环境自动滚动更新，支持 `canaryPercent`、`maxUnavailable` 参数。
-- **可观测性 API**：`GET /v1/telemetry/events` 流式返回 `PipelineEvent`，`GET /v1/pipelines/{id}/registry` 返回 Handler 拓扑快照，便于快速排障。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L451】
-- **回滚与审计**：`POST /v1/deployments/{id}:rollback` 与 `GET /v1/audit/logs` 提供完整审计链，结合 `InitializerDescriptor` 元信息快速定位变更影响。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L8-L43】
-- **弹性策略管理**：`POST /v1/scale-plans` 支持 CPU、延迟阈值、突发流量预测等条件，结合路由层自动扩缩。
+### 7.2 运维体验
+- **声明式部署**：部署 API 支持一次性推送 ServerChannel + PipelineInitializer + Handler 版本，平台根据 Listener 拓扑自动热更新，确保新旧链路平滑过渡。
+- **可观测性**：`GET /v1/telemetry/events` 与 `GET /v1/pipelines/{id}/registry` 展示 PipelineEvent 与 Handler Registry 快照，帮助定位 L1/L2 问题。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L200】
+- **回滚与审计**：结合 `InitializerDescriptor` 元数据与部署审计日志，快速识别变更影响范围，支撑安全回滚。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L7-L61】
+- **弹性策略**：扩缩 API 根据 Channel 背压与 Service 就绪度自动调整 Listener 实例数或执行器配额。
 
-### 5.3 对测试友好
-- **环境隔离**：所有 API 支持 `X-Spark-Stage` 头部，自动对接不同的 `CoreServices` Profile，保证沙箱、预发、生产隔离。
-- **可编排测试流**：`POST /v1/test-suites/run` 接受 Pipeline Template 与流量脚本，平台使用模拟 Router 与 Pipeline 执行端到端验证。
-- **断言与覆盖率**：`GET /v1/test-suites/{id}/report` 提供 Handler 调用路径覆盖率、事件触发分布，辅助测试评估。
-- **契约基准**：`POST /v1/contracts/mock` 自动生成基于 Handler 描述的 Mock Service，减少测试准备成本。
-
-## 6. 行业内标杆对比
-| 能力 | Spark 方案 | Envoy | Linkerd | gRPC | 优势总结 |
-| --- | --- | --- | --- | --- | --- |
-| Pipeline 编排 | 声明式 Middleware + Handler 双向链路，热插拔 | 静态 Filter 链，热更新需 LDS | Service Mesh 层面，功能有限 | 拦截器粒度较粗 | 灵活度与可组合性优于三者 |
-| 路由控制 | `RoutingIntent` + `RouteCatalog` 支持多维策略 | RDS 动态路由 | 基于服务发现，策略有限 | 客户端路由，功能弱 | 策略表达力更强 |
-| 可观测性 | Handler Registry + PipelineEvent 标准化事件流 | xDS + Stats，但 Handler 级需自扩展 | Tap/metrics，缺细粒度事件 | 拦截器自实现 | 内建粒度细，可直接对标科研需求 |
-| 扩展性 | `Service`/`Layer` Trait 适配任意协议、运行时 | C++ 插件 | Rust 限制多 | 语言限定 | Rust Trait 组合，灵活度高 | 
-| API 体验 | 统一 `/v1` 资源模型，覆盖 Dev/Ops/Test | Control Plane API 分散 | 以 CLI/CRD 为主 | Proto 接口单一 | 一站式控制面 |
-
-> **综合**：Spark 结合 xDS/Service Mesh 与函数式中间件优势，在灵活度、可观测性与全生命周期治理上可与行业 Top3 并肩甚至超越。
-
-## 7. API 交互体验优化
-- **一致的资源路径**：遵循 `/v1/{资源}/{标识}` 命名，提供 `?view=summary|full`、`pageToken` 等查询参数，满足 UI 与脚本需求。
-- **幂等与事务保障**：关键写操作均要求客户端提供 `requestId`，服务端实现去重；跨资源更新采用 Saga 模式回滚。
-- **实时反馈**：所有长时任务（测试、部署、仿真）返回 `operationId` 并支持 `GET /v1/operations/{id}` 轮询状态，或通过 SSE/WebSocket 订阅进度。
-- **智能默认值**：API 根据 `InitializerDescriptor.category` 自动推断监控模板、日志采集策略，减少表单填写工作量。
-- **强类型 Schema**：公开 OpenAPI + AsyncAPI 文档，并提供 Rust/Go/TypeScript SDK，确保多语言团队使用顺滑。
-- **类型安全扩展点**：`PipelineMessage::from_user` 与 `CoreUserEvent::from_application_event` 提供统一的对象安全封装，避免 `Any` 下转型遗漏错误处理。
+### 7.3 测试体验
+- **环境隔离**：API 支持 `X-Spark-Stage` 头与 `CoreServices` Profile 的组合，保证沙箱/预发/生产隔离。
+- **可编排测试流**：集成测试可模拟 L1 握手与 L2 请求链路，验证 PipelineInitializer 与 ApplicationRouter 的组合。
+- **断言与覆盖率**：测试报告输出 Handler 调用路径、路由命中率与背压统计，确保链路在各种流量模式下稳定。
 
 ## 8. 风险与治理策略
-- **配置漂移**：通过 `PipelineTemplate` 版本与审计日志对齐环境配置，异常时自动触发比对与回滚。
-- **性能瓶颈**：利用仿真测试与实时指标，关注 `on_read`、`on_write` 热路径，必要时提供自动化建议或扩展 Handler 到专用执行器。【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L24-L83】
-- **异常风暴**：Pipeline 捕获 `ExceptionRaised` 时触发熔断/降级策略，结合 Router 调整流量或重试策略。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L451】
-- **一致性风险**：跨区域部署通过 `RoutingSnapshot` 下发全局一致视图，并在控制面执行分布式锁或版本门槛。
-- **安全合规**：Middleware 层提供鉴权、加密、审计 Hook，可依据行业规范快速装配或更换。
+- **协商失败**：若 `ServerChannel` 未能从 `HandshakeOutcome` 选出匹配的 PipelineInitializer，应记录结构化错误并触发自动降级到安全模板，防止监听器停摆。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】
+- **装配冲突**：`PipelineInitializer` 幂等性不足会导致 Handler 重复注册，需通过契约校验与回滚机制监控并快速回退。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L95-L133】
+- **运行时背压**：`Channel::classify_backpressure` 与 `Service::poll_ready` 信号需纳入弹性策略，避免热点连接拖垮整个 Listener。【F:crates/spark-core/src/data_plane/transport/channel.rs†L146-L210】【F:crates/spark-core/src/data_plane/service/generic.rs†L6-L74】
+- **路由异常**：ApplicationRouter 在构建上下文或调用服务失败时会记录 ERROR 并终止请求，需要配合观测告警与灰度策略快速响应。【F:crates/spark-router/src/pipeline.rs†L214-L376】
+- **安全合规**：鉴权、审计、加密 Handler 应在 PipelineInitializer 中以显式顺序声明，并与 L2 Handler 的上下文共享最小必要信息，避免数据泄露。
 
 ## 9. 实施建议
-1. **落地节奏**：优先完成 Router + Pipeline 模板 + 控制面 API MVP，随后补充仿真测试与弹性策略。
-2. **平台化支持**：建设 SDK、CLI 与 Terraform Provider，降低团队接入门槛。
-3. **知识沉淀**：建立 Handler/Middleware 模板库、最佳实践手册与性能基准，持续提升复用率。
-4. **开放生态**：定义插件接口，允许外部团队贡献自定义 Middleware 与 Service，实现生态共建。
+1. **分阶段落地**：优先完成 ServerChannel + PipelineInitializer Selector 的改造，确保所有监听器都能在 L1 选择合适的 Pipeline；随后迁移 ApplicationRouter 以适配新的 L2 流程。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】【F:crates/spark-router/src/pipeline.rs†L214-L376】
+2. **平台化支持**：提供 CLI/SDK 帮助团队生成 PipelineInitializer 模板、部署 ServerChannel 策略与监控仪表板，降低 L1/L2 分层后的接入成本。
+3. **知识沉淀**：建设 Handler/Service/ApplicationRouter 的最佳实践手册与性能基准，尤其关注握手协商成功率、路由命中率与背压信号处理。
+4. **生态开放**：继续开放 PipelineInitializer、Handler、Router Handler 的扩展点，鼓励外部团队贡献协议适配器或策略插件，强化生态活力。
