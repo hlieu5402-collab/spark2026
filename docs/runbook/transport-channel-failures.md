@@ -1,6 +1,6 @@
-# Runbook：SparkTransportConnectionFailures（传输层连接失败）
+# Runbook：SparkTransportChannelFailures（传输层通道失败）
 
-- **告警来源**：Prometheus 规则 [`SparkTransportConnectionFailures`](../observability/alerts.yaml)
+- **告警来源**：Prometheus 规则 [`SparkTransportChannelFailures`](../observability/alerts.yaml)
 - **对应仪表盘**：`transport-health.json`（UID: `spark-transport-health`）
 - **目标恢复时间**：20 分钟内恢复握手成功率 > 99%
 - **升级联系人**：网络与安全团队 (@spark-network)
@@ -24,7 +24,7 @@
 推荐 PromQL：
 
 ```promql
-sum by (error_kind) (increase(spark_transport_connection_failures{listener_id="$listener"}[5m]))
+sum by (error_kind) (increase(spark_transport_channel_failures{listener_id="$listener"}[5m]))
 ```
 
 ## 3. 恢复动作

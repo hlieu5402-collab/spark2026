@@ -1,6 +1,6 @@
 use core::{fmt, future::Future};
 
-use super::{ShutdownDirection, TransportSocketAddr, connection::Channel};
+use super::{ShutdownDirection, TransportSocketAddr, channel::Channel};
 use crate::Result;
 
 /// 传输层服务端通道（`ServerChannel`）接口。
