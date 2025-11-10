@@ -8,8 +8,11 @@ use crate::{
 use crate::pipeline::factory::{DynPipelineFactory, DynPipelineFactoryAdapter};
 
 use super::super::{
-    TransportSocketAddr, factory::ListenerConfig, intent::ConnectionIntent,
-    server::ListenerShutdown, server_channel::ServerChannel,
+    TransportSocketAddr,
+    factory::ListenerConfig,
+    intent::ConnectionIntent,
+    server::ListenerShutdown,
+    server_channel::{PipelineInitializerSelector, ServerChannel},
 };
 use super::generic::TransportFactory as GenericTransportFactory;
 
@@ -79,6 +82,21 @@ pub trait DynServerChannel: Send + Sync + Sealed {
         &self,
         ctx: &CallContext,
     ) -> crate::Result<(Box<dyn Channel>, TransportSocketAddr), CoreError>;
+
+    /// 设置协议协商后的 PipelineInitializer 选择策略。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 为对象层监听器补齐与泛型层相同的策略注入入口，确保插件系统能够
+    ///   在握手阶段完成 Pipeline 装配决策；
+    ///
+    /// ## 契约（What）
+    /// - `selector`：包裹在 `Arc` 中的闭包，输入 [`HandshakeOutcome`](crate::transport::HandshakeOutcome)，
+    ///   输出 `Arc<dyn PipelineInitializer>`；
+    /// - **前置条件**：调用方应在启动接受循环之前设置，重复调用时最新值生效；
+    /// - **后置条件**：监听器在每次握手结束后会调用该闭包决定链路初始化器。
+    fn set_initializer_selector_dyn(&self, selector: Arc<PipelineInitializerSelector>);
 
     /// 根据计划执行优雅关闭。
     ///
@@ -163,6 +181,10 @@ where
     ) -> crate::Result<(Box<dyn Channel>, TransportSocketAddr), CoreError> {
         let (connection, addr) = self.inner.accept(ctx).await?;
         Ok((Box::new(connection) as Box<dyn Channel>, addr))
+    }
+
+    fn set_initializer_selector_dyn(&self, selector: Arc<PipelineInitializerSelector>) {
+        self.inner.set_initializer_selector(selector);
     }
 
     async fn shutdown_dyn(

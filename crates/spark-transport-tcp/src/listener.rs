@@ -1,15 +1,18 @@
 use crate::{
-    TcpChannel, TcpSocketConfig,
     error::{self, map_io_error},
-    util::{deadline_expired, run_with_context, to_socket_addr},
+    util::{deadline_expired, monotonic_now, run_with_context, to_socket_addr},
+    TcpChannel, TcpSocketConfig,
 };
+use core::fmt;
 use spark_core::prelude::{CallContext, Context, CoreError, TransportSocketAddr};
 use spark_core::transport::TransportBuilder;
 use spark_core::transport::{
-    ListenerShutdown,
-    ServerChannel as ServerChannelTrait,
+    CapabilityBitmap, HandshakeOffer, HandshakeOutcome, ListenerShutdown, PipelineInitializerSelector,
+    ServerChannel as ServerChannelTrait, Version, negotiate,
 };
+use spark_core::error::codes;
 use std::boxed::Box;
+use std::sync::{Arc, RwLock};
 use std::{future::Future, pin::Pin, time::Duration};
 use tokio::net::TcpListener as TokioTcpListener;
 
@@ -40,11 +43,25 @@ use tokio::net::TcpListener as TokioTcpListener;
 /// ## 注意事项 (Trade-offs)
 /// - 当前实现未支持 `SO_REUSEPORT` 等高级套接字选项，后续可在绑定前扩展；
 /// - `accept` 在循环取消时依赖定时轮询，取消响应存在毫秒级延迟。
-#[derive(Debug)]
 pub struct TcpListener {
     inner: TokioTcpListener,
     local_addr: TransportSocketAddr,
     default_config: TcpSocketConfig,
+    initializer_selector: RwLock<Option<Arc<PipelineInitializerSelector>>>,
+}
+
+impl fmt::Debug for TcpListener {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let has_selector = self
+            .initializer_selector
+            .read()
+            .map(|opt| opt.is_some())
+            .unwrap_or(false);
+        f.debug_struct("TcpListener")
+            .field("local_addr", &self.local_addr)
+            .field("has_initializer_selector", &has_selector)
+            .finish()
+    }
 }
 
 impl TcpListener {
@@ -87,6 +104,7 @@ impl TcpListener {
             inner: listener,
             local_addr: TransportSocketAddr::from(local),
             default_config,
+            initializer_selector: RwLock::new(None),
         })
     }
 
@@ -167,7 +185,88 @@ impl TcpListener {
             peer_addr,
             config,
         )?;
+
+        let outcome = self.perform_handshake()?;
+
+        if let Some(selector) = self.selector_snapshot() {
+            let initializer = selector(&outcome);
+            // 说明：当前尚未将 TcpChannel 与 Pipeline 控制器集成，为保持接口对齐，
+            // 仅访问一次描述符以验证初始化器已正确选择。后续 T-系列任务将负责
+            // 将初始化器与真实 Pipeline 关联并调用 `configure`。
+            let _descriptor = initializer.descriptor();
+        }
         Ok((channel, peer_addr))
+    }
+}
+
+impl TcpListener {
+    /// 生成本地默认的握手宣告。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 在缺省 TCP 监听场景中尚未引入 ALPN/SNI 协商，因此使用稳定版本
+    ///   与空能力集合代表“最小可用”协议族；
+    /// - 作为后续 TLS/QUIC 扩展的兜底声明，避免协商阶段出现空指针。
+    ///
+    /// ## 契约（What）
+    /// - 返回 [`HandshakeOffer`]，版本固定为 `1.0.0`，能力位图均为空；
+    /// - **前置条件**：调用方无需准备额外上下文；
+    /// - **后置条件**：返回值可直接传入 [`negotiate`]。
+    fn default_handshake_offer(&self) -> HandshakeOffer {
+        HandshakeOffer::new(
+            Version::new(1, 0, 0),
+            CapabilityBitmap::empty(),
+            CapabilityBitmap::empty(),
+        )
+    }
+
+    /// 执行一次占位握手并返回协商结果。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 将“监听器接受连接后立即完成协议协商”的职责收敛在传输层，
+    ///   使上层 Router 不再关心 ALPN/SNI 细节；
+    /// - 对齐任务 T-2.2 的目标：在 `accept` 流程中决定 L1 Pipeline 初始化策略。
+    ///
+    /// ## 契约（What）
+    /// - 当前实现采用本地与远端相同的保守宣告，代表尚未暴露多协议特性；
+    /// - 发生错误时返回 [`CoreError`]，错误码为 `protocol.negotiation`；
+    /// - **前置条件**：监听器已处于运行状态；
+    /// - **后置条件**：成功返回的结果可作为 [`PipelineInitializerSelector`] 的输入。
+    fn perform_handshake(&self) -> spark_core::Result<HandshakeOutcome, CoreError> {
+        let local_offer = self.default_handshake_offer();
+        let remote_offer = self.default_handshake_offer();
+        let occurred_at = monotonic_now().as_duration().as_micros() as u64;
+
+        negotiate(&local_offer, &remote_offer, occurred_at, None).map_err(|error| {
+            CoreError::new(
+                codes::PROTOCOL_NEGOTIATION,
+                format!("tcp handshake negotiation failed: {error}"),
+            )
+            .with_cause(error)
+        })
+    }
+
+    /// 读取当前配置的初始化器选择器。
+    ///
+    /// # 教案级注释
+    ///
+    /// ## 意图（Why）
+    /// - 将 `RwLock` 访问封装为独立函数，确保并发读取时保持最小临界区；
+    /// - 允许监听器在协商失败或未配置策略时优雅退化。
+    ///
+    /// ## 契约（What）
+    /// - 返回 `Option<Arc<PipelineInitializerSelector>>`；
+    /// - 若锁被毒化，则视为未配置并返回 `None`；
+    /// - **前置条件**：监听器已构造完成；
+    /// - **后置条件**：返回的 `Arc` 可安全在调用方持有并在后续调用中复用。
+    fn selector_snapshot(&self) -> Option<Arc<PipelineInitializerSelector>> {
+        self.initializer_selector
+            .read()
+            .ok()
+            .and_then(|guard| guard.clone())
     }
 }
 
@@ -277,6 +376,12 @@ impl ServerChannelTrait for TcpListener {
 
     fn accept<'ctx>(&'ctx self, ctx: &'ctx Self::AcceptCtx<'ctx>) -> Self::AcceptFuture<'ctx> {
         Box::pin(async move { self.accept(ctx).await })
+    }
+
+    fn set_initializer_selector(&self, selector: Arc<PipelineInitializerSelector>) {
+        if let Ok(mut guard) = self.initializer_selector.write() {
+            *guard = Some(selector);
+        }
     }
 
     fn shutdown<'ctx>(
