@@ -49,9 +49,9 @@
 - **TCK**：[`graceful_shutdown::coordinator_waits_for_service_draining`](../crates/spark-contract-tests/src/graceful_shutdown.rs#L820-L1012) 验证服务在关闭流程中的幂等性与截止时间处理。
 
 ## Router（路由控制）
-- **定位**：`spark_core::router` 负责将 `RoutingIntent`、`RouteCatalog` 与动态元数据结合，决策目标 Service/Pipeline。 
-- **Rustdoc**：[`spark_core::router`](https://docs.rs/spark-core/latest/spark_core/router/index.html)、[`spark-router`](https://docs.rs/spark-router/latest/spark_router/)。
-- **示例**：[`RoutingContext::new`](../crates/spark-core/src/data_plane/router/context.rs#L138-L199) 说明如何组装路由上下文。 
+- **定位**：`spark-router` Crate 统一承载 L2 路由实现，将 `RoutingIntent`、`RouteCatalog` 与动态元数据结合后托管给对象层 Service。
+- **Rustdoc**：[`spark-router`](https://docs.rs/spark-router/latest/spark_router/)。
+  - **示例**：[`DefaultRouter::route_dyn`](../crates/spark-router/src/lib.rs#L303-L361) 演示对象层路由如何向下游 `Service` 转发请求。
 - **TCK**：[`state_machine::context_propagates_routing_snapshot`](../crates/spark-contract-tests/src/state_machine.rs#L240-L368) 校验路由快照与 Pipeline 上下文的一致性。
 
 ## Context（调用上下文）

@@ -58,9 +58,9 @@
 ## Router（路由控制）
 | 维度 | 链接 |
 | --- | --- |
-| Rustdoc | [`spark_core::router`](https://docs.rs/spark-core/latest/spark_core/router/index.html) · [`spark-router`](https://docs.rs/spark-router/latest/spark_router/) |
-| 示例 | [`RoutingContext::new`](../crates/spark-core/src/data_plane/router/context.rs#L138-L199) |
-| TCK | [`state_machine::context_propagates_routing_snapshot`](../crates/spark-contract-tests/src/state_machine.rs#L240-L368) |
+| Rustdoc | [`spark-router`](https://docs.rs/spark-router/latest/spark_router/) |
+| 示例 | [`DefaultRouter::route_dyn`](../crates/spark-router/src/lib.rs#L303-L361) |
+| TCK | [`route_dyn_returns_new_service`](../crates/spark-router/src/lib.rs#L538-L611) |
 
 ## Context（调用上下文）
 | 维度 | 链接 |
@@ -277,12 +277,25 @@ covers = [
   "spark_core::pipeline::ChainBuilder",
   "spark_core::pipeline::Channel",
   "spark_core::pipeline::Context",
+  "spark_core::pipeline::Controller",
+  "spark_core::pipeline::ControllerEvent",
+  "spark_core::pipeline::ControllerEventKind",
+  "spark_core::pipeline::ControllerFactory",
+  "spark_core::pipeline::ControllerHandle",
+  "spark_core::pipeline::ControllerHandleId(_)",
+  "spark_core::pipeline::Handler",
+  "spark_core::pipeline::HandlerDirection",
+  "spark_core::pipeline::HandlerRegistration",
   "spark_core::pipeline::Pipeline",
   "spark_core::pipeline::PipelineEvent",
   "spark_core::pipeline::PipelineFactory",
   "spark_core::pipeline::PipelineFactoryObject",
   "spark_core::pipeline::PipelineHandle",
+  "spark_core::pipeline::PipelineHandleId(_)",
+  "spark_core::pipeline::HotSwapPipeline",
   "spark_core::pipeline::DuplexHandler",
+  "spark_core::pipeline::DynControllerFactory",
+  "spark_core::pipeline::DynControllerFactoryAdapter",
   "spark_core::pipeline::DynPipelineFactory",
   "spark_core::pipeline::DynPipelineFactoryAdapter",
   "spark_core::pipeline::ExceptionAutoResponder",
@@ -315,6 +328,14 @@ covers = [
   "spark_core::pipeline::handler::DuplexHandler",
   "spark_core::pipeline::handler::InboundHandler",
   "spark_core::pipeline::handler::OutboundHandler",
+  "spark_core::pipeline::pipeline::Handler",
+  "spark_core::pipeline::pipeline::HandlerRegistration",
+  "spark_core::pipeline::pipeline::HandlerRegistry",
+  "spark_core::pipeline::pipeline::HotSwapPipeline",
+  "spark_core::pipeline::pipeline::Pipeline",
+  "spark_core::pipeline::pipeline::PipelineEvent",
+  "spark_core::pipeline::pipeline::PipelineEventKind",
+  "spark_core::pipeline::pipeline::PipelineHandleId(_)",
   "spark_core::pipeline::instrument::HandlerSpan",
   "spark_core::pipeline::instrument::HandlerSpanGuard",
   "spark_core::pipeline::instrument::HandlerSpanParams",
@@ -397,56 +418,20 @@ covers = [
 [[contract]]
 term = "Router"
 rustdoc = [
-  { name = "spark_core::router", url = "https://docs.rs/spark-core/latest/spark_core/router/index.html" },
   { name = "spark-router", url = "https://docs.rs/spark-router/latest/spark_router/" },
 ]
 examples = [
-  { name = "RoutingContext::new", path = "../crates/spark-core/src/data_plane/router/context.rs#L138-L199" },
+  { name = "DefaultRouter::route_dyn", path = "../crates/spark-router/src/lib.rs#L303-L361" },
 ]
 tck = [
-  { name = "state_machine::context_propagates_routing_snapshot", path = "../crates/spark-contract-tests/src/state_machine.rs#L240-L368" },
+  { name = "route_dyn_returns_new_service", path = "../crates/spark-router/src/lib.rs#L538-L611" },
 ]
 covers = [
-  "spark_core::router::DynRouter",
-  "spark_core::router::MetadataKey(_)",
-  "spark_core::router::RouteBinding",
-  "spark_core::router::RouteBindingObject",
-  "spark_core::router::RouteCatalog",
-  "spark_core::router::RouteDecision",
-  "spark_core::router::RouteDecisionObject",
-  "spark_core::router::RouteDescriptor",
-  "spark_core::router::RouteId",
-  "spark_core::router::RouteMetadata",
-  "spark_core::router::RoutePattern",
-  "spark_core::router::RouteValidation",
-  "spark_core::router::Router",
-  "spark_core::router::RouterObject",
-  "spark_core::router::RoutingContext",
-  "spark_core::router::RoutingIntent",
-  "spark_core::router::RoutingSnapshot",
-  "spark_core::router::binding::RouteBinding",
-  "spark_core::router::binding::RouteDecision",
-  "spark_core::router::binding::RouteValidation",
-  "spark_core::router::catalog::RouteCatalog",
-  "spark_core::router::catalog::RouteDescriptor",
-  "spark_core::router::context::RoutingContext",
-  "spark_core::router::context::RoutingIntent",
-  "spark_core::router::context::RoutingSnapshot",
-  "spark_core::router::metadata::MetadataKey(_)",
-  "spark_core::router::metadata::RouteMetadata",
-  "spark_core::router::route::RouteId",
-  "spark_core::router::route::RoutePattern",
-  "spark_core::router::DynRouter",
-  "spark_core::router::RouteBindingObject",
-  "spark_core::router::RouteDecisionObject",
-  "spark_core::router::RouteError",
-  "spark_core::router::Router",
-  "spark_core::router::RouterObject",
-  "spark_core::router::contract::Router",
-  "spark_core::router::object::DynRouter",
-  "spark_core::router::object::RouteBindingObject",
-  "spark_core::router::object::RouteDecisionObject",
-  "spark_core::router::object::RouterObject",
+  "spark_router::DefaultRouter",
+  "spark_router::RouteRegistration",
+  "spark_router::ServiceFactory",
+  "spark_router::pipeline::ApplicationRouter",
+  "spark_router::pipeline::RoutingContextState",
 ]
 
 [[contract]]
