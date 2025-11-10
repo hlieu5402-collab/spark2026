@@ -4,7 +4,7 @@
 该脚本用于 docs/observability/dashboards/README.md 中的“五分钟快速启动”。
 - 通过环境变量调整流量规模与异常比例；
 - 每次推送覆盖 Service / Codec / Transport / Limits 的核心指标；
-- 确保告警 `SparkServiceErrorRateHigh`、`SparkCodecErrorSpike`、`SparkTransportConnectionFailures` 均可触发与恢复。
+- 确保告警 `SparkServiceErrorRateHigh`、`SparkCodecErrorSpike`、`SparkTransportChannelFailures` 均可触发与恢复。
 """
 from __future__ import annotations
 
@@ -262,8 +262,8 @@ def main() -> int:
     codec_decode_bytes = 0
     codec_encode_errors = 0
     codec_decode_errors = 0
-    connection_attempts = 0
-    connection_failures = 0
+    channel_attempts = 0
+    channel_failures = 0
     transport_bytes_in = 0
     transport_bytes_out = 0
 
@@ -301,9 +301,9 @@ def main() -> int:
         codec_decode_errors += codec_error_delta - codec_error_delta // 2
 
         # 传输层指标
-        connection_attempts += max(delta + rng.randint(-15, 20), 0)
+        channel_attempts += max(delta + rng.randint(-15, 20), 0)
         failure_delta = max(0, int(round(delta * max(0.0, failure_rate) * (1 + rng.uniform(-0.25, 0.25)))))
-        connection_failures += failure_delta
+        channel_failures += failure_delta
         transport_bytes_in += delta * rng.randint(4000, 6000)
         transport_bytes_out += delta * rng.randint(4200, 6400)
         handshake_hist.observe(max(delta - failure_delta, 0), [0.08, 0.32, 0.36, 0.18, 0.05, 0.01])
@@ -359,10 +359,10 @@ def main() -> int:
         client_connections = 60 + rng.randint(-5, 5)
         lines.append(_format_sample("spark_transport_connections", transport_labels, server_connections))
         lines.append(_format_sample("spark_transport_connections", client_transport_labels, client_connections))
-        lines.append("# TYPE spark_transport_connection_attempts counter")
-        lines.append(_format_sample("spark_transport_connection_attempts", {**transport_labels, "result": "ok"}, connection_attempts))
-        lines.append("# TYPE spark_transport_connection_failures counter")
-        lines.append(_format_sample("spark_transport_connection_failures", {**transport_labels, "error_kind": "timeout"}, connection_failures))
+        lines.append("# TYPE spark_transport_channel_attempts counter")
+        lines.append(_format_sample("spark_transport_channel_attempts", {**transport_labels, "result": "ok"}, channel_attempts))
+        lines.append("# TYPE spark_transport_channel_failures counter")
+        lines.append(_format_sample("spark_transport_channel_failures", {**transport_labels, "error_kind": "timeout"}, channel_failures))
         lines.append("# TYPE spark_transport_bytes_inbound counter")
         lines.append(_format_sample("spark_transport_bytes_inbound", transport_labels, transport_bytes_in))
         lines.append("# TYPE spark_transport_bytes_outbound counter")

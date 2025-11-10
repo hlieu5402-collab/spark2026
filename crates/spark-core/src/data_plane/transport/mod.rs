@@ -19,7 +19,7 @@
 
 pub mod address;
 pub mod builder;
-pub mod connection;
+pub mod channel;
 pub mod datagram;
 pub mod endpoint;
 pub mod factory;
@@ -34,7 +34,7 @@ pub mod traits;
 
 pub use address::{AddressFamily, TransportSocketAddr};
 pub use builder::TransportBuilder;
-pub use connection::{BackpressureDecision, BackpressureMetrics, Channel};
+pub use channel::{BackpressureDecision, BackpressureMetrics, Channel};
 pub use datagram::DatagramEndpoint;
 pub use endpoint::{Endpoint, EndpointKind};
 pub use factory::ListenerConfig;

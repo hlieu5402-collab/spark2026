@@ -9,7 +9,7 @@
 | `core-runtime.json` | `spark-core-runtime` | 服务吞吐、成功率、P99 延迟、字节量、并发数 | `SparkServiceErrorRateHigh` |
 | `codec-and-payload.json` | `spark-codec-payload` | 编解码 P95、错误率、载荷分布、异常类型 | `SparkCodecErrorSpike` |
 | `ready-state-retry-after.json` | `spark-ready-state-retry-after` | ReadyState 占比、RetryAfter 次数与退避分布 | `SparkServiceRetryAfterBurst` |
-| `transport-health.json` | `spark-transport-health` | 连接量、握手耗时、吞吐、失败类型 | `SparkTransportConnectionFailures` |
+| `transport-health.json` | `spark-transport-health` | 通道数量、握手耗时、吞吐、失败类型 | `SparkTransportChannelFailures` |
 
 > **命名规范提示**：所有面板引用的指标名称与标签与《[指标契约 v1.0](../metrics.md)》保持一致，可直接用于验收和基准对比。
 

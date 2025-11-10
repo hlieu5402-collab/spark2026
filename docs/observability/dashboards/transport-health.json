@@ -62,11 +62,11 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum(rate(spark_transport_connection_attempts{listener_id=~\"$listener_id\", transport_protocol=~\"$transport_protocol\", result=\"ok\"}[1m]))",
+          "expr": "sum(rate(spark_transport_channel_attempts{listener_id=~\"$listener_id\", transport_protocol=~\"$transport_protocol\", result=\"ok\"}[1m]))",
           "legendFormat": "成功尝试"
         },
         {
-          "expr": "sum(rate(spark_transport_connection_failures{listener_id=~\"$listener_id\", transport_protocol=~\"$transport_protocol\"}[1m]))",
+          "expr": "sum(rate(spark_transport_channel_failures{listener_id=~\"$listener_id\", transport_protocol=~\"$transport_protocol\"}[1m]))",
           "legendFormat": "失败次数"
         }
       ],
@@ -126,7 +126,7 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum by (error_kind) (increase(spark_transport_connection_failures{listener_id=~\"$listener_id\", transport_protocol=~\"$transport_protocol\"}[5m]))",
+          "expr": "sum by (error_kind) (increase(spark_transport_channel_failures{listener_id=~\"$listener_id\", transport_protocol=~\"$transport_protocol\"}[5m]))",
           "legendFormat": "{{error_kind}}"
         }
       ],

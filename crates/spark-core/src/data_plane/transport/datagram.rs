@@ -10,7 +10,7 @@ use crate::Result;
 /// ## 意图（Why）
 /// - 将 UDP 等无连接传输的收发语义标准化，
 ///   使上层能够在不知道具体协议细节的前提下统一处理报文；
-/// - 与 [`super::connection::Channel`] 互补，分别覆盖
+/// - 与 [`super::channel::Channel`] 互补，分别覆盖
 ///   面向连接与无连接两类传输场景。
 ///
 /// ## 契约（What）

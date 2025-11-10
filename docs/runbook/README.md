@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | `SparkServiceErrorRateHigh` | [服务错误率升高](service-error-rate.md) | 上游依赖异常、版本回滚、资源限流导致的 5xx 激增 |
 | `SparkCodecErrorSpike` | [Codec 解码错误飙升](codec-error-spike.md) | 新协议/字段上线导致反序列化失败 |
-| `SparkTransportConnectionFailures` | [传输层连接失败](transport-connection-failures.md) | TLS、证书或网络策略异常，握手阶段持续失败 |
+| `SparkTransportChannelFailures` | [传输层通道失败](transport-channel-failures.md) | TLS、证书或网络策略异常，握手阶段持续失败 |
 
 ## 值班通用约定
 
