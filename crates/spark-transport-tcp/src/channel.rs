@@ -756,7 +756,7 @@ async fn read_until_eof(stream: &mut TokioTcpStream) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spark_core::pipeline::{ChainBuilder, InitializerDescriptor, PipelineInitializer};
+    use spark_core::pipeline::{ChainBuilder, Channel, InitializerDescriptor, PipelineInitializer};
     use spark_core::platform::runtime::CoreServices;
     use spark_core::transport::{CapabilityBitmap, DowngradeReport, HandshakeOutcome, Version};
     use tokio::join;
@@ -780,6 +780,7 @@ mod tests {
         fn configure(
             &self,
             _chain: &mut dyn ChainBuilder,
+            _channel: &dyn Channel,
             _services: &CoreServices,
         ) -> spark_core::Result<(), CoreError> {
             Ok(())

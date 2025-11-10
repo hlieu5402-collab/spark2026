@@ -10,7 +10,7 @@ use spark_core::{
         metrics::{InstrumentDescriptor, MetricsProvider},
     },
     pipeline::{
-        ChainBuilder, PipelineInitializer, InitializerDescriptor,
+        ChainBuilder, Channel, InitializerDescriptor, PipelineInitializer,
         channel::WriteSignal,
         handler::{InboundHandler, OutboundHandler},
     },
@@ -155,6 +155,7 @@ impl PipelineInitializer for MetricsMiddleware {
     fn configure(
         &self,
         chain: &mut dyn ChainBuilder,
+        _channel: &dyn Channel,
         services: &CoreServices,
     ) -> spark_core::Result<(), CoreError> {
         let handler = MetricsHandler::new(

@@ -4,7 +4,7 @@ use core::{fmt, future::Future};
 use super::{
     TransportSocketAddr, channel::Channel, handshake::HandshakeOutcome, server::ListenerShutdown,
 };
-use crate::{Result, pipeline::PipelineInitializer};
+use crate::{CoreError, Result, pipeline::PipelineInitializer};
 
 /// `PipelineInitializer` 选择器的统一类型别名。
 ///
@@ -18,7 +18,8 @@ use crate::{Result, pipeline::PipelineInitializer};
 ///
 /// ## 契约（What）
 /// - 输入：[`HandshakeOutcome`]，封装版本、能力与握手元数据；
-/// - 输出：`Arc<dyn PipelineInitializer>`，供 ServerChannel 在连接建立后装配 Pipeline；
+/// - 输出：`Result<Arc<dyn PipelineInitializer>, CoreError>`，允许选择器在发现策略缺失
+///   或配置冲突时返回结构化错误；
 /// - 必须满足 `Send + Sync`，以便在多线程监听场景下安全共享。
 ///
 /// ## 风险与注意事项（Trade-offs）
@@ -26,7 +27,7 @@ use crate::{Result, pipeline::PipelineInitializer};
 ///   竞态或资源泄漏；
 /// - 若选择器内部执行阻塞操作，应在实现中自行调度至后台线程。
 pub type PipelineInitializerSelector =
-    dyn Fn(&HandshakeOutcome) -> Arc<dyn PipelineInitializer> + Send + Sync;
+    dyn Fn(&HandshakeOutcome) -> Result<Arc<dyn PipelineInitializer>, CoreError> + Send + Sync;
 
 /// 传输层服务端通道（`ServerChannel`）接口。
 ///
@@ -97,7 +98,8 @@ pub trait ServerChannel: Send + Sync + 'static {
     ///
     /// ## 契约（What）
     /// - `selector`：`Arc` 包裹的决策闭包，输入为 [`HandshakeOutcome`]，输出为
-    ///   `Arc<dyn PipelineInitializer>`；实现必须确保闭包本身为无状态或正确同步；
+    ///   `Result<Arc<dyn PipelineInitializer>, CoreError>`；实现必须确保闭包本身为无
+    ///   状态或正确同步；
     /// - **前置条件**：调用方应在启动接受循环前设置该闭包；重复设置时以最后
     ///   一次调用为准；
     /// - **后置条件**：监听器在握手完成后应调用该闭包以取得匹配的初始化器，

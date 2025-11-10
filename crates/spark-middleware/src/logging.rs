@@ -9,7 +9,7 @@ use spark_core::{
         logging::{LogRecord, LogSeverity, Logger},
     },
     pipeline::{
-        ChainBuilder, PipelineInitializer, InitializerDescriptor,
+        ChainBuilder, Channel, InitializerDescriptor, PipelineInitializer,
         handler::{InboundHandler, OutboundHandler},
     },
     runtime::CoreServices,
@@ -97,6 +97,7 @@ impl PipelineInitializer for LoggingMiddleware {
     fn configure(
         &self,
         chain: &mut dyn ChainBuilder,
+        _channel: &dyn Channel,
         services: &CoreServices,
     ) -> spark_core::Result<(), CoreError> {
         let handler = LoggingHandler::new(

@@ -5,8 +5,8 @@ use spark_core::{
     contract::{CallContext, CloseReason},
     error::CoreError,
     pipeline::{
-        ChainBuilder, Context as PipelineContext, InboundHandler, InitializerDescriptor,
-        OutboundHandler, PipelineInitializer, WriteSignal,
+        ChainBuilder, Channel, Context as PipelineContext, InboundHandler,
+        InitializerDescriptor, OutboundHandler, PipelineInitializer, WriteSignal,
     },
     runtime::CoreServices,
     service::BoxService,
@@ -189,9 +189,9 @@ impl InitializerSelectorContext {
 
         Arc::new(move |outcome: &HandshakeOutcome| {
             if requires_router.is_subset_of(outcome.capabilities()) {
-                Arc::clone(&full_stack)
+                Ok(Arc::clone(&full_stack))
             } else {
-                Arc::clone(&minimal_stack)
+                Ok(Arc::clone(&minimal_stack))
             }
         })
     }
@@ -274,6 +274,7 @@ impl PipelineInitializer for MyInitializer {
     fn configure(
         &self,
         chain: &mut dyn ChainBuilder,
+        _channel: &dyn Channel,
         _services: &CoreServices,
     ) -> CoreResult<(), CoreError> {
         let codec_descriptor = InitializerDescriptor::new(
