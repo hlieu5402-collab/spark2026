@@ -285,6 +285,34 @@ impl ApplicationRouter {
         }
     }
 
+    /// 基于默认的 [`ExtensionsRoutingContextBuilder`] 构造 Handler 实例。
+    ///
+    /// # 教案式说明
+    /// - **意图（Why）**：为常见的“PipelineInitializer 先在 `ExtensionsMap` 写入路由上下文，再交由
+    ///   Handler 消费” 场景提供零样板构造函数，避免调用方重复显式创建 `Arc<dyn RoutingContextBuilder>`。
+    /// - **定位（Where）**：位于 L2 Handler 构造阶段，通常在 PipelineInitializer 的 `configure`
+    ///   方法内调用，并紧跟在业务自定义的编解码/鉴权 Handler 之后注册。
+    /// - **逻辑（How）**：内部复用 [`Self::new`]，传入默认的
+    ///   [`ExtensionsRoutingContextBuilder::default`]，随后返回完全体的 [`ApplicationRouter`]。
+    /// - **契约（What）**：
+    ///   - `router`：对象层路由器实例，需满足 `DynRouter` 契约；
+    ///   - `descriptor`：PipelineInitializer 用于观测与热插拔的元数据描述；
+    ///   - 返回值：即可在 `spark_core::pipeline::ChainBuilder::register_inbound` 中以
+    ///     `Box::new(...)` 安装的 Handler；
+    /// - **风险与权衡（Trade-offs & Gotchas）**：默认构造器假设路由上下文已写入
+    ///   `ExtensionsMap`，若调用方采用其他携带方式，应改用 [`Self::new`] 自行注入专用
+    ///   `RoutingContextBuilder`，否则会触发 `APP_ROUTING_FAILED` 错误并被记录到日志。
+    pub fn with_extensions_builder(
+        router: Arc<dyn DynRouter>,
+        descriptor: InitializerDescriptor,
+    ) -> Self {
+        Self::new(
+            router,
+            Arc::new(ExtensionsRoutingContextBuilder::default()),
+            descriptor,
+        )
+    }
+
     fn spawn_service_task(
         &self,
         dispatch: ServiceDispatchContext<'_>,
