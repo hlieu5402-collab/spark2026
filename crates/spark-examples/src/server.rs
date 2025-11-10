@@ -36,11 +36,31 @@ pub trait PipelineFactory: spark_core::pipeline::DynPipelineFactory {}
 
 impl<T> PipelineFactory for T where T: spark_core::pipeline::DynPipelineFactory {}
 
+/// `ExamplesServer` 负责在运行时协调 Transport `ServerChannel` 与 Pipeline 控制面的装配。
 /// `ExamplesServer` 演示如何串联 Host、Transport 与 Pipeline 装配。
 ///
 /// # 教案级总览
 ///
 /// ## 意图 (Why)
+/// - 将 `CoreServices`、传输工厂与监听配置集中管理，使接入层能够在不感知具体协议实现的前提下启动服务；
+/// - 为后续的连接接受、优雅关闭与观测打下地基：一旦有新的协议实现（TCP/QUIC 等）注册到工厂中，即可复用同一宿主逻辑。
+///
+/// ## 解析逻辑 (How)
+/// - 构造阶段记录运行时依赖（`CoreServices`）、监听配置与对象层 `DynTransportFactory`；
+/// - `run` 方法根据默认 `CallContext` 派生 `Context`，调用扩展的 `listen` 启动 `ServerChannel`，并将返回的 `DynServerChannel` 缓存；
+/// - `ServerChannel` 缓存使用 `spin::Mutex` 封装，保证在 `no_std + alloc` 环境中同样安全；后续的优雅关闭可以复用该缓存。
+///
+/// ## 契约定义 (What)
+/// - 构造函数参数：
+///   - `services`：`CoreServices` 聚合的运行时能力；
+///   - `config`：`ListenerConfig`，描述端点、并发上限等监听策略；
+///   - `transport_factory`：对象层传输工厂，负责实际建连与握手。
+/// - 运行时行为：`run` 返回 `CoreResult<()>`，失败时向上传递结构化 `CoreError`；`ServerChannel` 引用在成功路径中被缓存以供后续管理。
+///
+/// ## 风险与权衡 (Trade-offs & Gotchas)
+/// - 当前 `run` 仅负责启动监听并缓存句柄，真正的连接接受将在后续迭代补充；
+/// - 为兼容 `no_std`，选择 `spin::Mutex` 而非 `std::sync::Mutex`；在高并发场景需注意自旋锁对 CPU 的影响，但监听器启动属于冷路径，可接受该开销；
+/// - 缓存 `ServerChannel` 意味着 `ExamplesServer` 必须在停机路径显式释放资源，后续实现需确保 `shutdown` 时清理该字段。
 /// - 在新一代启动链路中，宿主需要同时处理“配置/服务注册/中间件装配”与“传输监听器绑定”；
 /// - 本结构体将 Host 暴露的中间件与服务注册表接入传输监听器的协议协商流程，演示如何以声明式方式完成 L1 → L2 → Service 的逐层路由；
 /// - 对比旧版样例，新增的协议协商闭包将 L1 路由逻辑回收到 `ServerChannel` 内部，使多协议监听器能够动态挑选 `PipelineInitializer`。
@@ -79,6 +99,7 @@ pub struct ExamplesServer {
     services: CoreServices,
     config: ListenerConfig,
     transport_factory: Arc<dyn DynTransportFactory>,
+    server_channel: Mutex<Option<Box<dyn DynServerChannel>>>,
     host: Host,
     full_stack_label: String,
     minimal_stack_label: String,
@@ -124,6 +145,13 @@ impl ExamplesServer {
             services,
             config,
             transport_factory,
+            server_channel: Mutex::new(None),
+        }
+    }
+
+    /// 启动服务端通道并缓存返回的传输句柄。
+    ///
+    /// # 教案式注释
             host,
             full_stack_label: full_stack_label.into(),
             minimal_stack_label: minimal_stack_label.into(),
@@ -144,6 +172,11 @@ impl ExamplesServer {
     /// - 生成选择器闭包并交给 `ServerChannel`；
     /// - 缓存监听器句柄，便于后续关闭或观测。
     ///
+    /// ## 契约定义 (What)
+    /// - `controller_factory`: 负责构建 Pipeline 的对象层工厂，调用方需确保其中 Handler 满足线程安全；
+    /// - 返回：`CoreResult<()>`，成功表示服务端通道已就绪并被缓存，失败时传播底层 `CoreError`。
+    /// - **前置条件**：`ExamplesServer` 已通过 [`Self::new`] 正确初始化；
+    /// - **后置条件**：`self.server_channel` 保存最新的服务端通道句柄，供后续关闭或观测；尚未开始消费连接。
     /// # 合同
     /// - *参数*：`pipeline_factory` —— Transport 启动所需的 Pipeline 工厂；
     /// - *返回*：`CoreResult<()>`，成功即表示监听器就绪；
@@ -157,10 +190,13 @@ impl ExamplesServer {
         let call_context = CallContext::builder().build();
         let execution = call_context.execution();
 
-        let listener = self
+        let server_channel = self
             .transport_factory
             .listen(&execution, self.config.clone(), pipeline_factory)
             .await?;
+
+        let mut slot = self.server_channel.lock();
+        *slot = Some(server_channel);
 
         let selectors = InitializerSelectorContext::new(
             &self.host,
