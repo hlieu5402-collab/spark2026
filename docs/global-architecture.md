@@ -16,7 +16,7 @@ Spark 数据面围绕 L1/L2 两层展开，每层既独立又协同：
 ### 2.1 装配时（L1）链路
 ```
 ServerChannel (监听 / 协商)
-  │  └─ set_initializer_selector(HandshakeOutcome → PipelineInitializer)
+  │  └─ set_initializer_selector(HandshakeOutcome → Result<PipelineInitializer, CoreError>)
   ▼
 PipelineInitializer (声明式装配)
   │  ├─ register_inbound / register_outbound
@@ -24,8 +24,8 @@ PipelineInitializer (声明式装配)
   ▼
 Pipeline 控制器（生成 Handler Registry + PipelineEvent 广播）
 ```
-- `ServerChannel::set_initializer_selector` 将握手结果映射为具体 PipelineInitializer，完成监听器层策略注入。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】
-- PipelineInitializer 负责注册入站/出站 Handler，并生成 Handler Registry 与描述信息，为运行时提供固定执行序列与观测入口。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L133】
+- `ServerChannel::set_initializer_selector` 将握手结果映射为具体 PipelineInitializer，允许在策略缺失时返回结构化错误。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L118】
+- PipelineInitializer 负责注册入站/出站 Handler，并生成 Handler Registry 与描述信息；`configure` 现额外获取 [`Channel`] 引用，以便按连接特征完成装配。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L134】
 - Pipeline 控制器作为 L1/L2 的交界面，持有 Handler Registry、事件广播器以及热插拔元数据，是运行时 introspection 的基石。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
 
 ### 2.2 运行时（L2）链路
@@ -64,7 +64,7 @@ Service (Tower Service / BoxService)
 ## 4. 装配时（L1）工作流细化
 1. **监听器启动**：平台通过 `TransportFactory::bind_dyn` 创建 ServerChannel，注入监听地址、握手协议与初始策略，然后调用 `set_initializer_selector` 绑定协商结果到具体 PipelineInitializer。【F:tools/baselines/spark-core.public-api.json†L500-L509】【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L28-L114】
 2. **协商完成**：`ServerChannel::accept` 输出 `(Channel, TransportSocketAddr)` 与 `HandshakeOutcome`，监听器依 outcome 选择 PipelineInitializer 并构造 Pipeline 控制器。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L61-L114】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
-3. **Handler 编排**：`PipelineInitializer::configure` 使用 ChainBuilder 注册入站/出站 Handler，生成 Handler Registry 与 introspection 快照，供观测面查询。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L123-L200】
+3. **Handler 编排**：`PipelineInitializer::configure` 使用 ChainBuilder 注册入站/出站 Handler，并结合 [`Channel`] 引用读取握手元数据，生成 Handler Registry 与 introspection 快照。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L134】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L123-L200】
 4. **部署回滚**：装配失败时，控制面依据 `CoreError` 分类回滚并广播失败事件，确保 Listener 在热更新期间保持可控状态。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L95-L133】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L182-L200】
 
 ## 5. 运行时（L2）工作流细化

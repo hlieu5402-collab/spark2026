@@ -900,7 +900,7 @@ impl Pipeline for HotSwapPipeline {
         // - 若未来需要支持“Builder 先缓存、最后批量提交”的策略，可在 `HotSwapInitializerBuilder`
         //   中拓展缓冲结构，本实现保持最简路径。
         let mut builder = HotSwapInitializerBuilder::new(self);
-        initializer.configure(&mut builder, services)
+        initializer.configure(&mut builder, self.channel.as_ref(), services)
     }
 
     fn emit_channel_activated(&self) {

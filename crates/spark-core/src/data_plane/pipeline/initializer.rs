@@ -2,6 +2,8 @@ use alloc::{borrow::Cow, boxed::Box, format};
 
 use crate::{CoreError, runtime::CoreServices, sealed::Sealed};
 
+use super::channel::Channel;
+
 use super::handler::{self, InboundHandler, OutboundHandler};
 
 /// 描述 PipelineInitializer 或 Handler 的元数据，辅助链路编排与可观测性。
@@ -104,7 +106,7 @@ pub trait ChainBuilder: Sealed {
 /// - **观测标签**：`descriptor` 返回的 `name`/`category`/`summary` 将作为统一的观测标签，建议遵循 `vendor.component` 命名规范。
 /// - **示例(伪码)**：
 ///   ```text
-///   initializer.configure(chain, services)?
+///   initializer.configure(chain, channel, services)?
 ///   chain.register_inbound("authz", Box::new(AuthzHandler::new(policy)))
 ///   ```
 ///
@@ -114,7 +116,8 @@ pub trait ChainBuilder: Sealed {
 ///
 /// # 契约说明（What）
 /// - `descriptor`：返回组件元数据。
-/// - `configure`：在给定 [`ChainBuilder`] 与 [`CoreServices`] 环境下注册 Handler。
+/// - `configure`：在给定 [`ChainBuilder`]、[`Channel`] 以及 [`CoreServices`] 环境下注册 Handler；
+///   `Channel` 提供连接级元数据（如握手结果、地址），帮助初始化器完成针对性装配。
 /// - `configure` 必须是幂等操作，以支持热更新或多次装配。
 ///
 /// # 风险提示（Trade-offs）
@@ -128,6 +131,7 @@ pub trait PipelineInitializer: Send + Sync + 'static + Sealed {
     fn configure(
         &self,
         chain: &mut dyn ChainBuilder,
+        channel: &dyn Channel,
         services: &CoreServices,
     ) -> crate::Result<(), CoreError>;
 }
