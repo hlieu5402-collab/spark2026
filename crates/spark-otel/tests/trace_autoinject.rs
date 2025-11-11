@@ -17,11 +17,6 @@ use spark_core::{
         EventPolicy, LogRecord, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind,
         SpanId, TraceContext,
     },
-    pipeline::{
-        Channel, ChannelState, ExtensionsMap, Pipeline, WriteSignal,
-        controller::{HotSwapPipeline, PipelineHandleId},
-        handler::InboundHandler,
-    },
     runtime::{
         AsyncRuntime, CoreServices, JoinHandle, TaskCancellationStrategy, TaskError, TaskExecutor,
         TaskHandle, TaskResult, TimeDriver,
@@ -31,6 +26,13 @@ use spark_core::{
 
 use spark_otel::facade::DefaultObservabilityFacade;
 use spark_otel::{self, Error as OtelError};
+
+use spark_core as spark_router;
+use spark_router::pipeline::{
+    Channel, ChannelState, ExtensionsMap, Pipeline, WriteSignal,
+    controller::{HotSwapPipeline, PipelineHandleId},
+    handler::InboundHandler,
+};
 
 /// 验证 Handler 日志自动注入 TraceContext，且 Handler Span 的父子关系正确。
 ///
@@ -204,71 +206,79 @@ impl Logger for RecordingLogger {
 struct AlphaHandler;
 
 impl InboundHandler for AlphaHandler {
-    fn describe(&self) -> spark_core::pipeline::initializer::InitializerDescriptor {
-        spark_core::pipeline::initializer::InitializerDescriptor::new(
+    fn describe(&self) -> spark_router::pipeline::initializer::InitializerDescriptor {
+        spark_router::pipeline::initializer::InitializerDescriptor::new(
             "tests.alpha",
             "observability",
             "一级 Handler：记录日志并继续传递",
         )
     }
 
-    fn on_channel_active(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_channel_active(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 
-    fn on_read(&self, ctx: &dyn spark_core::pipeline::Context, msg: PipelineMessage) {
+    fn on_read(&self, ctx: &dyn spark_router::pipeline::Context, msg: PipelineMessage) {
         ctx.logger().info("alpha-handled", None);
         ctx.forward_read(msg);
     }
 
-    fn on_read_complete(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_read_complete(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 
-    fn on_writability_changed(&self, _ctx: &dyn spark_core::pipeline::Context, _is_writable: bool) {
+    fn on_writability_changed(
+        &self,
+        _ctx: &dyn spark_router::pipeline::Context,
+        _is_writable: bool,
+    ) {
     }
 
     fn on_user_event(
         &self,
-        _ctx: &dyn spark_core::pipeline::Context,
+        _ctx: &dyn spark_router::pipeline::Context,
         _event: spark_core::CoreUserEvent,
     ) {
     }
 
-    fn on_exception_caught(&self, _ctx: &dyn spark_core::pipeline::Context, _error: CoreError) {}
+    fn on_exception_caught(&self, _ctx: &dyn spark_router::pipeline::Context, _error: CoreError) {}
 
-    fn on_channel_inactive(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_channel_inactive(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 }
 
 /// 二级入站 Handler：终止链路并记录日志，验证子 Span 行为。
 struct BetaHandler;
 
 impl InboundHandler for BetaHandler {
-    fn describe(&self) -> spark_core::pipeline::initializer::InitializerDescriptor {
-        spark_core::pipeline::initializer::InitializerDescriptor::new(
+    fn describe(&self) -> spark_router::pipeline::initializer::InitializerDescriptor {
+        spark_router::pipeline::initializer::InitializerDescriptor::new(
             "tests.beta",
             "observability",
             "二级 Handler：终止链路并记录日志",
         )
     }
 
-    fn on_channel_active(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_channel_active(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 
-    fn on_read(&self, ctx: &dyn spark_core::pipeline::Context, _msg: PipelineMessage) {
+    fn on_read(&self, ctx: &dyn spark_router::pipeline::Context, _msg: PipelineMessage) {
         ctx.logger().info("beta-handled", None);
     }
 
-    fn on_read_complete(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_read_complete(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 
-    fn on_writability_changed(&self, _ctx: &dyn spark_core::pipeline::Context, _is_writable: bool) {
+    fn on_writability_changed(
+        &self,
+        _ctx: &dyn spark_router::pipeline::Context,
+        _is_writable: bool,
+    ) {
     }
 
     fn on_user_event(
         &self,
-        _ctx: &dyn spark_core::pipeline::Context,
+        _ctx: &dyn spark_router::pipeline::Context,
         _event: spark_core::CoreUserEvent,
     ) {
     }
 
-    fn on_exception_caught(&self, _ctx: &dyn spark_core::pipeline::Context, _error: CoreError) {}
+    fn on_exception_caught(&self, _ctx: &dyn spark_router::pipeline::Context, _error: CoreError) {}
 
-    fn on_channel_inactive(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_channel_inactive(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 }
 
 /// 用于驱动 Pipeline 的伪造业务消息，只包含一个递增 ID。

@@ -17,15 +17,16 @@ use spark_core::observability::metrics::{
     AttributeSet, Counter, Gauge, Histogram, InstrumentDescriptor, MetricsProvider,
 };
 use spark_core::observability::{CoreUserEvent, LogRecord, Logger, TraceContext};
-use spark_core::pipeline::channel::ChannelState;
-use spark_core::pipeline::controller::{
+use spark_core as spark_router;
+use spark_router::pipeline::channel::ChannelState;
+use spark_router::pipeline::controller::{
     Pipeline, PipelineHandleId, HandlerRegistration,
 };
-use spark_core::pipeline::default_handlers::{
+use spark_router::pipeline::default_handlers::{
     ExceptionAutoResponder, ReadyStateEvent,
 };
-use spark_core::pipeline::handler::{InboundHandler, OutboundHandler};
-use spark_core::pipeline::{
+use spark_router::pipeline::handler::{InboundHandler, OutboundHandler};
+use spark_router::pipeline::{
     Channel, Context, Pipeline as PipelineController, ExtensionsMap, HandlerRegistry,
     PipelineMessage, WriteSignal,
 };
@@ -126,7 +127,7 @@ impl Pipeline for RecordingController {
 
     fn install_middleware(
         &self,
-        _: &dyn spark_core::pipeline::PipelineInitializer,
+        _: &dyn spark_router::pipeline::PipelineInitializer,
         _: &spark_core::runtime::CoreServices,
     ) -> Result<(), CoreError> {
         Ok(())
@@ -161,7 +162,7 @@ impl Pipeline for RecordingController {
         &self,
         anchor: Self::HandleId,
         _: &str,
-        _: Arc<dyn spark_core::pipeline::controller::Handler>,
+        _: Arc<dyn spark_router::pipeline::controller::Handler>,
     ) -> Self::HandleId {
         anchor
     }
@@ -173,7 +174,7 @@ impl Pipeline for RecordingController {
     fn replace_handler(
         &self,
         _: Self::HandleId,
-        _: Arc<dyn spark_core::pipeline::controller::Handler>,
+        _: Arc<dyn spark_router::pipeline::controller::Handler>,
     ) -> bool {
         false
     }

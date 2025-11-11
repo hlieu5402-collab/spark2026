@@ -1,6 +1,7 @@
 use crate::case::{TckCase, TckSuite};
 use crate::support::monotonic;
 use parking_lot::Mutex;
+use spark_core as spark_router;
 use spark_core::contract::{CloseReason, Deadline};
 use spark_core::future::Stream;
 use spark_core::host::GracefulShutdownStatus;
@@ -8,11 +9,6 @@ use spark_core::observability::{
     Counter, EventPolicy, Gauge, Histogram, LogRecord, LogSeverity, Logger, MetricsProvider,
     OpsEvent, OpsEventBus, OpsEventKind,
 };
-use spark_core::pipeline::channel::ChannelState;
-use spark_core::pipeline::controller::{
-    HandlerRegistration, HandlerRegistry, Pipeline, PipelineHandleId,
-};
-use spark_core::pipeline::{Channel, ExtensionsMap};
 use spark_core::runtime::{
     AsyncRuntime, CoreServices, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy,
     TaskError, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
@@ -21,6 +17,11 @@ use spark_core::test_stubs::observability::{NoopCounter, NoopGauge, NoopHistogra
 use spark_core::{BoxStream, SparkError};
 use spark_hosting::shutdown::GracefulShutdownCoordinator;
 use spark_otel::facade::DefaultObservabilityFacade;
+use spark_router::pipeline::channel::ChannelState;
+use spark_router::pipeline::controller::{
+    HandlerRegistration, HandlerRegistry, Pipeline, PipelineHandleId,
+};
+use spark_router::pipeline::{Channel, ExtensionsMap};
 use std::any::Any;
 use std::collections::VecDeque;
 use std::future::Future;
@@ -1343,8 +1344,8 @@ impl Channel for TestChannel {
     fn write(
         &self,
         _msg: spark_core::buffer::PipelineMessage,
-    ) -> spark_core::Result<spark_core::pipeline::WriteSignal, spark_core::error::CoreError> {
-        Ok(spark_core::pipeline::WriteSignal::Accepted)
+    ) -> spark_core::Result<spark_router::pipeline::WriteSignal, spark_core::error::CoreError> {
+        Ok(spark_router::pipeline::WriteSignal::Accepted)
     }
 
     fn flush(&self) {}
@@ -1377,20 +1378,20 @@ impl Pipeline for NoopController {
     fn register_inbound_handler(
         &self,
         _: &str,
-        _: Box<dyn spark_core::pipeline::handler::InboundHandler>,
+        _: Box<dyn spark_router::pipeline::handler::InboundHandler>,
     ) {
     }
 
     fn register_outbound_handler(
         &self,
         _: &str,
-        _: Box<dyn spark_core::pipeline::handler::OutboundHandler>,
+        _: Box<dyn spark_router::pipeline::handler::OutboundHandler>,
     ) {
     }
 
     fn install_middleware(
         &self,
-        _: &dyn spark_core::pipeline::PipelineInitializer,
+        _: &dyn spark_router::pipeline::PipelineInitializer,
         _: &CoreServices,
     ) -> spark_core::Result<(), spark_core::error::CoreError> {
         Ok(())
@@ -1418,7 +1419,7 @@ impl Pipeline for NoopController {
         &self,
         anchor: Self::HandleId,
         _: &str,
-        _: Arc<dyn spark_core::pipeline::controller::Handler>,
+        _: Arc<dyn spark_router::pipeline::controller::Handler>,
     ) -> Self::HandleId {
         anchor
     }
@@ -1430,7 +1431,7 @@ impl Pipeline for NoopController {
     fn replace_handler(
         &self,
         _: Self::HandleId,
-        _: Arc<dyn spark_core::pipeline::controller::Handler>,
+        _: Arc<dyn spark_router::pipeline::controller::Handler>,
     ) -> bool {
         false
     }

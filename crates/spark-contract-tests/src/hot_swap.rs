@@ -1,6 +1,7 @@
 use crate::case::{TckCase, TckSuite};
 use crate::support::shared_vec;
 use parking_lot::Mutex;
+use spark_core as spark_router;
 use spark_core::SparkError;
 use spark_core::buffer::{BufferPool, PipelineMessage, WritableBuffer};
 use spark_core::contract::{CallContext, CloseReason, Deadline};
@@ -9,16 +10,18 @@ use spark_core::observability::{
     EventPolicy, Logger, MetricsProvider, OpsEvent, OpsEventBus, OpsEventKind, TraceContext,
     TraceFlags,
 };
-use spark_core::pipeline::channel::{ChannelState, WriteSignal};
-use spark_core::pipeline::controller::{HotSwapPipeline, PipelineHandleId, handler_from_inbound};
-use spark_core::pipeline::handler::InboundHandler;
-use spark_core::pipeline::{Channel, ExtensionsMap, Pipeline, initializer::InitializerDescriptor};
 use spark_core::runtime::{
     AsyncRuntime, CoreServices, MonotonicTimePoint, TaskCancellationStrategy, TaskExecutor,
     TaskHandle, TaskResult, TimeDriver,
 };
 use spark_core::test_stubs::observability::{NoopLogger, NoopMetricsProvider};
 use spark_otel::facade::DefaultObservabilityFacade;
+use spark_router::pipeline::channel::{ChannelState, WriteSignal};
+use spark_router::pipeline::controller::{HotSwapPipeline, PipelineHandleId, handler_from_inbound};
+use spark_router::pipeline::handler::InboundHandler;
+use spark_router::pipeline::{
+    Channel, ExtensionsMap, Pipeline, initializer::InitializerDescriptor,
+};
 use std::any::TypeId;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
@@ -398,9 +401,9 @@ impl InboundHandler for RecordingInbound {
         )
     }
 
-    fn on_channel_active(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_channel_active(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 
-    fn on_read(&self, ctx: &dyn spark_core::pipeline::Context, msg: PipelineMessage) {
+    fn on_read(&self, ctx: &dyn spark_router::pipeline::Context, msg: PipelineMessage) {
         match msg.try_into_user::<TestMessage>() {
             Ok(user) => {
                 self.events
@@ -412,26 +415,30 @@ impl InboundHandler for RecordingInbound {
         }
     }
 
-    fn on_read_complete(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_read_complete(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 
-    fn on_writability_changed(&self, _ctx: &dyn spark_core::pipeline::Context, _is_writable: bool) {
+    fn on_writability_changed(
+        &self,
+        _ctx: &dyn spark_router::pipeline::Context,
+        _is_writable: bool,
+    ) {
     }
 
     fn on_user_event(
         &self,
-        _ctx: &dyn spark_core::pipeline::Context,
+        _ctx: &dyn spark_router::pipeline::Context,
         _event: spark_core::observability::CoreUserEvent,
     ) {
     }
 
     fn on_exception_caught(
         &self,
-        _ctx: &dyn spark_core::pipeline::Context,
+        _ctx: &dyn spark_router::pipeline::Context,
         _error: spark_core::error::CoreError,
     ) {
     }
 
-    fn on_channel_inactive(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_channel_inactive(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 }
 
 /// 在线程间同步的记录型 Handler：在写入共享事件缓冲后，通过双栅栏控制消息何时继续向后游走。
@@ -476,9 +483,9 @@ impl InboundHandler for BlockingRecordingInbound {
         )
     }
 
-    fn on_channel_active(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_channel_active(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 
-    fn on_read(&self, ctx: &dyn spark_core::pipeline::Context, msg: PipelineMessage) {
+    fn on_read(&self, ctx: &dyn spark_router::pipeline::Context, msg: PipelineMessage) {
         match msg.try_into_user::<TestMessage>() {
             Ok(user) => {
                 {
@@ -497,26 +504,30 @@ impl InboundHandler for BlockingRecordingInbound {
         }
     }
 
-    fn on_read_complete(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_read_complete(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 
-    fn on_writability_changed(&self, _ctx: &dyn spark_core::pipeline::Context, _is_writable: bool) {
+    fn on_writability_changed(
+        &self,
+        _ctx: &dyn spark_router::pipeline::Context,
+        _is_writable: bool,
+    ) {
     }
 
     fn on_user_event(
         &self,
-        _ctx: &dyn spark_core::pipeline::Context,
+        _ctx: &dyn spark_router::pipeline::Context,
         _event: spark_core::observability::CoreUserEvent,
     ) {
     }
 
     fn on_exception_caught(
         &self,
-        _ctx: &dyn spark_core::pipeline::Context,
+        _ctx: &dyn spark_router::pipeline::Context,
         _error: spark_core::error::CoreError,
     ) {
     }
 
-    fn on_channel_inactive(&self, _ctx: &dyn spark_core::pipeline::Context) {}
+    fn on_channel_inactive(&self, _ctx: &dyn spark_router::pipeline::Context) {}
 }
 
 #[derive(Clone, Copy)]

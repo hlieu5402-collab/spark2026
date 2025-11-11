@@ -1,19 +1,20 @@
 use crate::case::{TckCase, TckSuite};
 use parking_lot::Mutex;
+use spark_core as spark_router;
 use spark_core::buffer::{BufferPool, PoolStats, WritableBuffer};
 use spark_core::contract::{CallContext, CloseReason};
 use spark_core::error::codes;
 use spark_core::observability::{CoreUserEvent, Logger, MetricsProvider, TraceContext, TraceFlags};
-use spark_core::pipeline::channel::ChannelState;
-use spark_core::pipeline::controller::PipelineHandleId;
-use spark_core::pipeline::default_handlers::{ExceptionAutoResponder, ReadyStateEvent};
-use spark_core::pipeline::handler::{InboundHandler, OutboundHandler};
-use spark_core::pipeline::{
-    Channel, Context, ExtensionsMap, HandlerRegistry, Pipeline, WriteSignal,
-};
 use spark_core::status::{BusyReason, ReadyState};
 use spark_core::test_stubs::observability::{NoopLogger, NoopMetricsProvider};
 use spark_core::{CoreError, PipelineMessage, SparkError, future::BoxFuture};
+use spark_router::pipeline::channel::ChannelState;
+use spark_router::pipeline::controller::PipelineHandleId;
+use spark_router::pipeline::default_handlers::{ExceptionAutoResponder, ReadyStateEvent};
+use spark_router::pipeline::handler::{InboundHandler, OutboundHandler};
+use spark_router::pipeline::{
+    Channel, Context, ExtensionsMap, HandlerRegistry, Pipeline, WriteSignal,
+};
 use std::any::TypeId;
 use std::sync::Arc;
 use std::time::Duration;
@@ -161,7 +162,7 @@ impl Pipeline for ReadyRecordingController {
 
     fn install_middleware(
         &self,
-        _: &dyn spark_core::pipeline::PipelineInitializer,
+        _: &dyn spark_router::pipeline::PipelineInitializer,
         _: &spark_core::runtime::CoreServices,
     ) -> spark_core::Result<(), CoreError> {
         Ok(())
@@ -193,7 +194,7 @@ impl Pipeline for ReadyRecordingController {
         &self,
         anchor: Self::HandleId,
         _: &str,
-        _: Arc<dyn spark_core::pipeline::controller::Handler>,
+        _: Arc<dyn spark_router::pipeline::controller::Handler>,
     ) -> Self::HandleId {
         anchor
     }
@@ -205,7 +206,7 @@ impl Pipeline for ReadyRecordingController {
     fn replace_handler(
         &self,
         _: Self::HandleId,
-        _: Arc<dyn spark_core::pipeline::controller::Handler>,
+        _: Arc<dyn spark_router::pipeline::controller::Handler>,
     ) -> bool {
         false
     }
@@ -218,7 +219,7 @@ impl Pipeline for ReadyRecordingController {
 struct EmptyRegistry;
 
 impl HandlerRegistry for EmptyRegistry {
-    fn snapshot(&self) -> Vec<spark_core::pipeline::controller::HandlerRegistration> {
+    fn snapshot(&self) -> Vec<spark_router::pipeline::controller::HandlerRegistration> {
         Vec::new()
     }
 }
