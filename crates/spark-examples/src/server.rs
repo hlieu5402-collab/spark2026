@@ -597,23 +597,40 @@ mod router_stage {
         ) -> RouterFlow {
             chain.register_inbound(
                 "router.l2",
-                Box::new(AppRouterHandler::new(descriptor)),
+                Box::new(ApplicationRouter::new(descriptor)),
             );
             RouterFlow::ForwardsToNext
         }
 
-        /// `AppRouterHandler`：no_std 桩实现，负责记录并继续转发消息。
-        struct AppRouterHandler {
+        /// `ApplicationRouter`：no_std 桩实现，负责记录并继续转发消息。
+        ///
+        /// # 教案式说明
+        /// - **意图（Why）**：在缺失标准库的环境中，以最小依赖保留“记录+透传”能力，
+        ///   让示例能够演示控制面如何挂载路由 Handler；
+        /// - **契约（What）**：实现 [`InboundHandler`]，输入来自上一层的 [`PipelineMessage`]，
+        ///   输出通过 `ctx.forward_read` 原样交给下游，无内部状态变更；
+        /// - **流程（How）**：
+        ///   1. `new` 保存初始化描述符，便于运行时查询；
+        ///   2. `on_channel_active` 记录启动日志，帮助定位链路；
+        ///   3. `on_read` 打印调试信息并继续透传消息；
+        ///   4. 其他回调保持空实现，表明此桩不干预额外阶段；
+        /// - **前置条件/后置条件（Contract）**：调用前需提供合法的 `InitializerDescriptor`，
+        ///   成功执行后保证消息被继续转发且未修改；
+        /// - **权衡与风险（Trade-offs）**：牺牲真实路由能力换取编译通过，若在生产误用，将缺失动态路由；
+        ///   如需增强，可替换为完整的 [`super::register_router`] `std` 版本；
+        /// - **边界情况（Gotchas）**：日志记录依赖 `PipelineContext` 提供的追踪上下文，
+        ///   若上游未注入将退化为 `None`，但不会影响消息流。
+        struct ApplicationRouter {
             descriptor: InitializerDescriptor,
         }
 
-        impl AppRouterHandler {
+        impl ApplicationRouter {
             fn new(descriptor: InitializerDescriptor) -> Self {
                 Self { descriptor }
             }
         }
 
-        impl InboundHandler for AppRouterHandler {
+        impl InboundHandler for ApplicationRouter {
             fn describe(&self) -> InitializerDescriptor {
                 self.descriptor.clone()
             }
