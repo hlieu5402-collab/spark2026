@@ -21,9 +21,8 @@ use spark_core::{SparkError, buffer::PipelineMessage};
 pub mod pipeline;
 
 pub use pipeline::{
-    ApplicationRouter, ApplicationRouterInitializer, ExtensionsRoutingContextBuilder,
-    RouterContextSnapshot, RouterContextState, RoutingContextBuilder, RoutingContextParts,
-    load_router_context, store_router_context,
+    ExtensionsRoutingContextBuilder, RouterContextSnapshot, RouterContextState,
+    RoutingContextBuilder, RoutingContextParts, load_router_context, store_router_context,
 };
 
 /// `ServiceFactory` 定义路由表中“如何按需生成对象层 Service” 的抽象。
