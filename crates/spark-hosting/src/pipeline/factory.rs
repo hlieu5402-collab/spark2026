@@ -5,19 +5,18 @@ use spark_core::{
     contract::CallContext,
     pipeline::{
         Channel, Pipeline, PipelineFactory as CorePipelineFactory, PipelineInitializer,
+        controller::HotSwapPipeline,
     },
     runtime::CoreServices,
 };
 
-use crate::PipelineController;
-
 /// `DefaultPipelineFactory` 负责将传输层创建的 `Channel`、宿主提供的
 /// [`PipelineInitializer`] 序列与 `CoreServices` 聚合成可直接投入运行的
-/// [`PipelineController`] 实例。
+/// `PipelineController` 实例。
 ///
 /// # 教案级说明
 /// - **定位（Where）**：
-///   - 位于 `spark-pipeline` crate，对外作为 `spark-examples`/`spark-hosting` 在运行时按连接
+///   - 位于 `spark-hosting` crate 内部，对外作为 `spark-examples`/`spark-hosting` 在运行时按连接
 ///     装配控制器的默认实现；
 ///   - 与 `spark-core` 的 `PipelineFactory` trait 对齐，确保既能服务泛型层也能被对象层
 ///     适配器复用。
@@ -31,7 +30,7 @@ use crate::PipelineController;
 ///   1. 构造阶段收集 `Channel`、`CallContext` 以及按顺序排列的
 ///      [`PipelineInitializer`] 引用；
 ///   2. [`Self::build`] 被调用时克隆 `CoreServices` 与 `CallContext`，创建
-///      [`PipelineController`]；
+///      `PipelineController`；
 ///   3. 遍历缓存的 PipelineInitializer，依次调用 `install_middleware` 装配 Handler 链路；
 ///   4. 若任一步骤失败，立即返回结构化 [`CoreError`]，保证调用方能够中止管线初始化。
 /// - **契约（What）**：
@@ -56,6 +55,8 @@ pub struct DefaultPipelineFactory {
     /// 按顺序存放的 PipelineInitializer 列表，确保装配顺序确定。
     initializers: Vec<Arc<dyn PipelineInitializer>>,
 }
+
+type PipelineController = HotSwapPipeline;
 
 impl DefaultPipelineFactory {
     /// 创建 `DefaultPipelineFactory` 实例。
@@ -92,7 +93,7 @@ impl DefaultPipelineFactory {
 impl CorePipelineFactory for DefaultPipelineFactory {
     type Pipeline = Arc<PipelineController>;
 
-    /// 装配带有 PipelineInitializer 链路的 [`PipelineController`] 并返回。
+    /// 装配带有 PipelineInitializer 链路的 `PipelineController` 并返回。
     ///
     /// # 教案级说明
     /// - **执行步骤（How）**：
