@@ -1509,7 +1509,12 @@ pub mod rtcp;
 
 #[cfg(test)]
 mod router_pipeline_migration {
-    use spark_router::pipeline::ApplicationRouterInitializer;
+    use spark_core::pipeline::ExtensionsMap;
+    use spark_router::pipeline::{
+        load_router_context, store_router_context, ApplicationRouter,
+        ApplicationRouterInitializer, ExtensionsRoutingContextBuilder, RouterContextState,
+        RouterContextSnapshot, RoutingContextBuilder, RoutingContextParts,
+    };
 
     /// 校验 `spark_router::pipeline` 的核心类型在 `spark-tck` 中可用，避免回退到已废弃的
     /// `spark_pipeline::router_handler` 导入路径。
@@ -1530,6 +1535,60 @@ mod router_pipeline_migration {
         assert!(
             type_size > 0,
             "`ApplicationRouterInitializer` 应为非零尺寸结构体，若为 0 则可能触发 ABI 变化"
+        );
+    }
+
+    /// 通过系统性检查确认 `spark_router::pipeline` 下的类型/函数签名完全对齐 TCK 预期，
+    /// 杜绝在测试迁移过程中意外回落到旧版 `spark_pipeline::router_handler` 名称空间。
+    ///
+    /// - **意图（Why）**：若未来某次回归再次引入旧依赖，编译器应立即因路径失效而报错，
+    ///   保障 TCK 使用的路由上下文工具始终指向最新版实现。
+    /// - **执行逻辑（How）**：
+    ///   1. 利用 `size_of` 访问关键结构体元数据，迫使编译器解析并链接对应类型；
+    ///   2. 通过函数指针签名比对 `store_router_context` / `load_router_context` 的参数与返回
+    ///      值，确认 API 约定未偏离；
+    ///   3. 构造 `RoutingContextBuilder` trait 对象以验证默认构造器仍满足契约。
+    /// - **契约说明（What）**：测试无输入参数、返回 `()`；前置条件是工作区已正确依赖
+    ///   `spark-router` 与 `spark-core`；后置条件是若任一符号不存在或签名变更将导致编译
+    ///   或断言失败。
+    /// - **边界考量（Trade-offs & Gotchas）**：测试不执行真实路由逻辑，仅检查符号存在性，
+    ///   以最小成本提供命名空间守护；若未来 API 签名调整，应同步更新断言以免出现误报。
+    #[test]
+    fn ensure_router_pipeline_symbols_match_new_namespace() {
+        use std::{mem::size_of, sync::Arc};
+
+        let type_sizes = [
+            size_of::<ApplicationRouter>(),
+            size_of::<ApplicationRouterInitializer>(),
+            size_of::<ExtensionsRoutingContextBuilder>(),
+            size_of::<RouterContextState>(),
+            size_of::<RouterContextSnapshot>(),
+            size_of::<RoutingContextParts>(),
+        ];
+
+        assert!(
+            type_sizes.iter().all(|&size| size > 0),
+            "`spark_router::pipeline` 导出的核心结构体应为非零尺寸"
+        );
+
+        fn enforce_signatures(
+            store: fn(&dyn ExtensionsMap, RouterContextState),
+            load: fn(&dyn ExtensionsMap) -> Option<Arc<RouterContextState>>,
+        ) -> (
+            fn(&dyn ExtensionsMap, RouterContextState),
+            fn(&dyn ExtensionsMap) -> Option<Arc<RouterContextState>>,
+        ) {
+            (store, load)
+        }
+
+        let (store_fn, load_fn) = enforce_signatures(store_router_context, load_router_context);
+        let _ = (store_fn, load_fn);
+
+        let builder: &dyn RoutingContextBuilder = &ExtensionsRoutingContextBuilder::default();
+        let builder_ptr = builder as *const dyn RoutingContextBuilder;
+        assert!(
+            !builder_ptr.is_null(),
+            "`ExtensionsRoutingContextBuilder` 应能构造有效的 trait 对象"
         );
     }
 }
