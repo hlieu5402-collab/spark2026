@@ -30,14 +30,13 @@ pub mod params;
 pub mod server;
 pub mod server_channel;
 pub mod shutdown;
-pub mod traits;
 
 pub use address::{AddressFamily, TransportSocketAddr};
 pub use builder::TransportBuilder;
 pub use channel::{BackpressureDecision, BackpressureMetrics, Channel};
 pub use datagram::DatagramEndpoint;
 pub use endpoint::{Endpoint, EndpointKind};
-pub use factory::ListenerConfig;
+pub use factory::{DynTransportFactory, ListenerConfig, TransportFactory, TransportFactoryObject};
 pub use handshake::{
     Capability, CapabilityBitmap, DowngradeReport, HandshakeError, HandshakeErrorKind,
     HandshakeOffer, HandshakeOutcome, NegotiationAuditContext, Version, negotiate,
@@ -48,9 +47,7 @@ pub use intent::{
 pub use metrics::{LinkDirection, TransportMetricsHook};
 pub use params::TransportParams;
 pub use server::{ListenerShutdown, describe_shutdown_target};
-pub use server_channel::{PipelineInitializerSelector, ServerChannel};
-pub use shutdown::ShutdownDirection;
-pub use traits::generic::TransportFactory;
-pub use traits::object::{
-    DynServerChannel, DynTransportFactory, ServerChannelObject, TransportFactoryObject,
+pub use server_channel::{
+    DynServerChannel, PipelineInitializerSelector, ServerChannel, ServerChannelObject,
 };
+pub use shutdown::ShutdownDirection;

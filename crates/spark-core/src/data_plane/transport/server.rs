@@ -46,9 +46,9 @@ impl ListenerShutdown {
     }
 }
 
-/// 服务端传输契约的泛型与对象层接口迁移至 [`crate::transport::traits`]。
+/// 服务端传输契约的泛型与对象层接口统一由 [`crate::transport`] 模块导出。
 /// - 泛型接口：[`crate::transport::ServerChannel`]
-/// - 对象接口：[`crate::transport::traits::object::DynServerChannel`]
+/// - 对象接口：[`crate::transport::DynServerChannel`]
 ///
 /// `TransportSocketAddr` 依旧在此模块暴露，便于调用方在关闭流程中记录地址信息。
 pub fn describe_shutdown_target(addr: &TransportSocketAddr, plan: &ListenerShutdown) -> String {
