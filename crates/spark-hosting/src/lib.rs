@@ -20,6 +20,8 @@ pub mod shutdown;
 
 pub use builder::{HostBuildError, HostBuilder, HostBuilderError};
 pub use host::Host;
-pub use pipeline::{MiddlewareRegistrationError, MiddlewareRegistry};
+pub use pipeline::{
+    MiddlewareRegistrationError, MiddlewareRegistry, factory::DefaultPipelineFactory,
+};
 pub use service::{ServiceEntry, ServiceFactory, ServiceRegistrationError, ServiceRegistry};
 pub use shutdown::GracefulShutdownCoordinator;

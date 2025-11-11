@@ -1,3 +1,5 @@
+pub(crate) mod factory;
+
 use core::fmt;
 
 #[cfg(feature = "alloc")]

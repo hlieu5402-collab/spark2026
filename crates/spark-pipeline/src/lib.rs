@@ -17,10 +17,6 @@ extern crate alloc;
 
 pub use spark_core::pipeline::{Pipeline, controller::HotSwapPipeline};
 
-mod factory;
-
-pub use factory::DefaultPipelineFactory;
-
 pub use router::ApplicationRouter as LegacyRouterHandler;
 
 /// 教案级别别名说明：`LegacyRouterHandler`
