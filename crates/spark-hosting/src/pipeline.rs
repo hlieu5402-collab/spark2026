@@ -46,13 +46,13 @@ impl SparkErrorTrait for MiddlewareRegistrationError {
 ///     - 路由链路相关组件请直接通过 `use spark_router::pipeline::{
 ///       ApplicationRouterInitializer, ExtensionsRoutingContextBuilder, ..
 ///       }` 等语句引入：
-///       1. **核心目标**：规避 `spark_pipeline::router_handler::*` 兼容路径，避免将
-///          宿主绑定到过渡模块；
+///       1. **核心目标**：明确 `spark_router::pipeline::*` 为 Router 初始化的唯一正向
+///          依赖入口，保持示例、文档与宿主实现一致；
 ///       2. **体系位置**：`spark_router::pipeline` 承载统一的 Router 初始化与上下文
 ///          构造逻辑，宿主在装配阶段应原生依赖该实现以缩短调用链；
-///       3. **设计考量**：直接依赖新模块可减少一次再导出层，从而降低未来移除
-///          兼容模块时的破坏性；若确实需要旧路径，应在调用侧建立适配器并标注
-///          退场计划。
+///       3. **设计考量**：直接依赖该模块可减少一次再导出层，从而降低未来清理兼
+///          容桥接时代码的破坏性；若确实需要遗留路径，应在调用侧建立适配器并标
+///          注退场计划。
 /// - **契约 (What)**
 ///   - 名称必须唯一；若重复注册将返回 [`MiddlewareRegistrationError::Duplicate`]；
 ///   - 初始化器应满足对象层契约：`Send + Sync + 'static`。
