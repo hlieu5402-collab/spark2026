@@ -230,6 +230,8 @@ fn resolve_service_instance(registry: &ServiceRegistry, name: &str) -> BoxServic
 }
 
 /// `MyInitializer` 演示如何在 `configure` 阶段串联 Codec、可选 L2 Router 与 Service 适配器。
+/// 当启用 `std` 时，路由阶段直接复用 `spark_router::pipeline::ApplicationRouter`，以便向读者
+/// 展示真实的 Handler 安装流程；在 `no_std` 场景下则回退为教学桩以维持文档连贯性。
 ///
 /// # 教案级注释
 /// - **意图 (Why)**：强调 PipelineInitializer 的职责是“描述并装配 Handler 链”；
@@ -286,27 +288,39 @@ impl PipelineInitializer for MyInitializer {
         chain.register_inbound("codec.inbound", Box::new(codec_handler.clone()));
         chain.register_outbound("codec.outbound", Box::new(codec_handler));
 
-        if self.enable_router {
+
+        let router_flow = if self.enable_router {
             let router_descriptor = InitializerDescriptor::new(
                 "spark.examples.router",
                 "routing",
                 "根据帧头元数据选择业务路由",
             );
+            Some(router_stage::register_router(
+                chain,
+                router_descriptor,
+                self.service.clone(),
+            ))
+        } else {
+            None
+        };
+
+        if !matches!(
+            router_flow,
+            Some(router_stage::RouterFlow::ConsumesInbound)
+        ) {
+            let service_descriptor = InitializerDescriptor::new(
+                "spark.examples.service_adapter",
+                "service",
+                "将 Pipeline 消息交给业务 Service，并在完成后继续写出响应",
+            );
             chain.register_inbound(
-                "router.l2",
-                Box::new(AppRouterHandler::new(router_descriptor)),
+                "service.adapter",
+                Box::new(ServiceAdapterHandler::new(
+                    service_descriptor,
+                    self.service.clone(),
+                )),
             );
         }
-
-        let service_descriptor = InitializerDescriptor::new(
-            "spark.examples.service_adapter",
-            "service",
-            "将 Pipeline 消息交给业务 Service，并在完成后继续写出响应",
-        );
-        chain.register_inbound(
-            "service.adapter",
-            Box::new(ServiceAdapterHandler::new(service_descriptor, self.service.clone())),
-        );
 
         Ok(())
     }
@@ -406,57 +420,263 @@ impl OutboundHandler for CodecHandler {
     }
 }
 
-/// `AppRouterHandler` 演示 L2 路由阶段：根据握手能力决定是否安装，入站时记录路由信息。
-struct AppRouterHandler {
-    descriptor: InitializerDescriptor,
-}
+mod router_stage {
+    use super::{BoxService, ChainBuilder, InitializerDescriptor, PipelineMessage};
 
-impl AppRouterHandler {
-    fn new(descriptor: InitializerDescriptor) -> Self {
-        Self { descriptor }
-    }
-}
-
-impl InboundHandler for AppRouterHandler {
-    fn describe(&self) -> InitializerDescriptor {
-        self.descriptor.clone()
-    }
-
-    fn on_channel_active(&self, ctx: &dyn PipelineContext) {
-        ctx.logger().info(
-            "app router activated",
-            None,
-            Some(ctx.trace_context()),
-        );
+    /// `RouterFlow` 描述路由 Handler 对入站消息的消费语义。
+    ///
+    /// # 教案级说明
+    /// - **意图 (Why)**：在 `MyInitializer` 中根据不同实现（真实 Router 或教学桩）
+    ///   决定是否继续注册 `ServiceAdapterHandler`；
+    /// - **契约 (What)**：`ConsumesInbound` 表示 Router 会终止消息并负责调用业务
+    ///   Service；`ForwardsToNext` 表示仍需后续 Handler 处理；
+    /// - **风险提示 (Trade-offs)**：抽象为枚举后，未来若增添更多 Router 变体，只需
+    ///   新增分支即可保持流程清晰，避免布尔标志失语化。
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum RouterFlow {
+        /// Router 自行消费入站消息并写出响应。
+        ConsumesInbound,
+        /// Router 仅记录或补充上下文，消息继续流向后续 Handler。
+        ForwardsToNext,
     }
 
-    fn on_read(&self, ctx: &dyn PipelineContext, msg: PipelineMessage) {
-        ctx.logger().debug(
-            "app router received frame; forwarding to next handler",
-            None,
-            Some(ctx.trace_context()),
-        );
-        ctx.forward_read(msg);
+    #[cfg(feature = "std")]
+    mod std_impl {
+        use super::RouterFlow;
+        use alloc::{borrow::Cow, format, sync::Arc};
+        use spark_core::{
+            SparkError,
+            pipeline::Context as PipelineContext,
+            router::{
+                DynRouter,
+                context::{RoutingIntent, RoutingSnapshot},
+                metadata::{MetadataKey, MetadataValue, RouteMetadata},
+                route::{RouteKind, RoutePattern, RouteSegment},
+            },
+        };
+        use spark_router::{
+            DefaultRouter, ServiceFactory,
+            pipeline::{
+                ApplicationRouter, RoutingContextBuilder, RoutingContextParts,
+            },
+        };
+
+        use super::{BoxService, ChainBuilder, InitializerDescriptor, PipelineMessage};
+
+        /// 将真实 `ApplicationRouter` 装配进教学 Pipeline。
+        ///
+        /// # 教案级说明
+        /// - **意图 (Why)**：示例展示“握手 → Router → Service” 的真实路径，帮助读者理解
+        ///   `spark_router::pipeline` 新命名空间的使用方式；
+        /// - **流程 (How)**：
+        ///   1. 构建只含单一路由的 [`DefaultRouter`] 并注册静态 Service 工厂；
+        ///   2. 构造 `ExampleRoutingContextBuilder`，根据 Channel 上下文拼装路由意图；
+        ///   3. 以 [`ApplicationRouter::new`] 生成 Handler 并注册到入站链路；
+        /// - **契约 (What)**：返回 [`RouterFlow::ConsumesInbound`]，告知上游不再需要
+        ///   `ServiceAdapterHandler`；
+        /// - **权衡 (Trade-offs)**：默认路由模式和元数据均写死为教学用途，若要复用需结合
+        ///   实际业务扩展模式枚举与上下文构造器。
+        pub fn register_router(
+            chain: &mut dyn ChainBuilder,
+            descriptor: InitializerDescriptor,
+            service: BoxService,
+        ) -> RouterFlow {
+            let pattern = RoutePattern::new(
+                RouteKind::Rpc,
+                vec![
+                    RouteSegment::Literal(Cow::Borrowed("examples")),
+                    RouteSegment::Literal(Cow::Borrowed("service")),
+                ],
+            );
+
+            let router = Arc::new(DefaultRouter::new());
+            router.add_route(
+                pattern.clone(),
+                Arc::new(StaticServiceFactory::new(service.clone())),
+            );
+
+            let router: Arc<dyn DynRouter> = router;
+            let context_builder: Arc<dyn RoutingContextBuilder> = Arc::new(
+                ExampleRoutingContextBuilder::new(pattern, descriptor.name().to_owned()),
+            );
+
+            let handler = ApplicationRouter::new(router, context_builder, descriptor);
+            chain.register_inbound("router.l2", Box::new(handler));
+
+            RouterFlow::ConsumesInbound
+        }
+
+        /// `StaticServiceFactory`：始终返回克隆后的教学 Service。
+        ///
+        /// # 教案级注释
+        /// - **意图 (Why)**：向默认路由器提供满足 `ServiceFactory` 契约的最小实现，
+        ///   便于示例通过 `ApplicationRouter` 调用业务逻辑；
+        /// - **契约 (What)**：每次 `create` 调用都会克隆内部的 [`BoxService`]；
+        /// - **风险 (Trade-offs)**：克隆开销与业务 Service 实现有关，真实系统应按需缓存或
+        ///   使用对象池。
+        struct StaticServiceFactory {
+            service: BoxService,
+        }
+
+        impl StaticServiceFactory {
+            fn new(service: BoxService) -> Self {
+                Self { service }
+            }
+        }
+
+        impl ServiceFactory for StaticServiceFactory {
+            fn create(&self) -> spark_core::Result<BoxService, SparkError> {
+                Ok(self.service.clone())
+            }
+        }
+
+        /// `ExampleRoutingContextBuilder`：从 Channel 与意图模板构建路由上下文。
+        ///
+        /// # 教案级注释
+        /// - **意图 (Why)**：示范如何自定义 [`RoutingContextBuilder`]，将教学用的静态模式
+        ///   与运行时动态信息结合；
+        /// - **流程 (How)**：
+        ///   1. 复制预设的 `RoutePattern` 生成 [`RoutingIntent`]；
+        ///   2. 将 Channel trace 信息写入动态元数据，方便路由器记录；
+        ///   3. 返回 [`RoutingContextParts`] 供 Router 组装完整上下文；
+        /// - **契约 (What)**：若需要扩展更多动态属性，可在此函数中访问 `msg` 或其他扩展。
+        struct ExampleRoutingContextBuilder {
+            pattern: RoutePattern,
+            label: String,
+        }
+
+        impl ExampleRoutingContextBuilder {
+            fn new(pattern: RoutePattern, label: String) -> Self {
+                Self { pattern, label }
+            }
+        }
+
+        impl RoutingContextBuilder for ExampleRoutingContextBuilder {
+            fn build(
+                &self,
+                ctx: &dyn PipelineContext,
+                _msg: &PipelineMessage,
+                snapshot: RoutingSnapshot<'_>,
+            ) -> spark_core::Result<RoutingContextParts, SparkError> {
+                let message = format!(
+                    "router builder constructing routing context (catalog_revision={} label={})",
+                    snapshot.revision(),
+                    self.label
+                );
+                ctx.logger()
+                    .debug(&message, None, Some(ctx.trace_context()));
+
+                let mut metadata = RouteMetadata::new();
+                metadata.insert(
+                    MetadataKey::new(Cow::Borrowed("spark.examples.router.label")),
+                    MetadataValue::Text(Cow::Owned(self.label.clone())),
+                );
+
+                let intent = RoutingIntent::new(self.pattern.clone())
+                    .with_metadata(metadata.clone());
+
+                Ok(RoutingContextParts::new(intent, None, metadata))
+            }
+        }
     }
 
-    fn on_read_complete(&self, _ctx: &dyn PipelineContext) {}
+    #[cfg(not(feature = "std"))]
+    mod no_std_impl {
+        use super::RouterFlow;
+        use spark_core::{
+            CoreError,
+            observability::CoreUserEvent,
+            pipeline::{Context as PipelineContext, InboundHandler},
+        };
 
-    fn on_writability_changed(&self, _ctx: &dyn PipelineContext, _is_writable: bool) {}
+        use super::{ChainBuilder, InitializerDescriptor, PipelineMessage};
 
-    fn on_user_event(&self, _ctx: &dyn PipelineContext, _event: spark_core::observability::CoreUserEvent) {}
+        /// 教学桩实现：保持旧版“记录后转发”的行为，以兼容 `no_std` 环境。
+        pub fn register_router(
+            chain: &mut dyn ChainBuilder,
+            descriptor: InitializerDescriptor,
+            _service: super::BoxService,
+        ) -> RouterFlow {
+            chain.register_inbound(
+                "router.l2",
+                Box::new(AppRouterHandler::new(descriptor)),
+            );
+            RouterFlow::ForwardsToNext
+        }
 
-    fn on_exception_caught(&self, ctx: &dyn PipelineContext, error: CoreError) {
-        ctx.logger().error(
-            "app router handler failed",
-            Some(&error),
-            Some(ctx.trace_context()),
-        );
+        /// `AppRouterHandler`：no_std 桩实现，负责记录并继续转发消息。
+        struct AppRouterHandler {
+            descriptor: InitializerDescriptor,
+        }
+
+        impl AppRouterHandler {
+            fn new(descriptor: InitializerDescriptor) -> Self {
+                Self { descriptor }
+            }
+        }
+
+        impl InboundHandler for AppRouterHandler {
+            fn describe(&self) -> InitializerDescriptor {
+                self.descriptor.clone()
+            }
+
+            fn on_channel_active(&self, ctx: &dyn PipelineContext) {
+                ctx.logger().info(
+                    "app router activated",
+                    None,
+                    Some(ctx.trace_context()),
+                );
+            }
+
+            fn on_read(&self, ctx: &dyn PipelineContext, msg: PipelineMessage) {
+                ctx.logger().debug(
+                    "app router received frame; forwarding to next handler",
+                    None,
+                    Some(ctx.trace_context()),
+                );
+                ctx.forward_read(msg);
+            }
+
+            fn on_read_complete(&self, _ctx: &dyn PipelineContext) {}
+
+            fn on_writability_changed(
+                &self,
+                _ctx: &dyn PipelineContext,
+                _is_writable: bool,
+            ) {
+            }
+
+            fn on_user_event(
+                &self,
+                _ctx: &dyn PipelineContext,
+                _event: CoreUserEvent,
+            ) {
+            }
+
+            fn on_exception_caught(&self, ctx: &dyn PipelineContext, error: CoreError) {
+                ctx.logger().error(
+                    "app router handler failed",
+                    Some(&error),
+                    Some(ctx.trace_context()),
+                );
+            }
+
+            fn on_channel_inactive(&self, _ctx: &dyn PipelineContext) {}
+        }
     }
 
-    fn on_channel_inactive(&self, _ctx: &dyn PipelineContext) {}
+    #[cfg(feature = "std")]
+    pub use std_impl::register_router;
+    #[cfg(not(feature = "std"))]
+    pub use no_std_impl::register_router;
+
+    pub use RouterFlow;
 }
 
 /// `ServiceAdapterHandler` 在示例中代表 L3/业务阶段：将消息传递给业务 Service。
+/// 当启用 `std` 并安装真实 `ApplicationRouter` 时，该 Handler 会被跳过，因为路由器
+/// 已直接调用业务 Service 并写回响应；在 `no_std` 教学桩或禁用 Router 场景下仍负责
+/// 收尾处理。
 struct ServiceAdapterHandler {
     descriptor: InitializerDescriptor,
     service: BoxService,
