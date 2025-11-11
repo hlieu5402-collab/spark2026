@@ -37,7 +37,7 @@
 ## Pipeline（处理链）
 | 维度 | 链接 |
 | --- | --- |
-| Rustdoc | [`spark_core::pipeline`](https://docs.rs/spark-core/latest/spark_core/pipeline/index.html) · [`spark-pipeline`](https://docs.rs/spark-pipeline/latest/spark_pipeline/) |
+| Rustdoc | [`spark_core::pipeline`](https://docs.rs/spark-core/latest/spark_core/pipeline/index.html) · [`spark_router::pipeline`](https://docs.rs/spark-router/latest/spark_router/pipeline/index.html) |
 | 示例 | [`hot_swap` 集成测试](../crates/spark-core/tests/pipeline/hot_swap.rs#L40-L420) |
 | TCK | [`hot_swap::pipeline_state_transitions_are_ordered`](../crates/spark-contract-tests/src/hot_swap.rs#L430-L585) |
 
@@ -264,7 +264,7 @@ covers = [
 term = "Pipeline"
 rustdoc = [
   { name = "spark_core::pipeline", url = "https://docs.rs/spark-core/latest/spark_core/pipeline/index.html" },
-  { name = "spark-pipeline", url = "https://docs.rs/spark-pipeline/latest/spark_pipeline/" },
+  { name = "spark_router::pipeline", url = "https://docs.rs/spark-router/latest/spark_router/pipeline/index.html" },
 ]
 examples = [
   { name = "pipeline hot_swap integration test", path = "../crates/spark-core/tests/pipeline/hot_swap.rs#L40-L420" },

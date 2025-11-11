@@ -7,7 +7,7 @@
 - [x] 生成 cargo metadata 快照并入库：`docs/reports/baseline/cargo-metadata.json`。
 - [x] 生成依赖关系（cargo tree）快照并入库：`docs/reports/baseline/cargo-tree.txt`。
 - [x] 生成公共 API 快照（含失败诊断占位符）并入库：`docs/reports/baseline/public-api/`。
-  - 当前 `spark-pipeline`、`spark-transport-tcp` 与 `spark-transport-tls` 编译失败，已以 `FAILED` 占位并保留 stderr 日志供后续分析。
+  - 当前 `spark-router`（原 `spark-pipeline`）、`spark-transport-tcp` 与 `spark-transport-tls` 编译失败，已以 `FAILED` 占位并保留 stderr 日志供后续分析。
 - [ ] 整理失败 crate 的修复计划（待后续架构清理任务接入）。
 
 ## 参考资料
