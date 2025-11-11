@@ -454,11 +454,9 @@ mod router_stage {
                 route::{RouteKind, RoutePattern, RouteSegment},
             },
         };
-        use spark_router::{
-            DefaultRouter, ServiceFactory,
-            pipeline::{
-                ApplicationRouter, RoutingContextBuilder, RoutingContextParts,
-            },
+        use spark_router::{DefaultRouter, ServiceFactory};
+        use spark_router::pipeline::{
+            ApplicationRouter, RoutingContextBuilder, RoutingContextParts,
         };
 
         use super::{BoxService, ChainBuilder, InitializerDescriptor, PipelineMessage};
