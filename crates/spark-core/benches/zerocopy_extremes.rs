@@ -680,7 +680,7 @@ struct OperationThreshold {
 /// 2. 根据模式构造 [`BenchConfig`]；
 /// 3. 遍历 [`build_scenarios`] 返回的场景并采样；
 /// 4. 输出测量结果（包含基线与 BufView 的对比统计）；
-/// 5. 读取阈值文件、执行 [`enforce_thresholds`]；
+/// 5. 读取阈值文件、执行 [`enforce_thresholds`]（`debug` 配置下仅加载并打印提示，不强制校验）；
 /// 6. 将结果写入 JSON。
 ///
 /// # What
@@ -734,7 +734,13 @@ fn run() -> spark_core::Result<(), BenchError> {
     }
 
     let thresholds = load_thresholds(cli.threshold.as_deref(), config.quick_mode)?;
-    enforce_thresholds(&report, &thresholds)?;
+    if cfg!(debug_assertions) {
+        println!(
+            "debug_profile=1 skip_threshold_enforcement=1 reason=non-optimized build would violate latency SLOs"
+        );
+    } else {
+        enforce_thresholds(&report, &thresholds)?;
+    }
     persist_report(&report, cli.output.as_deref())?;
 
     Ok(())
