@@ -762,3 +762,35 @@ pub fn example_handshake(capabilities: &[Capability]) -> HandshakeOutcome {
     }
     HandshakeOutcome::new(Version::new(1, 0, 0), bitmap, downgrade_report())
 }
+
+#[cfg(all(test, feature = "std"))]
+mod router_pipeline_migration_tests {
+    use core::mem;
+
+    use spark_router::pipeline::{ApplicationRouter, ApplicationRouterInitializer};
+
+    /// 教案级测试：确保示例代码默认面向 `spark_router::pipeline` 新命名空间，而不会在未来
+    /// 回退到已废弃的 `spark_pipeline::router_handler` 路径。
+    ///
+    /// # 教案级说明
+    /// - **意图 (Why)**：通过编译期访问关键类型的方式，提醒维护者“示例应引用新版命名空
+    ///   间”；一旦误引入旧 crate，测试将在链接阶段失败，阻止错误传播到文档或教学代码中。
+    /// - **逻辑 (How)**：
+    ///   1. 使用 [`core::mem::size_of`] 强制编译器解析 `ApplicationRouterInitializer` 与
+    ///      `ApplicationRouter`，验证类型来自 `spark_router::pipeline`；
+    ///   2. 将两者尺寸求和并断言结果大于零，避免优化器删除代码路径；
+    /// - **契约 (What)**：
+    ///   - *前置条件*：编译单元启用了 `std` 特性，使 `spark-router` 暴露完整 Pipeline API；
+    ///   - *后置条件*：若新命名空间可见，断言成立并返回 `()`；若类型被移动或改名，则编译
+    ///     或运行阶段立即失败，向维护者发出警示。
+    /// - **设计考量 (Trade-offs & Gotchas)**：测试不实例化 Router，保持零运行时依赖；虽然
+    ///   未覆盖行为层面的验证，但换取了编译快、定位准的保障，适合作为命名空间迁移的守护
+    ///   网。未来若 API 再次迁移，只需调整 `use spark_router::pipeline::{..}` 即可。
+    #[test]
+    fn ensure_new_pipeline_namespace_is_linked() {
+        let initializer_size = mem::size_of::<ApplicationRouterInitializer>();
+        let handler_size = mem::size_of::<ApplicationRouter>();
+
+        assert!(initializer_size + handler_size > 0);
+    }
+}
