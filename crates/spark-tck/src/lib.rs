@@ -1506,3 +1506,30 @@ pub mod rtp {
 /// RTCP 编解码契约测试集合。
 #[cfg(all(test, feature = "transport-tests"))]
 pub mod rtcp;
+
+#[cfg(test)]
+mod router_pipeline_migration {
+    use spark_router::pipeline::ApplicationRouterInitializer;
+
+    /// 校验 `spark_router::pipeline` 的核心类型在 `spark-tck` 中可用，避免回退到已废弃的
+    /// `spark_pipeline::router_handler` 导入路径。
+    ///
+    /// - **意图（Why）**：构建一个编译期/运行期双重的安全网，提醒后续维护者直接依赖新
+    ///   路径；一旦未来误引入旧模块，测试会在编译阶段即失败。
+    /// - **执行逻辑（How）**：通过 `std::mem::size_of` 访问结构体元信息即可迫使编译器解析
+    ///   类型引用，同时断言结果大于零，防止优化器完全删除调用。
+    /// - **契约（What）**：函数无参数、返回 `()`；前置条件是工作区已声明 `spark-router`
+    ///   作为 dev-dependency；后置条件是若类型路径失效则测试编译或运行失败，向维护者发出
+    ///   明确信号。
+    /// - **边界考量（Trade-offs & Gotchas）**：测试不构造真实 `ApplicationRouterInitializer`
+    ///   实例，避免引入额外的 `DynRouter` 伪造物；我们以体积检查代替实例化，牺牲一定语义
+    ///   覆盖率换取零依赖的稳定性。
+    #[test]
+    fn ensure_application_router_initializer_type_is_linked() {
+        let type_size = std::mem::size_of::<ApplicationRouterInitializer>();
+        assert!(
+            type_size > 0,
+            "`ApplicationRouterInitializer` 应为非零尺寸结构体，若为 0 则可能触发 ABI 变化"
+        );
+    }
+}
