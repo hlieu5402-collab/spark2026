@@ -220,8 +220,10 @@ impl TestChannel {
             .compare_exchange(current, new, Ordering::AcqRel, Ordering::Acquire)
     }
 
-    fn bump_graceful(&self) {
-        self.graceful_invocations.fetch_add(1, Ordering::AcqRel);
+    fn mark_graceful(&self) {
+        let _ =
+            self.graceful_invocations
+                .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire);
     }
 
     fn bump_force(&self) {
@@ -272,13 +274,14 @@ impl Channel for TestChannel {
                 Self::STATE_ACTIVE => {
                     match self.compare_exchange_state(Self::STATE_ACTIVE, Self::STATE_DRAINING) {
                         Ok(_) => {
-                            self.bump_graceful();
+                            self.mark_graceful();
                             return;
                         }
                         Err(next) => current = next,
                     }
                 }
                 Self::STATE_DRAINING | Self::STATE_CLOSED => {
+                    self.mark_graceful();
                     return;
                 }
                 _ => {
