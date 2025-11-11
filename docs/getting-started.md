@@ -61,7 +61,7 @@
 
 ### 3.3 标准方式安装 ApplicationRouter
 
-> **目标：** 以最少的样板代码，将 `spark-router` 提供的 `ApplicationRouterInitializer` 装配到 Pipeline 中，取代旧的 `spark_pipeline::router_handler` 示例。
+> **目标：** 以最少的样板代码，将 `spark-router` 提供的 `ApplicationRouterInitializer` 装配到 Pipeline 中，并将所有示例统一迁移到 `spark_router::pipeline` 路径。
 
 1. **在 L1 写入路由上下文：** 在握手或协议解析完成后，将业务意图与动态标签写入扩展存储，供 L2 Handler 读取。
    ```rust
