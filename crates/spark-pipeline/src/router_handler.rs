@@ -9,6 +9,8 @@
 //!   生命周期约束；本模块不引入额外状态，也不承担初始化职责。
 //! - **注意事项 (Trade-offs & Gotchas)**：兼容层牺牲了一部分命名的显式性，但换来路径
 //!   稳定性；未来若彻底移除旧接口，应在发布说明中明确告知并引导迁移到新的别名。
+//!   新增装配场景请直接依赖 `spark_router::pipeline::ApplicationRouterInitializer`，避免延续
+//!   `router_handler` 命名导致团队误判推荐实践。
 
 pub use spark_router::pipeline::{
     AppRouterHandler, ApplicationRouter, ApplicationRouterInitializer, RouterHandler,

@@ -7,7 +7,7 @@
 ## 1. 愿景与设计原则
 - **解耦握手与执行**：ServerChannel 在 L1 完成协议协商与 Pipeline 装配，L2 仅负责事件驱动执行，使监听器升级不再干扰业务处理链路。【F:crates/spark-core/src/data_plane/transport/server_channel.rs†L9-L122】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
 - **Pipeline 契约中心化**：PipelineInitializer、Pipeline、Handler 形成声明式装配 + 运行时调度的核心骨架，所有横切能力都通过该契约注入并观测。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L64-L133】【F:crates/spark-core/src/data_plane/pipeline/handler.rs†L10-L148】
-- **服务访问收敛**：L2 Router Handler 仅负责选择 Service，最终调用继续沿用 Tower 风格 Service 契约，保持背压、取消、预算等语义一致性。【F:crates/spark-router/src/pipeline.rs†L214-L376】【F:crates/spark-core/src/data_plane/service/generic.rs†L6-L74】
+- **服务访问收敛**：L2 Router Handler 仅负责选择 Service，最终调用继续沿用 Tower 风格 Service 契约，保持背压、取消、预算等语义一致性；标准实现由 `crates/spark-router` 提供，统一了 Handler 与 DynRouter 之间的装配语义。【F:crates/spark-router/src/pipeline.rs†L214-L376】【F:crates/spark-core/src/data_plane/service/generic.rs†L6-L74】
 - **可观测性前置**：InitializerDescriptor 与 PipelineEvent 打通 L1/L2 度量链路，为握手成功率、Handler 顺序和路由决策提供统一追踪入口。【F:crates/spark-core/src/data_plane/pipeline/initializer.rs†L7-L61】【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L56-L200】
 
 ## 2. 分层运行模型总览
@@ -44,7 +44,7 @@ Service (Tower Service / BoxService)
 ```
 - Channel 驱动事件循环并统一不同协议实现的读写、背压与半关闭语义，是运行时的流量入口。【F:crates/spark-core/src/data_plane/transport/channel.rs†L146-L210】
 - Pipeline 根据 L1 注册的 Handler 顺序执行业务逻辑，同时向观测面广播 PipelineEvent。【F:crates/spark-core/src/data_plane/pipeline/pipeline.rs†L47-L200】
-- ApplicationRouter 作为 L2 Router Handler，读取 Pipeline 上下文并选取合适 Service，承接旧 Router 的路由职责但运行在 L2 尾部。【F:crates/spark-router/src/pipeline.rs†L214-L376】
+- ApplicationRouter（来自 `crates/spark-router`）作为 L2 Router Handler，读取 Pipeline 上下文并选取合适 Service，承接旧 Router 的路由职责但运行在 L2 尾部。【F:crates/spark-router/src/pipeline.rs†L214-L376】
 - Service 执行最终业务调用，继续遵循 Tower 契约，支持背压与取消反馈。【F:crates/spark-core/src/data_plane/service/generic.rs†L6-L74】
 
 ## 3. 生命周期与角色分工

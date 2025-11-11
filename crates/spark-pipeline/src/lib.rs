@@ -25,13 +25,13 @@ pub use router::ApplicationRouter as LegacyRouterHandler;
 
 /// 教案级别别名说明：`LegacyRouterHandler`
 ///
-/// - **意图（Why）**：保留早期 Router Handler 的最小实现，供仍依赖旧生命周期语义的调用方逐步迁移。
-/// - **契约（What）**：类型等价于 `router::ApplicationRouter`，主要承担扩展存储读写与对象路由桥接逻辑；
-///   由于 crate 根 re-export 为 `LegacyRouterHandler`，调用方在更新依赖时能直观识别其旧语义定位。
-/// - **逻辑（How）**：通过 `pub use router::ApplicationRouter as LegacyRouterHandler` 建立别名，避免与全新
-///   的 `router_handler::ApplicationRouter` 冲突，同时维持模块路径 `spark_pipeline::router::ApplicationRouter` 的可用性。
-/// - **风险（Trade-offs）**：别名强调“旧版”定位，提醒维护者未来在完全迁移后可考虑移除；当前做法牺牲
-///   了一些命名纯粹性，但换取向后兼容。
+/// - **意图（Why）**：仅为历史兼容保留早期 Router Handler 的命名，帮助仍依赖旧生命周期语义的调用方以最小代价完成迁移。
+/// - **契约（What）**：类型等价于 `router::ApplicationRouter`，但不再代表推荐路径；新的 L2 路由装配应使用
+///   `spark_router::pipeline::ApplicationRouterInitializer` 及其扩展上下文 API。
+/// - **逻辑（How）**：通过 `pub use router::ApplicationRouter as LegacyRouterHandler` 保持旧命名可用，同时维持
+///   模块路径 `spark_pipeline::router::ApplicationRouter`，避免破坏已有导入。
+/// - **风险（Trade-offs）**：别名强调“旧版”定位，提醒维护者在完成迁移后逐步淘汰；继续依赖该别名将错过
+///   `spark-router` 提供的初始化器改进与幂等装配语义。
 pub mod router_handler;
 
 pub mod router {
@@ -41,11 +41,12 @@ pub mod router {
     //! - **意图（Why）**：保持原 `spark-pipeline::router` 命名空间不变，便于现有调用方在迁移至
     //!   `spark-router` 统一实现后无需修改路径；
     //! - **逻辑（How）**：简单地将 `spark_router::pipeline` 全量再导出，保证类型与函数与原有
-    //!   模块一一对应；
+    //!   模块一一对应，并显式包含 `ApplicationRouterInitializer` 等标准装配入口；
     //! - **契约（What）**：模块内所有符号均直接映射到 `spark-router` 提供的实现，包含上下文
     //!   存取、路由处理器以及构造器接口；
     //! - **风险提示（Trade-offs）**：再导出不会引入额外开销，但要求 `spark-router` 版本与当前
-    //!   Crate 同步更新；若未来出现破坏性变更，应优先在 `spark-router` 中维护兼容层。
+    //!   Crate 同步更新；若未来出现破坏性变更，应优先在 `spark-router` 中维护兼容层，并避免回退到
+    //!   旧的 `router_handler` 示例。
     pub use spark_router::pipeline::*;
 }
 

@@ -59,6 +59,61 @@
 - 将 `SimpleBufferPool::statistics` 增加打印，理解监控指标的最小需求；
 - 对照 `docs/pitfalls.md`，规避在真实项目落地时的十大陷阱。
 
+### 3.3 标准方式安装 ApplicationRouter
+
+> **目标：** 以最少的样板代码，将 `spark-router` 提供的 `ApplicationRouterInitializer` 装配到 Pipeline 中，取代旧的 `spark_pipeline::router_handler` 示例。
+
+1. **在 L1 写入路由上下文：** 在握手或协议解析完成后，将业务意图与动态标签写入扩展存储，供 L2 Handler 读取。
+   ```rust
+   use spark_router::pipeline::{store_router_context, RouterContextState};
+   use spark_core::router::context::RoutingIntent;
+   use spark_core::router::route::RoutePattern;
+
+   fn prepare_extensions(ext: &dyn spark_core::pipeline::ExtensionsMap) {
+       let pattern = RoutePattern::new("sip.call").expect("validated during handshake");
+       let intent = RoutingIntent::new(pattern);
+
+       let mut state = RouterContextState::new(intent);
+       state
+           .dynamic_metadata_mut()
+           .insert("cluster", "edge-1".into());
+
+       store_router_context(ext, state);
+   }
+   ```
+2. **创建初始化器：** `ApplicationRouterInitializer::with_extensions_builder` 会自动读取上述上下文，无需手写 `Arc` 或自定义构造器。
+   ```rust
+   use std::sync::Arc;
+   use spark_router::pipeline::ApplicationRouterInitializer;
+   use spark_core::pipeline::InitializerDescriptor;
+   use spark_core::router::DynRouter;
+
+   fn build_router_initializer(router: Arc<dyn DynRouter>) -> ApplicationRouterInitializer {
+       ApplicationRouterInitializer::with_extensions_builder(
+           router,
+           InitializerDescriptor::new("demo.router_initializer", "routing", "install application router"),
+           InitializerDescriptor::new("demo.application_router", "routing", "l2 router handler"),
+       )
+   }
+   ```
+3. **注册到 PipelineInitializer 链：** 将初始化器加入 `ChainBuilder`，即可在 L2 链路尾部安装 ApplicationRouter。
+   ```rust
+   use spark_core::pipeline::{ChainBuilder, PipelineInitializer};
+   use spark_core::pipeline::Channel;
+   use spark_core::runtime::CoreServices;
+
+   fn configure_pipeline(
+       builder: &mut dyn ChainBuilder,
+       initializer: &ApplicationRouterInitializer,
+       channel: &dyn Channel,
+       services: &CoreServices,
+   ) -> spark_core::Result<(), spark_core::CoreError> {
+       initializer.configure(builder, channel, services)
+   }
+   ```
+
+> **提示：** 以上片段省略了错误处理与具体类型，实际环境请使用监听器提供的 `Channel`、平台注入的 `CoreServices` 以及真实的 `DynRouter` 实例。初始化器保持幂等，可在重连或热更新时重复调用。
+
 ## 4. 常用质量检查
 
 `make ci-*` 系列命令封装了核心检查，以下为常用组合：
