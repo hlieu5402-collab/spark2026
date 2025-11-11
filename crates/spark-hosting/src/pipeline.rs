@@ -43,6 +43,16 @@ impl SparkErrorTrait for MiddlewareRegistrationError {
 ///   - 使用 `BTreeMap<String, Arc<dyn PipelineInitializer>>` 保存初始化器：
 ///     - `Arc` 确保对象层实现可在多个控制器间共享；
 ///     - `BTreeMap` 提供稳定的迭代顺序，便于生成可重现的管线描述。
+///     - 路由链路相关组件请直接通过 `use spark_router::pipeline::{
+///       ApplicationRouterInitializer, ExtensionsRoutingContextBuilder, ..
+///       }` 等语句引入：
+///       1. **核心目标**：规避 `spark_pipeline::router_handler::*` 兼容路径，避免将
+///          宿主绑定到过渡模块；
+///       2. **体系位置**：`spark_router::pipeline` 承载统一的 Router 初始化与上下文
+///          构造逻辑，宿主在装配阶段应原生依赖该实现以缩短调用链；
+///       3. **设计考量**：直接依赖新模块可减少一次再导出层，从而降低未来移除
+///          兼容模块时的破坏性；若确实需要旧路径，应在调用侧建立适配器并标注
+///          退场计划。
 /// - **契约 (What)**
 ///   - 名称必须唯一；若重复注册将返回 [`MiddlewareRegistrationError::Duplicate`]；
 ///   - 初始化器应满足对象层契约：`Send + Sync + 'static`。
