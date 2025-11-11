@@ -24,6 +24,8 @@ use spark_core::{
     test_stubs::observability::NoopMetricsProvider,
 };
 
+use spark_core::async_trait;
+
 use spark_otel::facade::DefaultObservabilityFacade;
 use spark_otel::{self, Error as OtelError};
 
@@ -464,7 +466,7 @@ impl TaskExecutor for NoopRuntime {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl TimeDriver for NoopRuntime {
     fn now(&self) -> spark_core::runtime::MonotonicTimePoint {
         spark_core::runtime::MonotonicTimePoint::from_offset(*self.now.lock().expect("time"))
@@ -480,7 +482,7 @@ impl TimeDriver for NoopRuntime {
 #[derive(Default)]
 struct NoopHandle;
 
-#[async_trait::async_trait]
+#[async_trait]
 impl TaskHandle for NoopHandle {
     type Output = Box<dyn Any + Send>;
 
