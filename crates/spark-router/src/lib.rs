@@ -26,18 +26,7 @@ pub use pipeline::{
     load_router_context, store_router_context,
 };
 
-/// 为兼容旧版 API 保留的别名：`AppRouterHandler`。
-///
-/// # 教案式说明
-/// - **意图（Why）**：历史版本以 `AppRouterHandler` 暴露 L2 Handler，当前版本将其更名为
-///   [`ApplicationRouter`] 以强调“普通 Handler”身份；
-/// - **契约（What）**：别名语义完全等同于 [`ApplicationRouter`]，可在迁移窗口内继续复用旧代码；
-/// - **迁移提示（Trade-offs）**：建议在后续版本逐步切换为显式的 `ApplicationRouter` 命名，
-///   以便新同事快速理解职责划分。
-/// - **弃用说明（Deprecation）**：自 `0.1.0` 起进入兼容期，计划在 `0.3.0` 移除，请替换为
-///   [`ApplicationRouter`]。
-#[deprecated(note = "Use ApplicationRouter instead")]
-pub type AppRouterHandler = ApplicationRouter;
+
 
 /// 为兼容旧版 API 保留的别名：`RouterHandler`。
 ///
