@@ -12,6 +12,7 @@
 //!   新增装配场景请直接依赖 `spark_router::pipeline::ApplicationRouterInitializer`，避免延续
 //!   `router_handler` 命名导致团队误判推荐实践。
 
+#[deprecated(note = "Use spark_router::pipeline instead. This module will be removed.")]
 pub use spark_router::pipeline::{
     AppRouterHandler, ApplicationRouter, ApplicationRouterInitializer, RouterHandler,
 };
