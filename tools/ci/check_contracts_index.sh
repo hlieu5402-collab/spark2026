@@ -18,7 +18,8 @@
 #
 # 执行流程（How）
 # 1. 校验依赖：`cargo-public-api` 与 `python3` 均可用。
-# 2. 运行 `cargo +nightly public-api -p spark-core --simplified`，将公开 API 序列写入临时文件。
+# 2. 分别运行 `cargo +nightly public-api -p spark-core --simplified` 与
+#    `cargo +nightly public-api -p spark-router --simplified`，将公开 API 序列写入临时文件。
 # 3. 由 Python 完成核心分析：
 #    - 解析 `contracts-index.md` 的 `toml` 数据块，收集每个词条的 `covers`、`rustdoc`、`examples`、`tck`。
 #    - 解析 public-api 输出，筛选 `struct`/`enum`/`trait`，并按词条映射（Buffer/Frame/…）。
@@ -54,24 +55,45 @@ ensure_tools() {
 }
 
 run_public_api() {
-  local output
-  output="$(mktemp)"
-  trap 'rm -f -- "$output"' RETURN
+  local output_core output_router
+  output_core="$(mktemp)"
+  output_router="$(mktemp)"
+  # Why: 生成多个 crate 的 API 快照需要统一清理策略，防止 CI 遗留临时文件。
+  # How: 使用 trap 捕获函数返回点，统一删除 `mktemp` 创建的文件。
+  # What: 在函数退出时确保 `spark-core` 与 `spark-router` 的 public-api 输出均被清理。
+  trap 'rm -f -- "$output_core" "$output_router"' RETURN
 
   log INFO "生成 spark-core 公共 API 列表（使用 nightly toolchain）。"
-  if ! cargo +nightly public-api -p spark-core --simplified --color never >"$output"; then
+  if ! cargo +nightly public-api -p spark-core --simplified --color never >"$output_core"; then
     log ERROR "cargo public-api 执行失败，请检查编译日志。"
     exit 1
   fi
 
-  python3 - "$INDEX_FILE" "$output" "$COVERAGE_THRESHOLD" <<'PY'
+  log INFO "生成 spark-router 公共 API 列表（使用 nightly toolchain）。"
+  if ! cargo +nightly public-api -p spark-router --simplified --color never >"$output_router"; then
+    log ERROR "cargo public-api (spark-router) 执行失败，请检查编译日志。"
+    exit 1
+  fi
+
+  python3 - "$INDEX_FILE" "$COVERAGE_THRESHOLD" \
+    spark-core "$output_core" \
+    spark-router "$output_router" <<'PY'
 import re
 import sys
-import textwrap
 from pathlib import Path
 
-index_path, api_path, threshold_str = sys.argv[1:4]
+index_path, threshold_str, *rest = sys.argv[1:]
 threshold = float(threshold_str)
+
+if len(rest) % 2 != 0:
+    raise SystemExit("public-api 输出参数必须成对出现：<crate> <path>")
+
+# Why: Router 契约已经拆分至 `spark-router` crate，脚本需要一次性聚合多 crate 的公开 API。
+# What: `sources` 存储 (crate, 路径) 元组，供下游统一遍历。
+# How: 解析命令行参数时按两个一组组合，保证顺序与 `cargo public-api` 调用一致。
+sources = []
+for crate, path in zip(rest[::2], rest[1::2]):
+    sources.append((crate, Path(path)))
 
 text = Path(index_path).read_text(encoding="utf-8")
 start_marker = "<!-- contracts-index:start -->"
@@ -127,9 +149,12 @@ TARGET_PREFIXES = {
     "Codec": ["spark_core::codec::"],
     "Transport": ["spark_core::transport::"],
     "Pipeline": ["spark_core::pipeline::"],
-    "PipelineInitializer": ["spark_core::pipeline::PipelineInitializer", "spark_core::pipeline::initializer::"],
+    "PipelineInitializer": [
+        "spark_core::pipeline::PipelineInitializer",
+        "spark_core::pipeline::initializer::",
+    ],
     "Service": ["spark_core::service::"],
-    "Router": ["spark_core::router::"],
+    "Router": ["spark_router::", "spark_core::router::"],
     "Context": [
         "spark_core::context::",
         "spark_core::contract::CallContext",
@@ -142,24 +167,26 @@ TARGET_PREFIXES = {
     "State": ["spark_core::model::", "spark_core::status::"],
 }
 
-with Path(api_path).open(encoding="utf-8") as handle:
-    for raw in handle:
-        raw = raw.strip()
-        match = pattern.match(raw)
-        if not match:
-            continue
-        kind, path = match.groups()
-        if not path.startswith("spark_core::"):
-            continue
-        canonical = path.split("<", 1)[0]
-        if canonical.endswith(":"):
-            canonical = canonical[:-1]
-        if canonical.count("::") < 2:
-            continue
-        for term, prefixes in TARGET_PREFIXES.items():
-            if any(canonical.startswith(prefix) for prefix in prefixes):
-                actual_map.setdefault(term, set()).add(canonical)
-                break
+for _crate, api_path in sources:
+    # Why: 需要同时分析 spark-core 与 spark-router 的 API 列表，确保索引覆盖率统计包含新 crate。
+    # How: 逐文件读取 `cargo public-api` 输出，匹配公开的 struct/enum/trait 声明并做前缀分类。
+    # What: 将命中前缀的符号写入 `actual_map`，后续与 contracts-index 进行比对。
+    with api_path.open(encoding="utf-8") as handle:
+        for raw in handle:
+            raw = raw.strip()
+            match = pattern.match(raw)
+            if not match:
+                continue
+            _, path = match.groups()
+            canonical = path.split("<", 1)[0]
+            if canonical.endswith(":"):
+                canonical = canonical[:-1]
+            if canonical.count("::") < 2:
+                continue
+            for term, prefixes in TARGET_PREFIXES.items():
+                if any(canonical.startswith(prefix) for prefix in prefixes):
+                    actual_map.setdefault(term, set()).add(canonical)
+                    break
 
 overall_total = 0
 overall_matched = 0
