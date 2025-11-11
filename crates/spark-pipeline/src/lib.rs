@@ -32,8 +32,6 @@ pub use router::ApplicationRouter as LegacyRouterHandler;
 ///   模块路径 `spark_pipeline::router::ApplicationRouter`，避免破坏已有导入。
 /// - **风险（Trade-offs）**：别名强调“旧版”定位，提醒维护者在完成迁移后逐步淘汰；继续依赖该别名将错过
 ///   `spark-router` 提供的初始化器改进与幂等装配语义。
-pub mod router_handler;
-
 pub mod router {
     //! `spark-router` 中 Pipeline 集成模块的再导出包装。
     //!
