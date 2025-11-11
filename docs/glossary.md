@@ -31,8 +31,8 @@
 - **TCK**：[`graceful_shutdown::draining_connections_respect_fin`](../crates/spark-contract-tests/src/graceful_shutdown.rs#L640-L796) 通过注入自定义传输桩验证 FIN/超时协商流程。
 
 ## Pipeline（处理链）
-- **定位**：`spark_core::pipeline` 提供 Handler 链、控制器、上下文与热插拔能力，连接编解码、路由与服务执行。 
-- **Rustdoc**：[`spark_core::pipeline`](https://docs.rs/spark-core/latest/spark_core/pipeline/index.html)、[`spark-pipeline`](https://docs.rs/spark-pipeline/latest/spark_pipeline/)。
+- **定位**：`spark_core::pipeline` 提供 Handler 链、控制器、上下文与热插拔能力，连接编解码、路由与服务执行；配套的 L2 默认实现集中在 `spark_router::pipeline` 命名空间中。
+- **Rustdoc**：[`spark_core::pipeline`](https://docs.rs/spark-core/latest/spark_core/pipeline/index.html)、[`spark_router::pipeline`](https://docs.rs/spark-router/latest/spark_router/pipeline/index.html)。
 - **示例**：[`hot_swap` 集成测试](../crates/spark-core/tests/pipeline/hot_swap.rs#L40-L420) 展示 `Pipeline`、`PipelineInitializer` 与 `CoreServices` 协同实现零停机热替换。 
 - **TCK**：[`hot_swap::pipeline_state_transitions_are_ordered`](../crates/spark-contract-tests/src/hot_swap.rs#L430-L585) 验证 epoch 切换与事件顺序。
 

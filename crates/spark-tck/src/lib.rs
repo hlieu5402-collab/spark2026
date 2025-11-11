@@ -1517,7 +1517,7 @@ mod router_pipeline_migration {
     };
 
     /// 校验 `spark_router::pipeline` 的核心类型在 `spark-tck` 中可用，避免回退到已废弃的
-    /// `spark_pipeline::router_handler` 导入路径。
+    /// Router 命名空间迁移前路径。
     ///
     /// - **意图（Why）**：构建一个编译期/运行期双重的安全网，提醒后续维护者直接依赖新
     ///   路径；一旦未来误引入旧模块，测试会在编译阶段即失败。
