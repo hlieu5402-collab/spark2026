@@ -36,10 +36,7 @@ pub use pipeline::{
 ///   以便新同事快速理解职责划分。
 /// - **弃用说明（Deprecation）**：自 `0.1.0` 起进入兼容期，计划在 `0.3.0` 移除，请替换为
 ///   [`ApplicationRouter`]。
-#[deprecated(
-    since = "0.1.0",
-    note = "removal: v0.3.0; migration: replace AppRouterHandler references with ApplicationRouter; tracking: T4.1"
-)]
+#[deprecated(note = "Use ApplicationRouter instead")]
 pub type AppRouterHandler = ApplicationRouter;
 
 /// 为兼容旧版 API 保留的别名：`RouterHandler`。
@@ -50,10 +47,7 @@ pub type AppRouterHandler = ApplicationRouter;
 /// - **迁移提示（Trade-offs）**：建议新代码直接使用 [`ApplicationRouter`]，以凸显其作为普通 Handler 的定位。
 /// - **弃用说明（Deprecation）**：自 `0.1.0` 起进入兼容期，计划在 `0.3.0` 移除，请替换为
 ///   [`ApplicationRouter`]。
-#[deprecated(
-    since = "0.1.0",
-    note = "removal: v0.3.0; migration: replace RouterHandler references with ApplicationRouter; tracking: T4.1"
-)]
+#[deprecated(note = "Use ApplicationRouter instead")]
 pub type RouterHandler = ApplicationRouter;
 
 /// `ServiceFactory` 定义路由表中“如何按需生成对象层 Service” 的抽象。
