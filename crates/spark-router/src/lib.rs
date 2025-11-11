@@ -26,36 +26,6 @@ pub use pipeline::{
     load_router_context, store_router_context,
 };
 
-/// 为兼容旧版 API 保留的别名：`AppRouterHandler`。
-///
-/// # 教案式说明
-/// - **意图（Why）**：历史版本以 `AppRouterHandler` 暴露 L2 Handler，当前版本将其更名为
-///   [`ApplicationRouter`] 以强调“普通 Handler”身份；
-/// - **契约（What）**：别名语义完全等同于 [`ApplicationRouter`]，可在迁移窗口内继续复用旧代码；
-/// - **迁移提示（Trade-offs）**：建议在后续版本逐步切换为显式的 `ApplicationRouter` 命名，
-///   以便新同事快速理解职责划分。
-/// - **弃用说明（Deprecation）**：自 `0.1.0` 起进入兼容期，计划在 `0.3.0` 移除，请替换为
-///   [`ApplicationRouter`]。
-#[deprecated(
-    since = "0.1.0",
-    note = "removal: v0.3.0; migration: replace AppRouterHandler references with ApplicationRouter; tracking: T4.1"
-)]
-pub type AppRouterHandler = ApplicationRouter;
-
-/// 为兼容旧版 API 保留的别名：`RouterHandler`。
-///
-/// # 教案式说明
-/// - **意图（Why）**：帮助仍依赖旧命名的调用方在迁移期间保持编译通过；
-/// - **契约（What）**：类型等价于 [`ApplicationRouter`]，所有行为语义完全一致；
-/// - **迁移提示（Trade-offs）**：建议新代码直接使用 [`ApplicationRouter`]，以凸显其作为普通 Handler 的定位。
-/// - **弃用说明（Deprecation）**：自 `0.1.0` 起进入兼容期，计划在 `0.3.0` 移除，请替换为
-///   [`ApplicationRouter`]。
-#[deprecated(
-    since = "0.1.0",
-    note = "removal: v0.3.0; migration: replace RouterHandler references with ApplicationRouter; tracking: T4.1"
-)]
-pub type RouterHandler = ApplicationRouter;
-
 /// `ServiceFactory` 定义路由表中“如何按需生成对象层 Service” 的抽象。
 ///
 /// # 设计初衷（Why）
