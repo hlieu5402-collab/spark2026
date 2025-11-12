@@ -15,3 +15,15 @@
 //! ## 风险提示（Trade-offs）
 //! - 并发状态更新需明确顺序保证，必要时通过事件日志或版本号进行幂等控制；
 //! - 协议编排涉及 SIP/SDP 等多协议交织，需确保异常路径不会泄露会话资源。
+
+/// 会话状态机与 A/B leg 管理。
+pub mod session;
+
+#[cfg(feature = "std")]
+/// 基于 `DashMap` 的并发会话仓储。
+pub mod session_manager;
+
+pub use session::{CallLeg, CallSession, CallState};
+
+#[cfg(feature = "std")]
+pub use session_manager::{SessionManager, SessionRef, SessionRefMut};
