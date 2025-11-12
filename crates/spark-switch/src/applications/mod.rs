@@ -11,3 +11,9 @@
 //! ## 契约边界（What）
 //! - 需要实现 `spark_core::service::Service` 族契约；
 //! - 如需共享状态，优先通过 `core` 模块提供的会话管理接口获取，以避免状态散落。
+
+#[cfg(feature = "std")]
+pub mod location;
+
+#[cfg(feature = "std")]
+pub mod registrar;

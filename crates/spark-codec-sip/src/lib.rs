@@ -36,6 +36,8 @@ extern crate alloc;
 pub mod error;
 pub mod fmt;
 pub mod parse;
+/// Registrar 辅助类型，封装 Address-of-Record 与 Contact 的所有权模型。
+pub mod registrar;
 /// INVITE 事务状态机模型与 CANCEL 竞态辅助工具。
 pub mod transaction;
 pub mod types;
@@ -47,6 +49,7 @@ pub use crate::types::{
     CSeqHeader, ContactHeader, Header, HeaderName, MaxForwardsHeader, Method, NameAddr,
     RequestLine, SipMessage, SipUri, StatusLine, ViaHeader, ViaParamRport,
 };
+pub use registrar::{Aor, ContactUri};
 pub use transaction::{
     CancelOutcome, FinalResponseDisposition, InviteServerTransaction, InviteServerTransactionState,
 };
