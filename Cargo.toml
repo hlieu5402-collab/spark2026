@@ -5,6 +5,7 @@ members = [
     "crates/spark-core",
     "crates/spark-transport-tcp",
     "crates/spark-deprecation-lint",
+    "crates/spark-switch",
     # "crates/spark-codec-line",
     # "crates/spark-codec-rtcp",
     # "crates/spark-codec-rtp",
@@ -42,6 +43,7 @@ arc-swap = "1.7"
 async-trait = { version = "0.1", default-features = false }
 bytes = { version = "1.10", default-features = false, features = ["std"] }
 criterion = "0.5"
+dashmap = "5.5"
 futures = "0.3"
 futures-util = { version = "0.3", default-features = false }
 hex = "0.4"
@@ -74,8 +76,8 @@ spark-codecs = { path = "crates/spark-codecs", default-features = false }
 spark-codec-line = { path = "crates/spark-codec-line" }
 spark-codec-rtcp = { path = "crates/spark-codec-rtcp" }
 spark-codec-rtp = { path = "crates/spark-codec-rtp" }
-spark-codec-sdp = { path = "crates/spark-codec-sdp" }
-spark-codec-sip = { path = "crates/spark-codec-sip" }
+spark-codec-sdp = { path = "crates/spark-codec-sdp", default-features = false }
+spark-codec-sip = { path = "crates/spark-codec-sip", default-features = false }
 spark-tck = { path = "crates/spark-tck" }
 spark-router = { path = "crates/spark-router", default-features = false }
 spark-transport-quic = { path = "crates/spark-transport-quic" }

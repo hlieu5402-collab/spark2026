@@ -1,0 +1,43 @@
+[package]
+name = "spark-switch"
+version = "0.1.0"
+edition.workspace = true
+rust-version = "1.89"
+authors = ["Gemini 架构组 <architecture@gemini.example>"]
+license = "Apache-2.0"
+description = "spark-switch: 面向多协议信令编排的核心枢纽"
+publish = false
+
+[lib]
+bench = false
+
+[features]
+default = ["std"]
+alloc = [
+    "spark-core/alloc",
+    "spark-codec-sip/alloc",
+    "spark-codec-sdp/alloc",
+]
+std = [
+    "alloc",
+    "spark-core/std",
+    "spark-codec-sip/std",
+    "spark-codec-sdp/std",
+    "dep:dashmap",
+    "dep:thiserror",
+]
+router-factory = [
+    "std",
+    "dep:spark-router",
+]
+
+[dependencies]
+spark-core = { workspace = true, default-features = false }
+spark-router = { workspace = true, default-features = false, features = ["std"], optional = true }
+spark-codec-sip = { workspace = true, default-features = false }
+spark-codec-sdp = { workspace = true, default-features = false }
+dashmap = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(spark_loom)'] }
