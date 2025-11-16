@@ -9,6 +9,7 @@
 //! - 对象层仅依赖最小集合（`PipelineMessage` 等），以降低插件体积并减少编译依赖。
 
 pub mod auto_dyn;
+pub mod client;
 pub mod generic;
 pub mod metrics;
 pub mod object;
@@ -17,6 +18,7 @@ pub mod simple;
 pub use auto_dyn::{
     AutoDynBridge, Decode, DynBridge, Encode, bridge_to_box_service, type_mismatch_error,
 };
+pub use client::ClientFactory;
 pub use generic::{Layer, Service};
 pub use metrics::{PayloadDirection, ServiceMetricsHook, ServiceOutcome};
 pub use object::{BoxService, DynService, ServiceObject};

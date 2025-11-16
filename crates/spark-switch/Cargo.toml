@@ -24,6 +24,7 @@ std = [
     "spark-codec-sip/std",
     "spark-codec-sdp/std",
     "dep:dashmap",
+    "dep:tokio",
     "dep:thiserror",
 ]
 router-factory = [
@@ -37,6 +38,7 @@ spark-router = { workspace = true, default-features = false, features = ["std"],
 spark-codec-sip = { workspace = true, default-features = false }
 spark-codec-sdp = { workspace = true, default-features = false }
 dashmap = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["rt"], optional = true }
 thiserror = { workspace = true, optional = true }
 
 [lints.rust]
