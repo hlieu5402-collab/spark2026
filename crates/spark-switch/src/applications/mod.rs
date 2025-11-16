@@ -17,3 +17,6 @@ pub mod location;
 
 #[cfg(feature = "std")]
 pub mod registrar;
+
+#[cfg(feature = "std")]
+pub mod proxy;

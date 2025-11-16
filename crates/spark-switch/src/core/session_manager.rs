@@ -18,8 +18,6 @@
 //! - `DashMap` guard 在持有期间会阻塞同分片的写操作，调用者应缩短持有时间；
 //! - 未提供自动清理策略，长时间未释放的会话需由上层定期扫描。
 
-#![cfg(feature = "std")]
-
 use std::sync::Arc;
 
 use dashmap::{

@@ -27,6 +27,12 @@ pub struct LocationStore {
     inner: Arc<DashMap<Aor, ContactUri>>,
 }
 
+impl Default for LocationStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LocationStore {
     /// 构造空的注册表。
     ///

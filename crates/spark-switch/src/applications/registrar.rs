@@ -1,3 +1,6 @@
+// SparkError 内含调用链与可观测性上下文，体积较大且为领域要求，因此允许相关 Clippy 告警。
+#![allow(clippy::result_large_err)]
+
 use alloc::{boxed::Box, format, string::String, sync::Arc, vec::Vec};
 use core::future;
 use core::task::{Context as TaskContext, Poll};
@@ -224,16 +227,16 @@ fn collect_headers<'a>(
     output: &mut Vec<Header<'a>>,
 ) {
     output.extend(message.headers.iter().filter_map(|header| {
-        let matches = match (selector, header) {
+        matches!(
+            (selector, header),
             (HeaderSelector::Via, Header::Via(_))
-            | (HeaderSelector::From, Header::From(_))
-            | (HeaderSelector::To, Header::To(_))
-            | (HeaderSelector::CallId, Header::CallId(_))
-            | (HeaderSelector::CSeq, Header::CSeq(_))
-            | (HeaderSelector::Contact, Header::Contact(_)) => true,
-            _ => false,
-        };
-        matches.then_some(*header)
+                | (HeaderSelector::From, Header::From(_))
+                | (HeaderSelector::To, Header::To(_))
+                | (HeaderSelector::CallId, Header::CallId(_))
+                | (HeaderSelector::CSeq, Header::CSeq(_))
+                | (HeaderSelector::Contact, Header::Contact(_))
+        )
+        .then_some(*header)
     }));
 }
 
