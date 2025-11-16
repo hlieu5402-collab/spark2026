@@ -3,6 +3,7 @@ use crate::{
     context::Context,
     observability::TraceContext,
     security::{IdentityDescriptor, SecurityPolicy},
+    service::ClientFactory,
 };
 use alloc::sync::Arc;
 use alloc::{format, string::ToString, vec, vec::Vec};
@@ -509,7 +510,6 @@ pub const DEFAULT_OBSERVABILITY_CONTRACT: ObservabilityContract = ObservabilityC
     ],
 );
 
-#[derive(Debug)]
 struct CallContextInner {
     cancellation: Cancellation,
     deadline: Deadline,
@@ -517,6 +517,21 @@ struct CallContextInner {
     security: SecurityContextSnapshot,
     observability: ObservabilityContract,
     trace_context: TraceContext,
+    client_factory: Option<Arc<dyn ClientFactory>>,
+}
+
+impl fmt::Debug for CallContextInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CallContextInner")
+            .field("cancellation", &self.cancellation)
+            .field("deadline", &self.deadline)
+            .field("budgets", &self.budgets)
+            .field("security", &self.security)
+            .field("observability", &self.observability)
+            .field("trace_context", &self.trace_context)
+            .field("client_factory", &self.client_factory.is_some())
+            .finish()
+    }
 }
 
 /// 调用上下文，在核心 API 之间传递取消/截止/预算三元组与安全、可观测性信息。
@@ -602,6 +617,19 @@ impl CallContext {
     pub fn trace_context(&self) -> &TraceContext {
         &self.inner.trace_context
     }
+
+    /// 获取可选的客户端工厂。
+    ///
+    /// # 教案式注释
+    /// - **意图 (Why)**：允许上层在一次调用链中复用运行时注入的出站拨号能力，
+    ///   例如 B2BUA 通过它建立 B-leg；
+    /// - **契约 (What)**：返回 `Arc<dyn ClientFactory>` 的克隆，若未注入则为 `None`；
+    /// - **前置条件**：调用方需确保 `CallContext` 仍处于有效生命周期；
+    /// - **后置条件**：若返回 `Some`，则工厂实例可安全跨线程共享使用；
+    /// - **风险提示 (Trade-offs)**：为避免无意义克隆，仅在确有拨号需求时调用。
+    pub fn client_factory(&self) -> Option<Arc<dyn ClientFactory>> {
+        self.inner.client_factory.as_ref().map(Arc::clone)
+    }
 }
 
 impl fmt::Display for CallContext {
@@ -628,6 +656,7 @@ pub struct CallContextBuilder {
     security: SecurityContextSnapshot,
     observability: ObservabilityContract,
     trace_context: TraceContext,
+    client_factory: Option<Arc<dyn ClientFactory>>,
 }
 
 impl Default for CallContextBuilder {
@@ -639,6 +668,7 @@ impl Default for CallContextBuilder {
             security: SecurityContextSnapshot::default(),
             observability: ObservabilityContract::default(),
             trace_context: TraceContext::generate(),
+            client_factory: None,
         }
     }
 }
@@ -680,6 +710,12 @@ impl CallContextBuilder {
         self
     }
 
+    /// 注入客户端工厂，实现者可据此复用运行时拨号能力。
+    pub fn with_client_factory(mut self, client_factory: Arc<dyn ClientFactory>) -> Self {
+        self.client_factory = Some(client_factory);
+        self
+    }
+
     /// 构建上下文，若未提供预算将默认提供“无限 Flow 预算”。
     pub fn build(self) -> CallContext {
         let budgets = if self.budgets.is_empty() {
@@ -695,6 +731,7 @@ impl CallContextBuilder {
                 security: self.security,
                 observability: self.observability,
                 trace_context: self.trace_context,
+                client_factory: self.client_factory,
             }),
         }
     }

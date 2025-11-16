@@ -180,8 +180,8 @@ pub use security::{
     SecurityProtocol, SecurityProtocolOffer, SubjectMatcher,
 };
 pub use service::{
-    AutoDynBridge, BoxService, Decode, DynService, Encode, Layer, Service, ServiceObject,
-    type_mismatch_error,
+    AutoDynBridge, BoxService, ClientFactory, Decode, DynService, Encode, Layer, Service,
+    ServiceObject, type_mismatch_error,
 };
 pub use types::{
     Budget, BudgetDecision, BudgetKind, BudgetSet, BudgetSnapshot, CloseReason, NonEmptyStr,
