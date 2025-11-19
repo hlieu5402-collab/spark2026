@@ -136,33 +136,65 @@ impl ProxyService {
         build_trying_response(&sip_message)
     }
 
-    /// 根据解析后的 INVITE 与 Registrar 表计算被叫的 Contact。
+    /// 根据拨号计划为当前 INVITE 选择合适的 B-leg。
     ///
     /// # 教案式注释
-    /// - **意图 (Why)**：B-leg 拨号计划的最小实现，直接复用 Registrar 的 `Aor → Contact` 映射，
-    ///   让 Proxy 能够在无外部依赖的情况下完成端到端连接决策；
-    /// - **契约 (What)**：若 `To` 头缺失则退化为请求行 URI，若 Registrar 未命中则返回领域错误；
-    /// - **风险 (Trade-offs)**：当前实现不考虑多注册实例或负载均衡，后续扩展可在此增加策略。
-    fn resolve_contact(
+    /// - **意图 (Why)**：聚合“内部分机（Registrar 命中）”与“外部路由（DynRouter）”两种拨号路径，
+    ///   避免上层重复实现判定逻辑；
+    /// - **契约 (What)**：
+    ///   - 输入：`CallContext`（为连接外部服务提供 `ClientFactory` 等运行时能力）与请求行；
+    ///   - 输出：可直接挂载到 [`CallSession`] 的 [`BoxService`]；
+    ///   - 前置条件：`CallContext` 在构造阶段已注入 `ClientFactory`；
+    ///   - 后置条件：若 Registrar 命中则返回基于 `Contact` 的 B-leg，否则进入外部路由流程；
+    /// - **执行逻辑 (How)**：
+    ///   1. 调用 [`Self::lookup_internal_destination`] 检查 Request-URI 是否存在注册记录；
+    ///   2. 命中后调用 [`ClientFactory::connect`](spark_core::service::ClientFactory::connect)
+    ///      生成直连 B-leg；
+    ///   3. 未命中则调用 [`Self::route_external_call`]，为未来的 DynRouter 接入预留扩展点；
+    /// - **风险 (Trade-offs)**：当前仓库尚未提供 DynRouter 契约，因此外部路由暂时返回错误；
+    ///   一旦框架补齐 `spark_core::router` 模块，即可在该函数中无缝切换到外部路由逻辑。
+    fn route_b_leg(
         &self,
-        message: &SipMessage<'_>,
+        ctx: &CallContext,
         request_line: &RequestLine<'_>,
-    ) -> spark_core::Result<ContactUri, SparkError> {
-        let aor = message
-            .headers
-            .iter()
-            .find_map(|header| match header {
-                Header::To(addr) => Some(Aor::from_name_addr(addr)),
-                _ => None,
-            })
-            .unwrap_or_else(|| Aor::from_uri(&request_line.uri));
+    ) -> spark_core::Result<BoxService, SparkError> {
+        if let Some(contact) = self.lookup_internal_destination(request_line) {
+            let client_factory = ctx.client_factory().ok_or_else(|| {
+                SparkError::new(
+                    CODE_PROXY_CLIENT_FACTORY_UNAVAILABLE,
+                    "CallContext 未注入 ClientFactory，无法建立 B-leg",
+                )
+            })?;
+            return client_factory.connect(ctx, contact.as_ref());
+        }
 
-        self.location_store.lookup(&aor).ok_or_else(|| {
-            SparkError::new(
-                CODE_PROXY_ROUTING_FAILURE,
-                format!("Registrar 中缺少 `{aor}` 的 Contact，无法建立 B-leg"),
-            )
-        })
+        self.route_external_call()
+    }
+
+    /// 依据 Request-URI 检查 Registrar 中是否存在匹配的 Contact。
+    ///
+    /// - **意图 (Why)**：Dialplan 的第一步是尝试命中内部分机，若成功即可直接复用注册表信息；
+    /// - **契约 (What)**：输入为解析后的请求行，输出为可选的 [`ContactUri`]；
+    /// - **逻辑 (How)**：使用 `Aor::from_uri` 将 Request-URI 规整为 Registrar 的索引，再调用
+    ///   [`LocationStore::lookup`]；
+    /// - **边界情况 (Risk)**：若 INVITE 使用别名 URI 或未在 Registrar 注册，将返回 `None`，
+    ///   并触发外部路由分支。
+    fn lookup_internal_destination(&self, request_line: &RequestLine<'_>) -> Option<ContactUri> {
+        let aor = Aor::from_uri(&request_line.uri);
+        self.location_store.lookup(&aor)
+    }
+
+    /// 为外部呼叫预留的路由逻辑。
+    ///
+    /// - **现状说明**：`spark-core` 尚未暴露 DynRouter 契约，无法真正执行 R3.2 要求；
+    ///   本函数以领域错误明确提示“外部路由未实现”，便于后续 Epic 衔接；
+    /// - **后续扩展**：一旦 `CallContext` 能够提供 `DynRouter` 引用，可在此构造 `RoutingIntent`
+    ///   并调用 `router.route_dyn`，将返回的 `BoxService` 作为 B-leg。
+    fn route_external_call(&self) -> spark_core::Result<BoxService, SparkError> {
+        Err(SparkError::new(
+            CODE_PROXY_ROUTING_FAILURE,
+            "Registrar 未命中，且 DynRouter 功能尚未在 spark-core 中开放",
+        ))
     }
 
     /// 启动异步任务运行会话状态机。
