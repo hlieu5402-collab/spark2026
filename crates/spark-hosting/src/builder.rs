@@ -2,6 +2,8 @@ use core::fmt;
 
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
+#[cfg(feature = "switch")]
+use alloc::sync::Arc;
 
 use crate::{
     host::Host,
@@ -10,6 +12,13 @@ use crate::{
 };
 use spark_core::configuration::{
     BuildError, ConfigurationBuilder, DynConfigurationSource, SourceRegistrationError,
+};
+#[cfg(feature = "switch")]
+use spark_switch::{
+    applications::{
+        location::LocationStore, proxy::ProxyServiceFactory, registrar::RegistrarServiceFactory,
+    },
+    core::SessionManager,
 };
 
 /// 构建宿主时出现的配置阶段错误。
@@ -124,17 +133,26 @@ pub struct HostBuilder {
     configuration: ConfigurationBuilder,
     services: ServiceRegistry,
     middleware: MiddlewareRegistry,
+    #[cfg(feature = "switch")]
+    switch_services: Option<SwitchServiceFactories>,
 }
 
 impl fmt::Debug for HostBuilder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let service_count = self.services.iter().count();
         let middleware_count = self.middleware.iter().count();
-        f.debug_struct("HostBuilder")
+        #[cfg(feature = "switch")]
+        let has_switch_services = self.switch_services.is_some();
+        let mut debug = f.debug_struct("HostBuilder");
+        debug
             .field("configuration", &"ConfigurationBuilder{...}")
             .field("service_count", &service_count)
-            .field("middleware_count", &middleware_count)
-            .finish()
+            .field("middleware_count", &middleware_count);
+        #[cfg(feature = "switch")]
+        {
+            debug.field("switch_services", &has_switch_services);
+        }
+        debug.finish()
     }
 }
 
@@ -195,6 +213,46 @@ impl HostBuilder {
         Ok(self)
     }
 
+    /// 初始化 spark-switch 运行所需的共享状态，并缓存 ServiceFactory。
+    ///
+    /// # 教案级注释
+    /// - **意图 (Why)**：
+    ///   1. 集中创建 [`SessionManager`] 与 [`LocationStore`]，避免在应用层重复拼装；
+    ///   2. 为 REGISTER/INVITE 等 SIP 路由准备 `ServiceFactory`，以便后续在 `spark-router`
+    ///      中一次性注册；
+    /// - **体系位置 (Where)**：
+    ///   - 属于 `HostBuilder` 的可选配置步骤，仅在启用 `switch` feature 时有效；
+    ///   - 产物会保存在内部的 [`SwitchServiceFactories`]，并在 `Host::build_router`
+    ///     过程中被消费；
+    /// - **执行逻辑 (How)**：
+    ///   1. 构造共享的 `LocationStore` 与 `SessionManager`；
+    ///   2. 以上述共享状态创建 `RegistrarServiceFactory` 与 `ProxyServiceFactory`；
+    ///   3. 将工厂打包到 `SwitchServiceFactories` 并存入 Builder；
+    /// - **契约 (What)**：
+    ///   - 返回 `&mut Self` 以支持链式调用；
+    ///   - 重复调用会覆盖旧的工厂缓存，便于在测试中注入新的共享状态；
+    /// - **风险提示 (Trade-offs)**：
+    ///   - 当前实现使用内存内 `DashMap` 保存状态，若宿主需要持久化，请在更高层构造器中
+    ///     替换为自定义的 `LocationStore`/`SessionManager`；
+    ///   - 该方法假定运行在 `std` 环境下，若在 `no_std` 场景调用会因缺少 `switch` feature 而编译失败。
+    #[cfg(feature = "switch")]
+    pub fn with_switch_services(&mut self) -> &mut Self {
+        let location_store = Arc::new(LocationStore::new());
+        let session_manager = Arc::new(SessionManager::new());
+
+        let registrar_factory = Arc::new(RegistrarServiceFactory::new(Arc::clone(&location_store)));
+        let proxy_factory = Arc::new(ProxyServiceFactory::new(
+            Arc::clone(&location_store),
+            Arc::clone(&session_manager),
+        ));
+
+        self.switch_services = Some(SwitchServiceFactories::new(
+            registrar_factory,
+            proxy_factory,
+        ));
+        self
+    }
+
     /// 最终构建宿主实例。
     ///
     /// # 教案级注释
@@ -209,6 +267,8 @@ impl HostBuilder {
             configuration,
             services,
             middleware,
+            #[cfg(feature = "switch")]
+            switch_services,
         } = self;
         let outcome = configuration.build().map_err(HostBuildError::from)?;
         Ok(Host::new(
@@ -217,6 +277,8 @@ impl HostBuilder {
             outcome.report,
             services,
             middleware,
+            #[cfg(feature = "switch")]
+            switch_services,
         ))
     }
 
@@ -235,5 +297,35 @@ impl HostBuilder {
             .register_source(source)
             .map_err(HostBuilderError::from)?;
         Ok(self)
+    }
+}
+
+#[cfg(feature = "switch")]
+#[derive(Clone, Debug)]
+pub(crate) struct SwitchServiceFactories {
+    /// Registrar 路由对应的 ServiceFactory。使用 `Arc` 以便 router 在多线程中克隆。
+    registrar: Arc<dyn spark_router::ServiceFactory>,
+    /// Proxy 路由对应的 ServiceFactory。
+    proxy: Arc<dyn spark_router::ServiceFactory>,
+}
+
+#[cfg(feature = "switch")]
+impl SwitchServiceFactories {
+    /// 构造包装后的工厂集合。
+    fn new(
+        registrar: Arc<dyn spark_router::ServiceFactory>,
+        proxy: Arc<dyn spark_router::ServiceFactory>,
+    ) -> Self {
+        Self { registrar, proxy }
+    }
+
+    /// 克隆 Registrar 工厂引用，供路由注册使用。
+    pub(crate) fn registrar_factory(&self) -> Arc<dyn spark_router::ServiceFactory> {
+        Arc::clone(&self.registrar)
+    }
+
+    /// 克隆 Proxy 工厂引用。
+    pub(crate) fn proxy_factory(&self) -> Arc<dyn spark_router::ServiceFactory> {
+        Arc::clone(&self.proxy)
     }
 }

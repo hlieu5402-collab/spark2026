@@ -16,9 +16,12 @@ bench = false
 default = ["alloc"]
 alloc = ["spark-core/alloc"]
 std = ["alloc", "spark-core/std"]
+switch = ["std", "dep:spark-switch", "spark-switch/router-factory", "dep:spark-router"]
 
 [dependencies]
 spark-core = { workspace = true, default-features = false }
+spark-switch = { workspace = true, default-features = false, features = ["router-factory"], optional = true }
+spark-router = { workspace = true, default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
 thiserror = { workspace = true }

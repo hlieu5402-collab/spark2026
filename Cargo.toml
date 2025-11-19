@@ -84,6 +84,7 @@ spark-transport-quic = { path = "crates/spark-transport-quic" }
 spark-transport-tcp = { path = "crates/spark-transport-tcp" }
 spark-transport-tls = { path = "crates/spark-transport-tls" }
 spark-transport-udp = { path = "crates/spark-transport-udp" }
+spark-switch = { path = "crates/spark-switch", default-features = false }
 syn = { version = "2.0", features = ["full"] }
 thiserror = "2.0"
 tokio = { version = "1.48.0", default-features = false }
