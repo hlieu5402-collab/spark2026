@@ -310,9 +310,7 @@ pub mod sdp;
 #[cfg(all(test, feature = "transport-tests"))]
 mod transport_graceful {
     use spark_core::{contract::CallContext, transport::TransportSocketAddr};
-    use spark_transport_tcp::{
-        ShutdownDirection, TcpChannel, TcpServerChannel, TcpSocketConfig,
-    };
+    use spark_transport_tcp::{ShutdownDirection, TcpChannel, TcpServerChannel, TcpSocketConfig};
     use std::{net::SocketAddr, time::Duration};
     use tokio::time::sleep;
 
@@ -1118,8 +1116,8 @@ pub mod transport {
     /// TLS 握手与读写行为验证。
     pub mod tls_handshake {
         use super::{
-            Result, TcpServerChannel, TlsAcceptor, TransportSocketAddr, anyhow, build_client_config,
-            build_server_config, perform_tls_round, transport_to_std,
+            Result, TcpServerChannel, TlsAcceptor, TransportSocketAddr, anyhow,
+            build_client_config, build_server_config, perform_tls_round, transport_to_std,
         };
 
         #[tokio::test(flavor = "multi_thread")]
@@ -1171,8 +1169,8 @@ pub mod transport {
     /// 验证 ALPN 协商结果是否对上层可见。
     pub mod tls_alpn_route {
         use super::{
-            Result, TcpServerChannel, TlsAcceptor, TransportSocketAddr, anyhow, build_client_config,
-            build_server_config, perform_tls_round, transport_to_std,
+            Result, TcpServerChannel, TlsAcceptor, TransportSocketAddr, anyhow,
+            build_client_config, build_server_config, perform_tls_round, transport_to_std,
         };
 
         #[tokio::test(flavor = "multi_thread")]
@@ -1511,9 +1509,9 @@ pub mod rtcp;
 mod router_pipeline_migration {
     use spark_core::pipeline::ExtensionsMap;
     use spark_router::pipeline::{
-        load_router_context, store_router_context, ApplicationRouter,
-        ApplicationRouterInitializer, ExtensionsRoutingContextBuilder, RouterContextState,
-        RouterContextSnapshot, RoutingContextBuilder, RoutingContextParts,
+        ApplicationRouter, ApplicationRouterInitializer, ExtensionsRoutingContextBuilder,
+        RouterContextSnapshot, RouterContextState, RoutingContextBuilder, RoutingContextParts,
+        load_router_context, store_router_context,
     };
 
     /// 校验 `spark_router::pipeline` 的核心类型在 `spark-tck` 中可用，避免回退到已废弃的
@@ -1539,7 +1537,7 @@ mod router_pipeline_migration {
     }
 
     /// 通过系统性检查确认 `spark_router::pipeline` 下的类型/函数签名完全对齐 TCK 预期，
-    /// 杜绝在测试迁移过程中意外回落到旧版 `spark_pipeline::router_handler` 名称空间。
+    /// 杜绝在测试迁移过程中意外回落到任何旧版路由 Handler 命名空间。
     ///
     /// - **意图（Why）**：若未来某次回归再次引入旧依赖，编译器应立即因路径失效而报错，
     ///   保障 TCK 使用的路由上下文工具始终指向最新版实现。
