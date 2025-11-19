@@ -119,6 +119,7 @@ pub struct CallSession {
     state: CallState,
     a_leg: BoxService,
     b_leg: Option<BoxService>,
+    media: MediaContext,
 }
 
 impl CallSession {
@@ -138,6 +139,7 @@ impl CallSession {
             state: CallState::Initializing,
             a_leg,
             b_leg: None,
+            media: MediaContext::default(),
         }
     }
 
@@ -178,6 +180,74 @@ impl CallSession {
     /// 访问 B-leg 服务（可变）。
     pub fn b_leg_mut(&mut self) -> Option<&mut BoxService> {
         self.b_leg.as_mut()
+    }
+
+    /// 记录主叫侧提供的 SDP Offer 文本。
+    ///
+    /// # 教案式注释
+    /// - **意图 (Why)**：为媒体协商提供源数据，避免 `run_call_flow` 再次访问原始 INVITE；
+    /// - **契约 (What)**：
+    ///   - `sdp`：完整的 SDP 文本，调用前需确保 UTF-8 与字段完整；
+    ///   - **前置条件**：`CallSession` 已代表一个有效 INVITE，重复调用会覆盖旧值；
+    ///   - **后置条件**：内部 `media.offer_sdp` 被替换，可供只读访问。
+    pub fn set_offer_sdp(&mut self, sdp: String) {
+        self.media.offer_sdp = Some(sdp);
+    }
+
+    /// 以不可变视图形式读取 SDP Offer。
+    ///
+    /// - **意图 (Why)**：让状态机与测试在不复制的情况下检查 Offer 文本；
+    /// - **契约 (What)**：若尚未写入则返回 `None`，否则返回 `&str` 引用；
+    /// - **风险 (Trade-offs)**：返回值绑定 `self` 生命周期，调用者若需长期持有需自行克隆。
+    pub fn offer_sdp(&self) -> Option<&str> {
+        self.media.offer_sdp.as_deref()
+    }
+
+    /// 记录经过本地能力裁剪后准备发送给 B-leg 的 SDP Offer。
+    ///
+    /// # 教案式注释
+    /// - **意图 (Why)**：将 `run_call_flow` 根据协商结果裁剪的 SDP 缓存下来，
+    ///   便于未来真正向 B-leg 发送 INVITE 时直接复用，避免重复解析/重写；
+    /// - **契约 (What)**：`sdp` 需为完整的 SDP 文本；该接口会覆盖旧值；
+    /// - **前置条件**：调用前已经完成对 A-leg Offer 的解析并生成裁剪计划；
+    /// - **后置条件**：`media.b_leg_offer_sdp` 更新，可通过 [`b_leg_offer_sdp`](Self::b_leg_offer_sdp)
+    ///   只读访问。
+    pub fn set_b_leg_offer_sdp(&mut self, sdp: String) {
+        self.media.b_leg_offer_sdp = Some(sdp);
+    }
+
+    /// 读取准备发往 B-leg 的 SDP Offer。
+    pub fn b_leg_offer_sdp(&self) -> Option<&str> {
+        self.media.b_leg_offer_sdp.as_deref()
+    }
+
+    /// 记录 B-leg 反馈的 SDP Answer。
+    ///
+    /// # 教案式注释
+    /// - **意图 (Why)**：在向 A-leg 返回 200 OK 前缓存 Answer，保持媒体视图一致；
+    /// - **契约 (What)**：调用者需提供 UTF-8 字符串；重复调用会覆盖上一版本；
+    /// - **后置条件**：`media.b_leg_answer_sdp` 更新，可被 `b_leg_answer_sdp` 读取。
+    pub fn set_b_leg_answer_sdp(&mut self, sdp: String) {
+        self.media.b_leg_answer_sdp = Some(sdp);
+    }
+
+    /// 读取 B-leg 的 SDP Answer（若已存在）。
+    pub fn b_leg_answer_sdp(&self) -> Option<&str> {
+        self.media.b_leg_answer_sdp.as_deref()
+    }
+
+    /// 更新当前的音频协商状态。
+    ///
+    /// - **意图 (Why)**：`run_call_flow` 在完成 SDP 解析后需要持久化协商结果；
+    /// - **契约 (What)**：`state` 描述最新的协商结论，允许覆盖；
+    /// - **前置条件**：调用者必须持有 `&mut self`，以确保在 `DashMap` guard 下安全写入。
+    pub fn set_audio_negotiation(&mut self, state: AudioNegotiationState) {
+        self.media.audio = state;
+    }
+
+    /// 获取音频协商状态的只读视图。
+    pub fn audio_negotiation(&self) -> &AudioNegotiationState {
+        &self.media.audio
     }
 
     /// 挂载 B-leg 服务。
@@ -240,4 +310,60 @@ impl CallSession {
 
         Ok(())
     }
+}
+
+/// 媒体上下文，缓存 SDP 文本与协商结论。
+#[derive(Clone, Debug, Default)]
+struct MediaContext {
+    offer_sdp: Option<String>,
+    b_leg_offer_sdp: Option<String>,
+    b_leg_answer_sdp: Option<String>,
+    audio: AudioNegotiationState,
+}
+
+/// 音频协商的离散状态。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：让会话状态机能够感知媒体准备程度，以便决定何时向 A/B leg 回送响应；
+/// - **契约 (What)**：
+///   - `Pending`：尚未执行协商；
+///   - `NoAudio`：Offer 中缺少 `m=audio`；
+///   - `Accepted`：包含完整的编解码参数；
+///   - `Rejected`：Offer 中存在音频但本地能力无法满足；
+/// - **风险 (Trade-offs)**：若未来支持多流，需要扩展为向量形式。
+#[derive(Clone, Debug)]
+pub enum AudioNegotiationState {
+    Pending,
+    NoAudio,
+    Accepted(AudioNegotiationProfile),
+    Rejected,
+}
+
+impl Default for AudioNegotiationState {
+    fn default() -> Self {
+        AudioNegotiationState::Pending
+    }
+}
+
+/// 音频协商成功后的详细描述。
+///
+/// # 教案式注释
+/// - **意图 (Why)**：集中描述被接受的负载编号、编解码名称及 DTMF 配置，方便响应构造；
+/// - **契约 (What)**：所有字段均为拥有所有权的 `String` 或原始数值，调用者可安全跨线程传递；
+/// - **后置条件**：一旦写入 `CallSession`，即可供其它组件直接复用。
+#[derive(Clone, Debug)]
+pub struct AudioNegotiationProfile {
+    pub payload_type: u8,
+    pub encoding_name: String,
+    pub clock_rate: u32,
+    pub encoding_params: Option<String>,
+    pub telephone_event: Option<DtmfProfile>,
+}
+
+/// RFC 4733 DTMF 能力描述。
+#[derive(Clone, Debug)]
+pub struct DtmfProfile {
+    pub payload_type: u8,
+    pub clock_rate: u32,
+    pub events: String,
 }

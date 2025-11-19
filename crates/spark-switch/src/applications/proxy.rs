@@ -1,7 +1,16 @@
-use alloc::{boxed::Box, format, string::String, sync::Arc, vec::Vec};
+use alloc::{borrow::ToOwned, boxed::Box, format, string::String, sync::Arc, vec::Vec};
 use core::future;
+use core::str;
 use core::task::{Context as TaskContext, Poll};
 
+use spark_codec_sdp::{
+    SessionDesc,
+    offer_answer::{
+        AnswerCapabilities, AudioAcceptPlan, AudioAnswer, AudioCaps, AudioCodec, TelephoneEvent,
+        apply_offer_answer,
+    },
+    parse_sdp,
+};
 use spark_codec_sip::types::HeaderKind;
 use spark_codec_sip::{Aor, ContactUri};
 use spark_codec_sip::{
@@ -18,7 +27,11 @@ use spark_core::{
 use spark_router::ServiceFactory;
 use tokio::task;
 
-use crate::core::{CallSession, SessionManager};
+use crate::core::{
+    CallSession, SessionManager,
+    session::{AudioNegotiationProfile, AudioNegotiationState, DtmfProfile},
+};
+use crate::error::SwitchError;
 
 use super::location::LocationStore;
 
@@ -27,6 +40,10 @@ const CODE_PROXY_UNIMPLEMENTED: &str = "switch.proxy.unimplemented";
 const CODE_PROXY_INVALID_MESSAGE: &str = "switch.proxy.invalid_message";
 const CODE_PROXY_ROUTING_FAILURE: &str = "switch.proxy.routing_failure";
 const CODE_PROXY_CLIENT_FACTORY_UNAVAILABLE: &str = "switch.proxy.client_factory_unavailable";
+
+/// 默认的媒体能力：PCMU 为首选，同时接受 PCMA 与 RFC 4733 DTMF。
+const DEFAULT_NEGOTIATION_CAPS: AnswerCapabilities =
+    AnswerCapabilities::audio_only(AudioCaps::new(AudioCodec::Pcmu, true, true, true));
 
 /// `ProxyService` 承载 B2BUA 的 INVITE 处理入口。
 ///
@@ -98,10 +115,12 @@ impl ProxyService {
         let sip_message = parse_request(&text).map_err(map_invite_parse_error)?;
         let request_line = ensure_invite_request(&sip_message)?;
         let call_id = extract_call_id(&sip_message)?;
+        let offer_sdp = extract_offer_sdp(&sip_message)?;
         let destination = self.resolve_contact(&sip_message, request_line)?;
 
         let a_leg = build_a_leg_placeholder_service();
         let mut session = CallSession::new(call_id, a_leg);
+        session.set_offer_sdp(offer_sdp);
         let client_factory = ctx.client_factory().ok_or_else(|| {
             SparkError::new(
                 CODE_PROXY_CLIENT_FACTORY_UNAVAILABLE,
@@ -287,6 +306,30 @@ fn extract_call_id<'a>(message: &'a SipMessage<'a>) -> spark_core::Result<&'a st
         })
 }
 
+/// 提取 INVITE 报文中的 SDP Offer。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：将 `SipMessage` 的原始主体转换为可复用的 UTF-8 文本，供会话状态机执行媒体协商；
+/// - **契约 (What)**：若主体为空或非 UTF-8，将返回领域错误；成功时返回拥有所有权的 `String`；
+/// - **实现 (How)**：直接依赖 `str::from_utf8`，避免额外复制。
+fn extract_offer_sdp(message: &SipMessage<'_>) -> spark_core::Result<String, SparkError> {
+    if message.body.is_empty() {
+        return Err(SparkError::new(
+            CODE_PROXY_INVALID_MESSAGE,
+            "INVITE 缺少 SDP Offer 正文，无法进入媒体协商",
+        ));
+    }
+
+    str::from_utf8(message.body)
+        .map(|body| body.to_owned())
+        .map_err(|err| {
+            SparkError::new(
+                codes::APP_INVALID_ARGUMENT,
+                format!("INVITE SDP 必须为 UTF-8：{err}"),
+            )
+        })
+}
+
 /// 构造 100 Trying 响应，回送给主叫侧。
 fn build_trying_response(
     message: &SipMessage<'_>,
@@ -445,10 +488,301 @@ impl Service<PipelineMessage> for AlegPlaceholderService {
 
 #[allow(clippy::unused_async)]
 async fn run_call_flow(
-    _session_manager: Arc<SessionManager>,
-    _call_id: Arc<str>,
+    session_manager: Arc<SessionManager>,
+    call_id: Arc<str>,
 ) -> spark_core::Result<(), SparkError> {
+    let call_id_str = call_id.as_ref();
+    let offer_sdp = {
+        let session = session_manager.get_session(call_id_str).ok_or_else(|| {
+            SwitchError::SessionNotFound {
+                call_id: call_id_str.to_owned(),
+            }
+        })?;
+        session.offer_sdp().map(str::to_owned)
+    };
+
+    let offer_sdp = match offer_sdp {
+        Some(sdp) => sdp,
+        None => {
+            return Err(SwitchError::Internal {
+                detail: format!(
+                    "call flow missing SDP offer before negotiation for Call-ID `{call_id_str}`",
+                ),
+            }
+            .into());
+        }
+    };
+
+    let offer_desc = parse_sdp(&offer_sdp).map_err(|err| SwitchError::ServiceFailure {
+        context: "proxy.call_flow.offer.parse".to_owned(),
+        detail: format!("failed to parse SDP offer: {err}"),
+    })?;
+
+    let plan = apply_offer_answer(&offer_desc, &DEFAULT_NEGOTIATION_CAPS);
+    let audio_state = build_audio_state(plan.audio);
+    let b_leg_offer = build_b_leg_offer_sdp(&offer_sdp, &audio_state);
+    let a_leg_answer = build_a_leg_answer_sdp(&offer_desc, &audio_state);
+
+    {
+        let mut session = session_manager
+            .get_session_mut(call_id_str)
+            .ok_or_else(|| SwitchError::SessionNotFound {
+                call_id: call_id_str.to_owned(),
+            })?;
+        session.set_audio_negotiation(audio_state);
+        if let Some(sdp) = b_leg_offer {
+            session.set_b_leg_offer_sdp(sdp);
+        }
+        if let Some(answer) = a_leg_answer {
+            session.set_b_leg_answer_sdp(answer);
+        }
+    }
+
     Ok(())
+}
+
+/// 将 Offer/Answer 的结论转化为 `CallSession` 可持久化的状态。
+fn build_audio_state(answer: Option<AudioAnswer<'_>>) -> AudioNegotiationState {
+    match answer {
+        None => AudioNegotiationState::NoAudio,
+        Some(AudioAnswer::Rejected) => AudioNegotiationState::Rejected,
+        Some(AudioAnswer::Accepted(plan)) => {
+            AudioNegotiationState::Accepted(build_audio_profile(plan))
+        }
+    }
+}
+
+fn build_audio_profile(plan: AudioAcceptPlan<'_>) -> AudioNegotiationProfile {
+    let telephone_event = plan.telephone_event.map(build_dtmf_profile);
+
+    AudioNegotiationProfile {
+        payload_type: plan.payload_type,
+        encoding_name: plan.rtpmap.encoding.to_owned(),
+        clock_rate: plan.rtpmap.clock_rate,
+        encoding_params: plan.rtpmap.encoding_params.map(ToOwned::to_owned),
+        telephone_event,
+    }
+}
+
+fn build_dtmf_profile(event: TelephoneEvent<'_>) -> DtmfProfile {
+    DtmfProfile {
+        payload_type: event.payload_type,
+        clock_rate: event.clock_rate,
+        events: event.events.to_owned(),
+    }
+}
+
+/// 根据协商结果裁剪发往 B-leg 的 SDP Offer，确保只暴露框架可支持的负载。
+///
+/// # 教案式注释
+/// - **意图 (Why)**：在 A-leg 提供的 Offer 中可能包含框架尚未支持的编解码器或 DTMF 扩展；
+///   直接转发会导致 B-leg 选择无法处理的能力。通过裁剪，保证 B-leg 仅看到框架已验证过的组合。
+/// - **实现逻辑 (How)**：遍历原始 SDP 行，对 `m=audio`/`a=rtpmap`/`a=fmtp` 做定制处理：
+///   - `m=audio` 重写为仅包含被接受的负载编号；
+///   - `a=rtpmap` 仅保留被接受的音频与 DTMF 描述；
+///   - `a=fmtp` 仅保留 DTMF 配置，其余属性原样透传；
+/// - **契约 (What)**：
+///   - 输入 `offer_text` 为完整 SDP 字符串，`state` 描述音频协商结果；
+///   - 当 `state` 非 `Accepted` 时返回 `None`，表示无需裁剪；
+///   - 成功时返回新的 SDP 文本，尾部自动补齐 `\r\n`。
+/// - **风险 (Trade-offs)**：当前实现仅处理单一音频块，若 Offer 存在多个音频流需在后续扩展。
+fn build_b_leg_offer_sdp(offer_text: &str, state: &AudioNegotiationState) -> Option<String> {
+    let selection = payload_selection(state)?;
+    let mut lines = Vec::new();
+
+    for raw_line in offer_text.split('\n') {
+        let line = raw_line.trim_end_matches('\r');
+        if line.is_empty() {
+            continue;
+        }
+
+        if starts_with_ignore_ascii_case(line, "m=audio") {
+            lines.push(rewrite_audio_m_line(line, &selection));
+            continue;
+        }
+
+        if starts_with_ignore_ascii_case(line, "a=rtpmap:") {
+            if should_keep_rtpmap(line, &selection) {
+                lines.push(line.to_owned());
+            }
+            continue;
+        }
+
+        if starts_with_ignore_ascii_case(line, "a=fmtp:") {
+            if should_keep_fmtp(line, &selection) {
+                lines.push(line.to_owned());
+            }
+            continue;
+        }
+
+        lines.push(line.to_owned());
+    }
+
+    Some(join_sdp_lines(lines))
+}
+
+/// 为回送给 A-leg 的 200 OK 构造 SDP Answer。
+///
+/// # 教案式注释
+/// - **意图 (Why)**：在 B-leg 尚未接入前，Proxy 至少要依据本地能力给出一致的 Answer，
+///   让主叫侧获得稳定的媒体指示；
+/// - **实现逻辑 (How)**：
+///   1. 复用 Offer 中的版本、会话、连接等会话级字段，保证 Answer 结构合法；
+///   2. 将 `m=audio` 重写为只包含已接受的负载，并补充 `a=rtpmap`/`a=fmtp`；
+/// - **契约 (What)**：当 `state` 为 `Accepted` 且 Offer 含音频块时返回 `Some(String)`，否则 `None`；
+/// - **风险 (Trade-offs)**：当前直接复用 Offer 的 `o=`/`c=`，真实 B2BUA 应根据自身地址生成独立值，
+///   后续引入媒体中继后需同步更新该函数。
+fn build_a_leg_answer_sdp(
+    offer: &SessionDesc<'_>,
+    state: &AudioNegotiationState,
+) -> Option<String> {
+    let AudioNegotiationState::Accepted(profile) = state else {
+        return None;
+    };
+
+    let audio_media = offer
+        .media
+        .iter()
+        .find(|media| media.media.eq_ignore_ascii_case("audio"));
+    let port = audio_media.map(|media| media.port).unwrap_or("0");
+    let proto = audio_media.map(|media| media.proto).unwrap_or("RTP/AVP");
+    let connection = audio_media
+        .and_then(|media| media.connection.as_ref())
+        .or_else(|| offer.connection.as_ref());
+
+    let mut lines = Vec::new();
+    lines.push(format!("v={}", offer.version));
+    lines.push(format!(
+        "o={} {} {} {} {} {}",
+        offer.origin.username,
+        offer.origin.session_id,
+        offer.origin.session_version,
+        offer.origin.net_type,
+        offer.origin.addr_type,
+        offer.origin.address
+    ));
+    lines.push(format!("s={}", offer.session_name));
+    if let Some(connection) = connection {
+        lines.push(format!(
+            "c={} {} {}",
+            connection.net_type, connection.addr_type, connection.address
+        ));
+    }
+    lines.push(format!("t={} {}", offer.timing.start, offer.timing.stop));
+
+    let mut m_line = format!("m=audio {port} {proto} {}", profile.payload_type);
+    if let Some(dtmf) = profile.telephone_event.as_ref() {
+        m_line.push(' ');
+        m_line.push_str(&dtmf.payload_type.to_string());
+    }
+    lines.push(m_line);
+
+    let mut rtpmap = format!(
+        "a=rtpmap:{} {}/{}",
+        profile.payload_type, profile.encoding_name, profile.clock_rate
+    );
+    if let Some(params) = &profile.encoding_params {
+        rtpmap.push('/');
+        rtpmap.push_str(params);
+    }
+    lines.push(rtpmap);
+
+    if let Some(dtmf) = profile.telephone_event.as_ref() {
+        lines.push(format!(
+            "a=rtpmap:{} telephone-event/{}",
+            dtmf.payload_type, dtmf.clock_rate
+        ));
+        lines.push(format!("a=fmtp:{} {}", dtmf.payload_type, dtmf.events));
+    }
+
+    Some(join_sdp_lines(lines))
+}
+
+/// 选择被接受的负载编号，用于 SDP 裁剪/生成。
+fn payload_selection(state: &AudioNegotiationState) -> Option<PayloadSelection> {
+    let AudioNegotiationState::Accepted(profile) = state else {
+        return None;
+    };
+
+    Some(PayloadSelection {
+        audio: profile.payload_type,
+        dtmf: profile
+            .telephone_event
+            .as_ref()
+            .map(|dtmf| dtmf.payload_type),
+    })
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PayloadSelection {
+    audio: u8,
+    dtmf: Option<u8>,
+}
+
+impl PayloadSelection {
+    fn allows(&self, payload: u8) -> bool {
+        payload == self.audio || self.dtmf == Some(payload)
+    }
+
+    fn is_dtmf(&self, payload: u8) -> bool {
+        self.dtmf == Some(payload)
+    }
+}
+
+fn rewrite_audio_m_line(line: &str, selection: &PayloadSelection) -> String {
+    let mut parts = line.split_whitespace();
+    let media = parts.next().unwrap_or("m=audio");
+    let port = parts.next().unwrap_or("0");
+    let proto = parts.next().unwrap_or("RTP/AVP");
+    let mut payloads = vec![selection.audio.to_string()];
+    if let Some(dtmf) = selection.dtmf {
+        payloads.push(dtmf.to_string());
+    }
+    format!("{media} {port} {proto} {}", payloads.join(" "))
+}
+
+fn should_keep_rtpmap(line: &str, selection: &PayloadSelection) -> bool {
+    match parse_payload_number(line) {
+        Some(payload) => selection.allows(payload),
+        None => true,
+    }
+}
+
+fn should_keep_fmtp(line: &str, selection: &PayloadSelection) -> bool {
+    match parse_payload_number(line) {
+        Some(payload) => {
+            if selection.is_dtmf(payload) {
+                selection.dtmf.is_some()
+            } else {
+                true
+            }
+        }
+        None => true,
+    }
+}
+
+fn parse_payload_number(line: &str) -> Option<u8> {
+    let (_, value) = line.split_once(':')?;
+    let token = value.split_whitespace().next()?;
+    token.parse().ok()
+}
+
+fn join_sdp_lines(lines: Vec<String>) -> String {
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut text = lines.join("\r\n");
+    if !text.ends_with("\r\n") {
+        text.push_str("\r\n");
+    }
+    text
+}
+
+fn starts_with_ignore_ascii_case(input: &str, prefix: &str) -> bool {
+    input
+        .get(0..prefix.len())
+        .map(|head| head.eq_ignore_ascii_case(prefix))
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -456,6 +790,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use crate::core::session::AudioNegotiationState;
     use spark_core::{
         CallContext as CoreCallContext,
         service::{BoxService, ClientFactory},
@@ -492,16 +827,34 @@ mod tests {
     }
 
     fn build_invite_request() -> PipelineMessage {
-        let text = "INVITE sip:bob@example.com SIP/2.0\r\n\
+        let sdp = sample_offer_sdp();
+        let text = format!(
+            "INVITE sip:bob@example.com SIP/2.0\r\n\
 Via: SIP/2.0/UDP client.invalid;branch=z9hG4bK776asdhds\r\n\
 From: \"Alice\" <sip:alice@example.com>;tag=1928301774\r\n\
 To: <sip:bob@example.com>\r\n\
 Call-ID: a84b4c76e66710\r\n\
 CSeq: 314159 INVITE\r\n\
 Contact: <sip:alice@client.invalid>\r\n\
-Content-Length: 0\r\n\
-\r\n";
+Content-Length: {}\r\n\
+\r\n{}",
+            sdp.len(),
+            sdp
+        );
         PipelineMessage::from_buffer(Box::new(OwnedReadableBuffer::new(text.as_bytes().to_vec())))
+    }
+
+    fn sample_offer_sdp() -> &'static str {
+        "v=0\r\n\
+o=- 0 0 IN IP4 203.0.113.1\r\n\
+s=-\r\n\
+c=IN IP4 203.0.113.1\r\n\
+t=0 0\r\n\
+m=audio 49170 RTP/AVP 0 8 101\r\n\
+a=rtpmap:0 PCMU/8000\r\n\
+a=rtpmap:8 PCMA/8000\r\n\
+a=rtpmap:101 telephone-event/8000\r\n\
+a=fmtp:101 0-15\r\n"
     }
 
     fn extract_text(message: PipelineMessage) -> String {
@@ -543,6 +896,7 @@ Content-Length: 0\r\n\
                 .get_session("a84b4c76e66710")
                 .expect("session registered");
             assert!(session.b_leg().is_some());
+            assert_eq!(session.offer_sdp(), Some(sample_offer_sdp()));
 
             assert_eq!(
                 factory.targets(),
@@ -569,6 +923,56 @@ Content-Length: 0\r\n\
                 .handle_request(ctx, build_invite_request())
                 .expect_err("missing factory");
             assert_eq!(err.code(), CODE_PROXY_CLIENT_FACTORY_UNAVAILABLE);
+        });
+    }
+
+    #[test]
+    fn call_flow_negotiates_audio_and_stores_plan() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            let manager = Arc::new(SessionManager::new());
+            let mut session = CallSession::new("nego-call", build_a_leg_placeholder_service());
+            session.set_offer_sdp(sample_offer_sdp().to_owned());
+            manager.create_session(session).expect("register session");
+
+            let call_id = {
+                let session = manager.get_session("nego-call").expect("session");
+                session.call_id_arc().clone()
+            };
+
+            run_call_flow(Arc::clone(&manager), call_id)
+                .await
+                .expect("call flow success");
+
+            let session = manager.get_session("nego-call").expect("session");
+            match session.audio_negotiation() {
+                AudioNegotiationState::Accepted(profile) => {
+                    assert_eq!(profile.payload_type, 0);
+                    assert_eq!(profile.encoding_name, "PCMU");
+                    assert_eq!(profile.clock_rate, 8000);
+                    assert_eq!(profile.encoding_params, None);
+                    let events = profile
+                        .telephone_event
+                        .as_ref()
+                        .map(|dtmf| dtmf.events.as_str());
+                    assert_eq!(events, Some("0-15"));
+                }
+                other => panic!("unexpected negotiation state: {other:?}"),
+            }
+
+            let expected = "v=0\r\n\
+o=- 0 0 IN IP4 203.0.113.1\r\n\
+s=-\r\n\
+c=IN IP4 203.0.113.1\r\n\
+t=0 0\r\n\
+m=audio 49170 RTP/AVP 0 101\r\n\
+a=rtpmap:0 PCMU/8000\r\n\
+a=rtpmap:101 telephone-event/8000\r\n\
+a=fmtp:101 0-15\r\n";
+            assert_eq!(session.b_leg_offer_sdp(), Some(expected));
+            assert_eq!(session.b_leg_answer_sdp(), Some(expected));
         });
     }
 }
