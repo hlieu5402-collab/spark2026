@@ -48,13 +48,12 @@ impl SparkErrorTrait for MiddlewareRegistrationError {
 ///     - 路由链路相关组件请直接通过 `use spark_router::pipeline::{
 ///       ApplicationRouterInitializer, ExtensionsRoutingContextBuilder, ..
 ///       }` 等语句引入：
-///       1. **核心目标**：明确 `spark_router::pipeline::*` 为 Router 初始化的唯一正向
-///          依赖入口，保持示例、文档与宿主实现一致；
-///       2. **体系位置**：`spark_router::pipeline` 承载统一的 Router 初始化与上下文
-///          构造逻辑，宿主在装配阶段应原生依赖该实现以缩短调用链；
-///       3. **设计考量**：直接依赖该模块可减少一次再导出层，从而降低未来清理兼
-///          容桥接时代码的破坏性；若确实需要遗留路径，应在调用侧建立适配器并标
-///          注退场计划。
+///       1. **核心目标**：将 `ApplicationRouter` 体系的入口固定在 `spark_router::pipeline`
+///          命名空间内，保证示例、宿主与 TCK 对齐；
+///       2. **体系位置**：`spark_router::pipeline` 汇集 Router 初始化与上下文构造逻辑，
+///          宿主在装配阶段直接依赖它可缩短链路、减少偶合；
+///       3. **设计考量**：统一入口意味着早期遗留的兼容别名可以彻底移除，降低热路径中的认知
+///          负担；若确需遗留路径，应在调用侧自建适配器并标注退出节奏；
 ///       4. **实战示例**：
 ///          ```rust,ignore
 ///          use spark_router::pipeline::{
@@ -62,8 +61,8 @@ impl SparkErrorTrait for MiddlewareRegistrationError {
 ///              ExtensionsRoutingContextBuilder,
 ///          };
 ///          ```
-///          上述导入即为 `spark_pipeline::router_handler::{..}` 的替代方案，可在宿主
-///          或示例代码中直接复用，确保依赖路径统一、避免回退到废弃接口。
+///          上述导入即是当前推荐做法，可在宿主或示例代码中直接复用，确保依赖路径统一、
+///          避免回退到废弃接口。
 /// - **契约 (What)**
 ///   - 名称必须唯一；若重复注册将返回 [`MiddlewareRegistrationError::Duplicate`]；
 ///   - 初始化器应满足对象层契约：`Send + Sync + 'static`。

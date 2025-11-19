@@ -770,7 +770,7 @@ mod router_pipeline_migration_tests {
     use spark_router::pipeline::{ApplicationRouter, ApplicationRouterInitializer};
 
     /// 教案级测试：确保示例代码默认面向 `spark_router::pipeline` 新命名空间，而不会在未来
-    /// 回退到已废弃的 `spark_pipeline::router_handler` 路径。
+    /// 回退到任何已经弃用的旧版路由 Handler 命名空间。
     ///
     /// # 教案级说明
     /// - **意图 (Why)**：通过编译期访问关键类型的方式，提醒维护者“示例应引用新版命名空

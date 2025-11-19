@@ -414,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn initializer_registers_router_handler_with_defaults() {
+    fn initializer_registers_application_router_with_defaults() {
         let router = Arc::new(crate::DefaultRouter::new());
         let initializer_desc = InitializerDescriptor::new(
             "test.router_initializer",
