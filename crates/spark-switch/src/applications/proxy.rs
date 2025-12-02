@@ -4,7 +4,7 @@ use core::str;
 use core::task::{Context as TaskContext, Poll};
 
 use spark_codec_sdp::{
-    SessionDesc,
+    Attribute, MediaDesc, SessionDesc, format_sdp,
     offer_answer::{
         AnswerCapabilities, AudioAcceptPlan, AudioAnswer, AudioCaps, AudioCodec, TelephoneEvent,
         apply_offer_answer,
@@ -111,8 +111,9 @@ impl ProxyService {
         ctx: CallContext,
         message: PipelineMessage,
     ) -> spark_core::Result<PipelineMessage, SparkError> {
-        let text = read_sip_text(message)?;
-        let sip_message = parse_request(&text).map_err(map_invite_parse_error)?;
+        let sip_payload = read_sip_payload(message)?;
+        let sip_text = sip_payload.as_text()?;
+        let sip_message = parse_request(sip_text).map_err(map_invite_parse_error)?;
         let request_line = ensure_invite_request(&sip_message)?;
         let call_id = extract_call_id(&sip_message)?;
         let offer_sdp = extract_offer_sdp(&sip_message)?;
@@ -273,31 +274,65 @@ impl ServiceFactory for ProxyServiceFactory {
 /// - **意图 (Why)**：B2BUA 需要访问原始 INVITE 文本以执行 SIP 解析；
 /// - **契约 (What)**：仅接受 `PipelineMessage::Buffer`，否则返回 `switch.proxy.invalid_message`；
 /// - **风险 (Trade-offs)**：`try_into_vec` 会复制字节，若后续需要零拷贝可考虑共享切片生命周期。
-fn read_sip_text(message: PipelineMessage) -> spark_core::Result<String, SparkError> {
-    let buffer = match message {
-        PipelineMessage::Buffer(buf) => buf,
-        _ => {
-            return Err(SparkError::new(
-                CODE_PROXY_INVALID_MESSAGE,
-                "Proxy 仅支持字节缓冲消息",
-            ));
-        }
-    };
+/// 承载 SIP 文本的零拷贝包装器，避免在 INVITE 入口处强制分配 `String`。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：
+///   - 规避原先 `read_sip_text` 将缓冲整体转换为 `String` 的额外分配，保留原始字节以便后续零拷贝解析；
+///   - 为 SIP 解析器提供 UTF-8 受控视图，同时确保底层缓冲在解析期间保持有效生命周期。
+/// - **契约 (What)**：
+///   - 输入：必须是 [`PipelineMessage::Buffer`] 变体，内部承载完整的 SIP 报文字节；
+///   - 输出：`SipPayload` 保存原始字节所有权，可通过 [`SipPayload::as_text`] 获取 `&str` 视图；
+///   - 前置条件：调用方需确保缓冲内容即完整的 SIP 报文；
+///   - 后置条件：成功创建后，`SipPayload` 会在自身生命周期内维护字节所有权，`as_text` 返回的切片始终有效。
+/// - **解析逻辑 (How)**：
+///   1. 匹配 `PipelineMessage` 变体，非缓冲则返回领域错误；
+///   2. 通过 `try_into_vec` 将只读缓冲扁平化为 `Vec<u8>`（当前实现仍需一次复制，但避免了 `String` 的双份内存）；
+///   3. `as_text` 中使用 `str::from_utf8` 将字节安全地视为 UTF-8，失败时返回带错误码的 `SparkError`；
+/// - **风险提示 (Trade-offs & Gotchas)**：
+///   - 若未来提供真正零拷贝的 SIP 解析器，可在此处改为借用切片而非分配 `Vec`；
+///   - 仍依赖 UTF-8 语义，若遇到非 UTF-8 报文会被拒绝。
+struct SipPayload {
+    bytes: Vec<u8>,
+}
 
-    let bytes = buffer.try_into_vec().map_err(|err| {
-        SparkError::new(
-            codes::APP_INVALID_ARGUMENT,
-            format!("无法读取 INVITE 请求字节：{err}"),
-        )
-        .with_cause(err)
-    })?;
+impl SipPayload {
+    /// 从管道消息中提取 SIP 原始字节。
+    fn from_pipeline_message(message: PipelineMessage) -> spark_core::Result<Self, SparkError> {
+        let buffer = match message {
+            PipelineMessage::Buffer(buf) => buf,
+            _ => {
+                return Err(SparkError::new(
+                    CODE_PROXY_INVALID_MESSAGE,
+                    "Proxy 仅支持字节缓冲消息",
+                ));
+            }
+        };
 
-    String::from_utf8(bytes).map_err(|err| {
-        SparkError::new(
-            codes::APP_INVALID_ARGUMENT,
-            format!("SIP 报文必须为 UTF-8：{err}"),
-        )
-    })
+        let bytes = buffer.try_into_vec().map_err(|err| {
+            SparkError::new(
+                codes::APP_INVALID_ARGUMENT,
+                format!("无法读取 INVITE 请求字节：{err}"),
+            )
+            .with_cause(err)
+        })?;
+
+        Ok(Self { bytes })
+    }
+
+    /// 暴露 UTF-8 视图，供 SIP 解析器使用。
+    fn as_text(&self) -> spark_core::Result<&str, SparkError> {
+        str::from_utf8(&self.bytes).map_err(|err| {
+            SparkError::new(
+                codes::APP_INVALID_ARGUMENT,
+                format!("SIP 报文必须为 UTF-8：{err}"),
+            )
+        })
+    }
+}
+
+fn read_sip_payload(message: PipelineMessage) -> spark_core::Result<SipPayload, SparkError> {
+    SipPayload::from_pipeline_message(message)
 }
 
 /// 校验解析结果是否为 INVITE 请求。
@@ -552,7 +587,7 @@ async fn run_call_flow(
 
     let plan = apply_offer_answer(&offer_desc, &DEFAULT_NEGOTIATION_CAPS);
     let audio_state = build_audio_state(plan.audio);
-    let b_leg_offer = build_b_leg_offer_sdp(&offer_sdp, &audio_state);
+    let b_leg_offer = build_b_leg_offer_sdp(&offer_desc, &audio_state);
     let a_leg_answer = build_a_leg_answer_sdp(&offer_desc, &audio_state);
 
     {
@@ -609,48 +644,35 @@ fn build_dtmf_profile(event: TelephoneEvent<'_>) -> DtmfProfile {
 /// # 教案式注释
 /// - **意图 (Why)**：在 A-leg 提供的 Offer 中可能包含框架尚未支持的编解码器或 DTMF 扩展；
 ///   直接转发会导致 B-leg 选择无法处理的能力。通过裁剪，保证 B-leg 仅看到框架已验证过的组合。
-/// - **实现逻辑 (How)**：遍历原始 SDP 行，对 `m=audio`/`a=rtpmap`/`a=fmtp` 做定制处理：
-///   - `m=audio` 重写为仅包含被接受的负载编号；
-///   - `a=rtpmap` 仅保留被接受的音频与 DTMF 描述；
-///   - `a=fmtp` 仅保留 DTMF 配置，其余属性原样透传；
+/// - **实现逻辑 (How)**：使用 [`SessionDesc`] 的结构化表示执行过滤，避免手工字符串拼接：
+///   - 仅在媒体类型为 `audio` 的块上过滤 `m=` 负载列表；
+///   - 依据 `rtpmap`/`fmtp` 属性中的 payload 编号筛选对应属性；
+///   - 将过滤后的结构回写为文本时复用 [`format_sdp`]，保持合法行序。
 /// - **契约 (What)**：
-///   - 输入 `offer_text` 为完整 SDP 字符串，`state` 描述音频协商结果；
+///   - 输入为解析后的 SDP [`SessionDesc`] 与音频协商状态；
 ///   - 当 `state` 非 `Accepted` 时返回 `None`，表示无需裁剪；
-///   - 成功时返回新的 SDP 文本，尾部自动补齐 `\r\n`。
+///   - 成功时返回新的 SDP 文本，由 `format_sdp` 保证行尾 `CRLF`。
 /// - **风险 (Trade-offs)**：当前实现仅处理单一音频块，若 Offer 存在多个音频流需在后续扩展。
-fn build_b_leg_offer_sdp(offer_text: &str, state: &AudioNegotiationState) -> Option<String> {
+fn build_b_leg_offer_sdp(offer: &SessionDesc<'_>, state: &AudioNegotiationState) -> Option<String> {
     let selection = payload_selection(state)?;
-    let mut lines = Vec::new();
 
-    for raw_line in offer_text.split('\n') {
-        let line = raw_line.trim_end_matches('\r');
-        if line.is_empty() {
-            continue;
-        }
+    let filtered_media = offer
+        .media
+        .iter()
+        .map(|media| filter_media_for_b_leg(media, &selection))
+        .collect();
 
-        if starts_with_ignore_ascii_case(line, "m=audio") {
-            lines.push(rewrite_audio_m_line(line, &selection));
-            continue;
-        }
+    let filtered = SessionDesc {
+        version: offer.version,
+        origin: offer.origin.clone(),
+        session_name: offer.session_name,
+        connection: offer.connection.clone(),
+        timing: offer.timing.clone(),
+        attributes: offer.attributes.clone(),
+        media: filtered_media,
+    };
 
-        if starts_with_ignore_ascii_case(line, "a=rtpmap:") {
-            if should_keep_rtpmap(line, &selection) {
-                lines.push(line.to_owned());
-            }
-            continue;
-        }
-
-        if starts_with_ignore_ascii_case(line, "a=fmtp:") {
-            if should_keep_fmtp(line, &selection) {
-                lines.push(line.to_owned());
-            }
-            continue;
-        }
-
-        lines.push(line.to_owned());
-    }
-
-    Some(join_sdp_lines(lines))
+    Some(format_sdp(&filtered))
 }
 
 /// 为回送给 A-leg 的 200 OK 构造 SDP Answer。
@@ -761,42 +783,67 @@ impl PayloadSelection {
     }
 }
 
-fn rewrite_audio_m_line(line: &str, selection: &PayloadSelection) -> String {
-    let mut parts = line.split_whitespace();
-    let media = parts.next().unwrap_or("m=audio");
-    let port = parts.next().unwrap_or("0");
-    let proto = parts.next().unwrap_or("RTP/AVP");
-    let mut payloads = vec![selection.audio.to_string()];
-    if let Some(dtmf) = selection.dtmf {
-        payloads.push(dtmf.to_string());
+fn filter_media_for_b_leg<'a>(
+    media: &'a MediaDesc<'a>,
+    selection: &PayloadSelection,
+) -> MediaDesc<'a> {
+    if !media.media.eq_ignore_ascii_case("audio") {
+        return media.clone();
     }
-    format!("{media} {port} {proto} {}", payloads.join(" "))
+
+    MediaDesc {
+        media: media.media,
+        port: media.port,
+        proto: media.proto,
+        formats: media
+            .formats
+            .iter()
+            .copied()
+            .filter(|payload| {
+                parse_payload_number(payload)
+                    .map(|value| selection.allows(value))
+                    .unwrap_or(true)
+            })
+            .collect(),
+        connection: media.connection.clone(),
+        attributes: filter_audio_attributes(&media.attributes, selection),
+    }
 }
 
-fn should_keep_rtpmap(line: &str, selection: &PayloadSelection) -> bool {
-    match parse_payload_number(line) {
-        Some(payload) => selection.allows(payload),
-        None => true,
-    }
-}
-
-fn should_keep_fmtp(line: &str, selection: &PayloadSelection) -> bool {
-    match parse_payload_number(line) {
-        Some(payload) => {
-            if selection.is_dtmf(payload) {
-                selection.dtmf.is_some()
-            } else {
-                true
+fn filter_audio_attributes<'a>(
+    attributes: &'a [Attribute<'a>],
+    selection: &PayloadSelection,
+) -> Vec<Attribute<'a>> {
+    attributes
+        .iter()
+        .cloned()
+        .filter(|attribute| match attribute.key {
+            key if key.eq_ignore_ascii_case("rtpmap") => parse_payload_from_attribute(attribute)
+                .map(|payload| selection.allows(payload))
+                .unwrap_or(true),
+            key if key.eq_ignore_ascii_case("fmtp") => {
+                match parse_payload_from_attribute(attribute) {
+                    Some(payload) if selection.is_dtmf(payload) => selection.dtmf.is_some(),
+                    _ => true,
+                }
             }
-        }
-        None => true,
-    }
+            _ => true,
+        })
+        .collect()
 }
 
-fn parse_payload_number(line: &str) -> Option<u8> {
-    let (_, value) = line.split_once(':')?;
-    let token = value.split_whitespace().next()?;
+fn parse_payload_number(value: &str) -> Option<u8> {
+    let token = value
+        .split_once(':')
+        .map(|(_, rest)| rest)
+        .unwrap_or(value)
+        .split_whitespace()
+        .next()?;
     token.parse().ok()
+}
+
+fn parse_payload_from_attribute(attribute: &Attribute<'_>) -> Option<u8> {
+    attribute.value.and_then(parse_payload_number)
 }
 
 fn join_sdp_lines(lines: Vec<String>) -> String {
@@ -808,13 +855,6 @@ fn join_sdp_lines(lines: Vec<String>) -> String {
         text.push_str("\r\n");
     }
     text
-}
-
-fn starts_with_ignore_ascii_case(input: &str, prefix: &str) -> bool {
-    input
-        .get(0..prefix.len())
-        .map(|head| head.eq_ignore_ascii_case(prefix))
-        .unwrap_or(false)
 }
 
 #[cfg(test)]
