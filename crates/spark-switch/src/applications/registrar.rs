@@ -7,8 +7,8 @@ use core::task::{Context as TaskContext, Poll};
 
 use spark_codec_sip::types::StartLine;
 use spark_codec_sip::{
-    Aor, ContactUri, Header, HeaderName, Method, RequestLine, SipMessage, SipParseError,
-    StatusLine, fmt::write_response, parse_request,
+    Aor, AorRef, ContactUri, ContactUriRef, Header, HeaderName, Method, RequestLine, SipMessage,
+    SipParseError, StatusLine, fmt::write_response, parse_request,
 };
 #[cfg(feature = "router-factory")]
 use spark_core::service::{BoxService, auto_dyn::bridge_to_box_service};
@@ -53,24 +53,45 @@ impl RegistrarService {
         &self,
         message: PipelineMessage,
     ) -> spark_core::Result<PipelineMessage, SparkError> {
-        let buffer = match message {
+        // 统一从流水线消息中获取只读缓冲；Registrar 目前只消费原始字节，若未来扩展需在此处集中处理。
+        let mut buffer = match message {
             PipelineMessage::Buffer(buf) => buf,
             _ => return Err(unsupported_message_error()),
         };
 
-        let bytes = buffer.try_into_vec().map_err(|err| {
-            SparkError::new(
-                codes::APP_INVALID_ARGUMENT,
-                format!("无法读取 REGISTER 请求字节：{err}"),
-            )
-            .with_cause(err)
-        })?;
-        let text = core::str::from_utf8(&bytes).map_err(|err| {
-            SparkError::new(
-                codes::APP_INVALID_ARGUMENT,
-                format!("REGISTER 报文必须为 UTF-8：{err}"),
-            )
-        })?;
+        // 教案式说明：优先零拷贝读取缓冲，避免在高并发 REGISTER 场景下为每个请求分配 Vec。
+        // - 若底层缓冲为连续内存（chunk 覆盖 remaining），直接借用切片并按 UTF-8 解析；
+        // - 若数据跨越多段（chunk < remaining），仅在必要时复制一次以获取平坦视图，保持性能与健壮性平衡。
+        let remaining = buffer.remaining();
+        let chunk = buffer.chunk();
+        let owned_bytes;
+        let text = if chunk.len() == remaining {
+            core::str::from_utf8(chunk).map_err(|err| {
+                SparkError::new(
+                    codes::APP_INVALID_ARGUMENT,
+                    format!("REGISTER 报文必须为 UTF-8：{err}"),
+                )
+            })?
+        } else {
+            owned_bytes = {
+                let mut bytes = alloc::vec![0u8; remaining];
+                buffer.copy_into_slice(&mut bytes).map_err(|err| {
+                    SparkError::new(
+                        codes::APP_INVALID_ARGUMENT,
+                        format!("无法读取 REGISTER 请求字节：{err}"),
+                    )
+                    .with_cause(err)
+                })?;
+                bytes
+            };
+            core::str::from_utf8(&owned_bytes).map_err(|err| {
+                SparkError::new(
+                    codes::APP_INVALID_ARGUMENT,
+                    format!("REGISTER 报文必须为 UTF-8：{err}"),
+                )
+            })?
+        };
+
         let message = parse_request(text).map_err(map_parse_error)?;
         let request_line = extract_register_line(&message)?;
         let aor = extract_aor(&message, request_line);
@@ -141,10 +162,10 @@ fn extract_aor(message: &SipMessage<'_>, request_line: &RequestLine<'_>) -> Aor 
         .headers
         .iter()
         .find_map(|header| match header {
-            Header::To(to) => Some(Aor::from_name_addr(to)),
+            Header::To(to) => Some(AorRef::from(to).into_owned()),
             _ => None,
         })
-        .unwrap_or_else(|| Aor::from_uri(&request_line.uri))
+        .unwrap_or_else(|| AorRef::from(&request_line.uri).into_owned())
 }
 
 fn extract_contact(message: &SipMessage<'_>) -> spark_core::Result<ContactUri, SparkError> {
@@ -154,7 +175,7 @@ fn extract_contact(message: &SipMessage<'_>) -> spark_core::Result<ContactUri, S
         .find_map(|header| match header {
             Header::Contact(contact) if !contact.is_wildcard => contact
                 .address
-                .map(|addr| ContactUri::from_name_addr(&addr)),
+                .map(|addr| ContactUriRef::from(&addr).into_owned()),
             _ => None,
         })
         .ok_or_else(|| {

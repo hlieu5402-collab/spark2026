@@ -4,6 +4,92 @@ use core::{fmt, ops::Deref};
 
 use crate::types::{NameAddr, SipScheme, SipUri};
 
+/// 基于零拷贝视角的 AOR 轻量引用。
+///
+/// # 教案式说明
+/// - **意图（Why）**：在协议解析阶段，很多场景仅需要读取 AOR 以执行路由/鉴权判定，不必立即分配所有权字符串。
+///   通过持有 [`SipUri`] 切片，可让编解码阶段与业务阶段解耦内存策略，避免无谓堆分配。
+/// - **定位（Where）**：位于 `spark-codec-sip::registrar`，供 Registrar、Transaction 等上层在需要时再延迟获取所有权。
+/// - **契约（What）**：
+///   - 输入：必须基于解析完成的 [`SipUri`] 或 [`NameAddr`] 构造，隐含前置条件为底层缓冲仍然有效；
+///   - 输出：`into_owned` 可生成有所有权的 [`Aor`]，满足跨线程存储要求；
+///   - 后置：不在本类型上做额外的字符串校验，保证零拷贝读取路径轻量。
+/// - **权衡与注意事项（Trade-offs & Gotchas）**：
+///   - 该类型仅持引用，生命周期绑定输入缓冲；若需跨请求存储必须调用 [`into_owned`](Self::into_owned)。
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct AorRef<'a> {
+    uri: SipUri<'a>,
+}
+
+impl<'a> AorRef<'a> {
+    /// 将零拷贝引用转换为具备所有权的 [`Aor`]。
+    ///
+    /// - **输入/前置**：调用方需确保底层 URI 已验证合法；
+    /// - **输出/后置**：返回的 `Aor` 拥有独立存储，可安全写入 `LocationStore`。
+    #[must_use]
+    pub fn into_owned(self) -> Aor {
+        Aor::from_uri(&self.uri)
+    }
+
+    /// 直接读取底层 URI 引用，便于在只读判定场景下避免分配。
+    #[must_use]
+    pub fn as_uri(&self) -> &SipUri<'a> {
+        &self.uri
+    }
+}
+
+impl<'a> From<&NameAddr<'a>> for AorRef<'a> {
+    fn from(addr: &NameAddr<'a>) -> Self {
+        Self { uri: addr.uri }
+    }
+}
+
+impl<'a> From<&SipUri<'a>> for AorRef<'a> {
+    fn from(uri: &SipUri<'a>) -> Self {
+        Self { uri: *uri }
+    }
+}
+
+/// 终端 Contact 地址的零拷贝视图。
+///
+/// # 设计摘要
+/// - **Why**：避免在解析阶段即创建拥有所有权的 `String`/`Arc<str>`，对齐 REGISTER 高频但体积小的场景，降低 GC/分配压力。
+/// - **How**：内部仅保存 [`SipUri`] 的切片，提供 `into_owned` 将其升级为持久化存储所需的 [`ContactUri`]。
+/// - **What**：调用方需保证输入 URI 合法且缓冲未被回收；输出所有权对象满足线程安全使用。
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ContactUriRef<'a> {
+    uri: SipUri<'a>,
+}
+
+impl<'a> ContactUriRef<'a> {
+    /// 获取对底层 URI 的只读访问。
+    #[must_use]
+    pub fn as_uri(&self) -> &SipUri<'a> {
+        &self.uri
+    }
+
+    /// 升级为拥有所有权的 [`ContactUri`]。
+    ///
+    /// - **输入**：零拷贝引用；需确保生命周期尚未结束。
+    /// - **输出**：可跨线程安全共享的 `ContactUri`。
+    #[must_use]
+    pub fn into_owned(self) -> ContactUri {
+        ContactUri::from_uri(&self.uri)
+    }
+}
+
+impl<'a> From<&NameAddr<'a>> for ContactUriRef<'a> {
+    fn from(addr: &NameAddr<'a>) -> Self {
+        Self { uri: addr.uri }
+    }
+}
+
+impl<'a> From<&SipUri<'a>> for ContactUriRef<'a> {
+    fn from(uri: &SipUri<'a>) -> Self {
+        Self { uri: *uri }
+    }
+}
+
 /// `Aor`（Address of Record）提供 SIP 注册表中的主键表示。
 ///
 /// # 教案式速览

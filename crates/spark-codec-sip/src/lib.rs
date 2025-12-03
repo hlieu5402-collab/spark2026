@@ -49,7 +49,7 @@ pub use crate::types::{
     CSeqHeader, ContactHeader, Header, HeaderName, MaxForwardsHeader, Method, NameAddr,
     RequestLine, SipMessage, SipUri, StatusLine, ViaHeader, ViaParamRport,
 };
-pub use registrar::{Aor, ContactUri};
+pub use registrar::{Aor, AorRef, ContactUri, ContactUriRef};
 pub use transaction::{
     CancelOutcome, FinalResponseDisposition, InviteServerTransaction, InviteServerTransactionState,
 };
