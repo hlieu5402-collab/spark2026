@@ -26,7 +26,6 @@ use spark_core::{
 };
 #[cfg(feature = "router-factory")]
 use spark_router::ServiceFactory;
-use tokio::task;
 
 use crate::core::{
     CallSession, SessionManager,
@@ -246,15 +245,14 @@ impl ProxyService {
     ///     [`Cancellation::cancel`] 触发终止；
     /// - **前置条件**：会话已存入 [`SessionManager`]，且调用方保证 `cancellation` 生命周期
     ///   覆盖任务执行期；
-    /// - **后置条件**：返回的 Tokio 任务句柄由运行时管理；任务内部会在观察到取消位后提前
-    ///   结束，当前逻辑未暴露 Join 句柄以保持入口的轻量性。
-    /// - **风险提示 (Trade-offs)**：直接使用 Tokio `spawn` 而非自定义执行器，优先保证实现
-    ///   简单性；若未来需要精细化回收或指标，可在此接入运行时抽象。
+    /// - **后置条件**：当前实现直接在调用线程同步推进状态机，避免引入运行时耦合；如需切换
+    ///   至线程池或事件循环，可在调用点通过 [`CallContext`] 暴露的运行时能力提交任务。
+    /// - **风险提示 (Trade-offs)**：同步执行会将 SDP 协商成本计入请求热路径，但目前逻辑
+    ///   仅包含解析与内存写入，耗时可控；一旦未来接入外部 I/O，应改用运行时的 `spawn` 将
+    ///   编排任务移出热路径。
     fn spawn_call_flow(&self, call_id: Arc<str>, cancellation: Cancellation) {
         let manager = Arc::clone(&self.session_manager);
-        task::spawn(async move {
-            let _ = run_call_flow(manager, call_id, cancellation).await;
-        });
+        let _ = run_call_flow(manager, call_id, cancellation);
     }
 }
 
@@ -620,8 +618,7 @@ impl Service<PipelineMessage> for AlegPlaceholderService {
     }
 }
 
-#[allow(clippy::unused_async)]
-async fn run_call_flow(
+fn run_call_flow(
     session_manager: Arc<SessionManager>,
     call_id: Arc<str>,
     cancellation: Cancellation,
@@ -1030,100 +1027,85 @@ a=fmtp:101 0-15\r\n"
 
     #[test]
     fn proxy_creates_session_and_responds_trying() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .expect("runtime");
-        runtime.block_on(async {
-            let location_store = Arc::new(LocationStore::new());
-            location_store.register(
-                Aor::new("sip:bob@example.com"),
-                ContactUri::new("sip:bob@client.invalid"),
-            );
-            let session_manager = Arc::new(SessionManager::new());
-            let service = ProxyService::new(location_store, Arc::clone(&session_manager));
-            let factory = Arc::new(RecordingClientFactory::new());
-            let ctx = CoreCallContext::builder()
-                .with_client_factory(factory.clone())
-                .build();
-            let response = service
-                .handle_request(ctx, build_invite_request())
-                .expect("call success");
+        let location_store = Arc::new(LocationStore::new());
+        location_store.register(
+            Aor::new("sip:bob@example.com"),
+            ContactUri::new("sip:bob@client.invalid"),
+        );
+        let session_manager = Arc::new(SessionManager::new());
+        let service = ProxyService::new(location_store, Arc::clone(&session_manager));
+        let factory = Arc::new(RecordingClientFactory::new());
+        let ctx = CoreCallContext::builder()
+            .with_client_factory(factory.clone())
+            .build();
+        let response = service
+            .handle_request(ctx, build_invite_request())
+            .expect("call success");
 
-            let text = extract_text(response);
-            assert!(text.starts_with("SIP/2.0 100"));
-            assert!(text.contains("Call-ID: a84b4c76e66710"));
+        let text = extract_text(response);
+        assert!(text.starts_with("SIP/2.0 100"));
+        assert!(text.contains("Call-ID: a84b4c76e66710"));
 
-            let session = session_manager
-                .get_session("a84b4c76e66710")
-                .expect("session registered");
-            assert!(session.b_leg().is_some());
-            assert_eq!(session.offer_sdp(), Some(sample_offer_sdp()));
+        let session = session_manager
+            .get_session("a84b4c76e66710")
+            .expect("session registered");
+        assert!(session.b_leg().is_some());
+        assert_eq!(session.offer_sdp(), Some(sample_offer_sdp()));
 
-            assert_eq!(
-                factory.targets(),
-                vec!["sip:bob@client.invalid".to_string()]
-            );
-        });
+        assert_eq!(
+            factory.targets(),
+            vec!["sip:bob@client.invalid".to_string()]
+        );
     }
 
     #[test]
     fn proxy_rejects_without_client_factory() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .expect("runtime");
-        runtime.block_on(async {
-            let location_store = Arc::new(LocationStore::new());
-            location_store.register(
-                Aor::new("sip:bob@example.com"),
-                ContactUri::new("sip:bob@client.invalid"),
-            );
-            let session_manager = Arc::new(SessionManager::new());
-            let service = ProxyService::new(location_store, session_manager);
-            let ctx = CoreCallContext::builder().build();
-            let err = service
-                .handle_request(ctx, build_invite_request())
-                .expect_err("missing factory");
-            assert_eq!(err.code(), CODE_PROXY_CLIENT_FACTORY_UNAVAILABLE);
-        });
+        let location_store = Arc::new(LocationStore::new());
+        location_store.register(
+            Aor::new("sip:bob@example.com"),
+            ContactUri::new("sip:bob@client.invalid"),
+        );
+        let session_manager = Arc::new(SessionManager::new());
+        let service = ProxyService::new(location_store, session_manager);
+        let ctx = CoreCallContext::builder().build();
+        let err = service
+            .handle_request(ctx, build_invite_request())
+            .expect_err("missing factory");
+        assert_eq!(err.code(), CODE_PROXY_CLIENT_FACTORY_UNAVAILABLE);
     }
 
     #[test]
     fn call_flow_negotiates_audio_and_stores_plan() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .expect("runtime");
-        runtime.block_on(async {
-            let manager = Arc::new(SessionManager::new());
-            let mut session = CallSession::new("nego-call", build_a_leg_placeholder_service());
-            session.set_offer_sdp(sample_offer_sdp().to_owned());
-            manager.create_session(session).expect("register session");
+        let manager = Arc::new(SessionManager::new());
+        let mut session = CallSession::new("nego-call", build_a_leg_placeholder_service());
+        session.set_offer_sdp(sample_offer_sdp().to_owned());
+        manager.create_session(session).expect("register session");
 
-            let call_id = {
-                let session = manager.get_session("nego-call").expect("session");
-                session.call_id_arc().clone()
-            };
-
-            run_call_flow(Arc::clone(&manager), call_id, Cancellation::new())
-                .await
-                .expect("call flow success");
-
+        let call_id = {
             let session = manager.get_session("nego-call").expect("session");
-            match session.audio_negotiation() {
-                AudioNegotiationState::Accepted(profile) => {
-                    assert_eq!(profile.payload_type, 0);
-                    assert_eq!(profile.encoding_name, "PCMU");
-                    assert_eq!(profile.clock_rate, 8000);
-                    assert_eq!(profile.encoding_params, None);
-                    let events = profile
-                        .telephone_event
-                        .as_ref()
-                        .map(|dtmf| dtmf.events.as_str());
-                    assert_eq!(events, Some("0-15"));
-                }
-                other => panic!("unexpected negotiation state: {other:?}"),
-            }
+            session.call_id_arc().clone()
+        };
 
-            let expected = "v=0\r\n\
+        run_call_flow(Arc::clone(&manager), call_id, Cancellation::new())
+            .expect("call flow success");
+
+        let session = manager.get_session("nego-call").expect("session");
+        match session.audio_negotiation() {
+            AudioNegotiationState::Accepted(profile) => {
+                assert_eq!(profile.payload_type, 0);
+                assert_eq!(profile.encoding_name, "PCMU");
+                assert_eq!(profile.clock_rate, 8000);
+                assert_eq!(profile.encoding_params, None);
+                let events = profile
+                    .telephone_event
+                    .as_ref()
+                    .map(|dtmf| dtmf.events.as_str());
+                assert_eq!(events, Some("0-15"));
+            }
+            other => panic!("unexpected negotiation state: {other:?}"),
+        }
+
+        let expected = "v=0\r\n\
 o=- 0 0 IN IP4 203.0.113.1\r\n\
 s=-\r\n\
 c=IN IP4 203.0.113.1\r\n\
@@ -1132,42 +1114,34 @@ m=audio 49170 RTP/AVP 0 101\r\n\
 a=rtpmap:0 PCMU/8000\r\n\
 a=rtpmap:101 telephone-event/8000\r\n\
 a=fmtp:101 0-15\r\n";
-            assert_eq!(session.b_leg_offer_sdp(), Some(expected));
-            assert_eq!(session.b_leg_answer_sdp(), Some(expected));
-        });
+        assert_eq!(session.b_leg_offer_sdp(), Some(expected));
+        assert_eq!(session.b_leg_answer_sdp(), Some(expected));
     }
 
     #[test]
     fn cancelled_call_flow_exits_early_without_mutation() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .expect("runtime");
+        let manager = Arc::new(SessionManager::new());
+        let mut session = CallSession::new("cancel-call", build_a_leg_placeholder_service());
+        session.set_offer_sdp(sample_offer_sdp().to_owned());
+        manager.create_session(session).expect("register session");
 
-        runtime.block_on(async {
-            let manager = Arc::new(SessionManager::new());
-            let mut session = CallSession::new("cancel-call", build_a_leg_placeholder_service());
-            session.set_offer_sdp(sample_offer_sdp().to_owned());
-            manager.create_session(session).expect("register session");
-
-            let call_id = {
-                let session = manager.get_session("cancel-call").expect("session");
-                session.call_id_arc().clone()
-            };
-
-            let cancellation = Cancellation::new();
-            cancellation.cancel();
-
-            run_call_flow(Arc::clone(&manager), call_id, cancellation)
-                .await
-                .expect("call flow short-circuits");
-
+        let call_id = {
             let session = manager.get_session("cancel-call").expect("session");
-            assert!(matches!(
-                session.audio_negotiation(),
-                AudioNegotiationState::Pending
-            ));
-            assert_eq!(session.b_leg_offer_sdp(), None);
-            assert_eq!(session.b_leg_answer_sdp(), None);
-        });
+            session.call_id_arc().clone()
+        };
+
+        let cancellation = Cancellation::new();
+        cancellation.cancel();
+
+        run_call_flow(Arc::clone(&manager), call_id, cancellation)
+            .expect("call flow short-circuits");
+
+        let session = manager.get_session("cancel-call").expect("session");
+        assert!(matches!(
+            session.audio_negotiation(),
+            AudioNegotiationState::Pending
+        ));
+        assert_eq!(session.b_leg_offer_sdp(), None);
+        assert_eq!(session.b_leg_answer_sdp(), None);
     }
 }
