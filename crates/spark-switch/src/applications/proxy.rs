@@ -20,6 +20,7 @@ use spark_core::{
     CallContext, Cancellation, Context, CoreError, PipelineMessage, SparkError,
     buffer::{ErasedSparkBuf, ReadableBuffer},
     error::codes,
+    observability::TraceContext,
     service::{BoxService, Service, auto_dyn::bridge_to_box_service},
     status::{PollReady, ReadyCheck, ReadyState},
 };
@@ -111,31 +112,37 @@ impl ProxyService {
         ctx: CallContext,
         message: PipelineMessage,
     ) -> spark_core::Result<PipelineMessage, SparkError> {
-        let sip_payload = read_sip_payload(message)?;
-        let sip_text = sip_payload.as_text()?;
-        let sip_message = parse_request(sip_text).map_err(map_invite_parse_error)?;
-        let request_line = ensure_invite_request(&sip_message)?;
-        let call_id = extract_call_id(&sip_message)?;
-        let offer_sdp = extract_offer_sdp(&sip_message)?;
-        let destination = self.resolve_contact(&sip_message, request_line)?;
+        let invite_span = start_invite_span(ctx.trace_context());
 
-        let a_leg = build_a_leg_placeholder_service();
-        let mut session = CallSession::new(call_id, a_leg);
-        session.set_offer_sdp(offer_sdp);
-        let client_factory = ctx.client_factory().ok_or_else(|| {
-            SparkError::new(
-                CODE_PROXY_CLIENT_FACTORY_UNAVAILABLE,
-                "CallContext 未注入 ClientFactory，无法建立 B-leg",
-            )
-        })?;
-        let b_leg = client_factory.connect(&ctx, destination.as_ref())?;
-        session.attach_b_leg(b_leg)?;
-        let call_id_arc = session.call_id_arc().clone();
-        let cancellation = ctx.cancellation().child();
-        self.session_manager.create_session(session)?;
-        self.spawn_call_flow(call_id_arc, cancellation);
+        let result = (|| {
+            let sip_payload = read_sip_payload(message)?;
+            let sip_text = sip_payload.as_text()?;
+            let sip_message = parse_request(sip_text).map_err(map_invite_parse_error)?;
+            let request_line = ensure_invite_request(&sip_message)?;
+            let call_id = extract_call_id(&sip_message)?;
+            let offer_sdp = extract_offer_sdp(&sip_message)?;
+            let destination = self.resolve_contact(&sip_message, request_line)?;
 
-        build_trying_response(&sip_message)
+            let a_leg = build_a_leg_placeholder_service();
+            let mut session = CallSession::new(call_id, a_leg);
+            session.set_offer_sdp(offer_sdp);
+            let client_factory = ctx.client_factory().ok_or_else(|| {
+                SparkError::new(
+                    CODE_PROXY_CLIENT_FACTORY_UNAVAILABLE,
+                    "CallContext 未注入 ClientFactory，无法建立 B-leg",
+                )
+            })?;
+            let b_leg = client_factory.connect(&ctx, destination.as_ref())?;
+            session.attach_b_leg(b_leg)?;
+            let call_id_arc = session.call_id_arc().clone();
+            let cancellation = ctx.cancellation().child();
+            self.session_manager.create_session(session)?;
+            self.spawn_call_flow(call_id_arc, cancellation);
+
+            build_trying_response(&sip_message)
+        })();
+
+        result.map_err(|error| error.with_trace(invite_span))
     }
 
     /// 根据拨号计划为当前 INVITE 选择合适的 B-leg。
@@ -372,6 +379,27 @@ impl SipPayload {
 
 fn read_sip_payload(message: PipelineMessage) -> spark_core::Result<SipPayload, SparkError> {
     SipPayload::from_pipeline_message(message)
+}
+
+/// 为 INVITE 入口创建新的 Handler Span 上下文。
+///
+/// # 教案式注释
+/// - **意图 (Why)**：在收到上游 INVITE 时立即生成新的子 Span，确保后续错误路径和日志能够携带独立的 `span_id`，便于在全局 Trace 树中定位代理入口；
+/// - **架构位置 (Where)**：运行于 `ProxyService::handle_request` 热路径，依赖 `spark-core::observability::TraceContext` 维持追踪契约；
+/// - **执行逻辑 (How)**：
+///   1. 调用 [`TraceContext::generate`] 获取全局唯一的 Span ID（同时生成的 Trace ID 仅用于提供随机源，不会被复用）；
+///   2. 使用父上下文的 Trace ID 与新 Span ID 构造子上下文，保持链路连贯；
+/// - **契约 (What)**：
+///   - 输入：`parent` 为当前调用的追踪上下文引用，必须满足 `trace_id` 已经校验；
+///   - 输出：新的 [`TraceContext`]，与 `parent` 同 Trace ID、不同 Span ID；
+///   - 前置条件：调用方需确保 `parent` 生命周期覆盖返回值的使用范围；
+///   - 后置条件：返回值可直接注入日志或错误对象，用于后续可观测性上报；
+/// - **权衡与注意事项 (Trade-offs & Gotchas)**：
+///   - 通过 `TraceContext::generate` 取 Span ID 可避免在本 crate 复制生成器逻辑，但会丢弃生成的 Trace ID，微小的计算浪费换取了接口稳定性；
+///   - 若未来 `spark-core` 暴露专用 Span ID 生成 API，可在此无缝替换以减少额外分配。
+fn start_invite_span(parent: &TraceContext) -> TraceContext {
+    let child_span_id = TraceContext::generate().span_id;
+    parent.child_context(child_span_id)
 }
 
 /// 校验解析结果是否为 INVITE 请求。
