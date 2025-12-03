@@ -17,7 +17,7 @@ use spark_codec_sip::{
     Header, Method, RequestLine, SipMessage, StatusLine, fmt::write_response, parse_request,
 };
 use spark_core::{
-    CallContext, Context, CoreError, PipelineMessage, SparkError,
+    CallContext, Cancellation, Context, CoreError, PipelineMessage, SparkError,
     buffer::{ErasedSparkBuf, ReadableBuffer},
     error::codes,
     service::{BoxService, Service, auto_dyn::bridge_to_box_service},
@@ -131,8 +131,9 @@ impl ProxyService {
         let b_leg = client_factory.connect(&ctx, destination.as_ref())?;
         session.attach_b_leg(b_leg)?;
         let call_id_arc = session.call_id_arc().clone();
+        let cancellation = ctx.cancellation().child();
         self.session_manager.create_session(session)?;
-        self.spawn_call_flow(call_id_arc);
+        self.spawn_call_flow(call_id_arc, cancellation);
 
         build_trying_response(&sip_message)
     }
@@ -172,6 +173,34 @@ impl ProxyService {
         self.route_external_call()
     }
 
+    /// 基于 INVITE 选择最合适的 B-leg Contact。
+    ///
+    /// - **意图 (Why)**：将解析出的 Request-URI 映射为实际可拨打的 Contact 地址，当前阶段仅支持
+    ///   Registrar 命中，预留扩展点以便未来接入外部路由；
+    /// - **契约 (What)**：
+    ///   - 输入：完整的 [`SipMessage`] 与其解析出的 [`RequestLine`]；
+    ///   - 输出：命中的 [`ContactUri`]；若未找到则返回领域错误 `switch.proxy.routing_failure`；
+    ///   - 前置条件：Registrar 中的 AOR 数据需在调用前完成注册；
+    ///   - 后置条件：成功时返回的 Contact 可直接交由 [`ClientFactory::connect`] 拨号；
+    /// - **设计考量 (Trade-offs)**：
+    ///   - 当前逻辑偏向内部分机场景，未命中时直接返回错误而非兜底路由，避免隐式地将流量转发到
+    ///     不受控的外部；
+    ///   - 后续引入 DynRouter 时可在此函数中追加分支以决定外部路由目的地，保持调用端不变。
+    fn resolve_contact(
+        &self,
+        _sip_message: &SipMessage<'_>,
+        request_line: &RequestLine<'_>,
+    ) -> spark_core::Result<ContactUri, SparkError> {
+        if let Some(contact) = self.lookup_internal_destination(request_line) {
+            return Ok(contact);
+        }
+
+        Err(SparkError::new(
+            CODE_PROXY_ROUTING_FAILURE,
+            "Registrar 未命中 Request-URI，且外部路由尚未开放",
+        ))
+    }
+
     /// 依据 Request-URI 检查 Registrar 中是否存在匹配的 Contact。
     ///
     /// - **意图 (Why)**：Dialplan 的第一步是尝试命中内部分机，若成功即可直接复用注册表信息；
@@ -198,16 +227,26 @@ impl ProxyService {
         ))
     }
 
-    /// 启动异步任务运行会话状态机。
+    /// 启动异步任务运行会话状态机，并绑定取消令牌。
     ///
-    /// - **意图**：将后续的 B2BUA 编排与 A/B leg 调用从同步 `call` 热路径拆离，避免阻塞
-    ///   来电线程；
-    /// - **前置条件**：`call_id` 必须已注册到 [`SessionManager`]；
-    /// - **后置条件**：异步任务当前只是占位，后续会在此驱动真正的呼叫流程。
-    fn spawn_call_flow(&self, call_id: Arc<str>) {
+    /// - **意图 (Why)**：
+    ///   - 将后续的 B2BUA 编排与 A/B leg 调用从同步 `call` 热路径拆离，避免阻塞来电线程；
+    ///   - 同时传播 [`CallContext`] 的 [`Cancellation`]，确保会话结束或上游取消时后台任务能
+    ///     立即退出，避免悬挂协程占用资源；
+    /// - **契约 (What)**：
+    ///   - `call_id`：已注册到 [`SessionManager`] 的 Call-ID，必须对应一个有效会话；
+    ///   - `cancellation`：从调用上下文派生的取消令牌，外部在会话收尾时需调用
+    ///     [`Cancellation::cancel`] 触发终止；
+    /// - **前置条件**：会话已存入 [`SessionManager`]，且调用方保证 `cancellation` 生命周期
+    ///   覆盖任务执行期；
+    /// - **后置条件**：返回的 Tokio 任务句柄由运行时管理；任务内部会在观察到取消位后提前
+    ///   结束，当前逻辑未暴露 Join 句柄以保持入口的轻量性。
+    /// - **风险提示 (Trade-offs)**：直接使用 Tokio `spawn` 而非自定义执行器，优先保证实现
+    ///   简单性；若未来需要精细化回收或指标，可在此接入运行时抽象。
+    fn spawn_call_flow(&self, call_id: Arc<str>, cancellation: Cancellation) {
         let manager = Arc::clone(&self.session_manager);
         task::spawn(async move {
-            let _ = run_call_flow(manager, call_id).await;
+            let _ = run_call_flow(manager, call_id, cancellation).await;
         });
     }
 }
@@ -557,7 +596,19 @@ impl Service<PipelineMessage> for AlegPlaceholderService {
 async fn run_call_flow(
     session_manager: Arc<SessionManager>,
     call_id: Arc<str>,
+    cancellation: Cancellation,
 ) -> spark_core::Result<(), SparkError> {
+    // 教案级注释：
+    // - **意图 (Why)**：在进入具体编排前先检查取消位，确保会话在被上游关闭后不会继续执行
+    //   SDP 解析或状态写入，减少无效工作量；
+    // - **契约 (What)**：读取共享的 [`Cancellation`]，若已取消则提前返回 `Ok(())` 视为正常
+    //   回收；
+    // - **设计取舍 (Trade-offs)**：选择显式检查而非 `tokio::select!` 轮询，原因在于当前流程
+    //   纯 CPU 计算且一次性完成，直接判定即可满足“会话结束即退出”的需求。
+    if cancellation.is_cancelled() {
+        return Ok(());
+    }
+
     let call_id_str = call_id.as_ref();
     let offer_sdp = {
         let session = session_manager.get_session(call_id_str).ok_or_else(|| {
@@ -589,6 +640,16 @@ async fn run_call_flow(
     let audio_state = build_audio_state(plan.audio);
     let b_leg_offer = build_b_leg_offer_sdp(&offer_desc, &audio_state);
     let a_leg_answer = build_a_leg_answer_sdp(&offer_desc, &audio_state);
+
+    // 教案级注释：
+    // - **意图 (Why)**：在执行写入前再次确认取消状态，避免已经进入终止路径的会话仍修改
+    //   状态或分配字符串；
+    // - **契约 (What)**：取消时直接短路返回 `Ok(())`，调用方可按需回收 Session；
+    // - **风险提示 (Trade-offs)**：若未来 `run_call_flow` 包含异步 I/O，需要在关键 await 前后
+    //   重复检查取消位，以保持一致的退出语义。
+    if cancellation.is_cancelled() {
+        return Ok(());
+    }
 
     {
         let mut session = session_manager
@@ -1014,7 +1075,7 @@ a=fmtp:101 0-15\r\n"
                 session.call_id_arc().clone()
             };
 
-            run_call_flow(Arc::clone(&manager), call_id)
+            run_call_flow(Arc::clone(&manager), call_id, Cancellation::new())
                 .await
                 .expect("call flow success");
 
@@ -1045,6 +1106,40 @@ a=rtpmap:101 telephone-event/8000\r\n\
 a=fmtp:101 0-15\r\n";
             assert_eq!(session.b_leg_offer_sdp(), Some(expected));
             assert_eq!(session.b_leg_answer_sdp(), Some(expected));
+        });
+    }
+
+    #[test]
+    fn cancelled_call_flow_exits_early_without_mutation() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+
+        runtime.block_on(async {
+            let manager = Arc::new(SessionManager::new());
+            let mut session = CallSession::new("cancel-call", build_a_leg_placeholder_service());
+            session.set_offer_sdp(sample_offer_sdp().to_owned());
+            manager.create_session(session).expect("register session");
+
+            let call_id = {
+                let session = manager.get_session("cancel-call").expect("session");
+                session.call_id_arc().clone()
+            };
+
+            let cancellation = Cancellation::new();
+            cancellation.cancel();
+
+            run_call_flow(Arc::clone(&manager), call_id, cancellation)
+                .await
+                .expect("call flow short-circuits");
+
+            let session = manager.get_session("cancel-call").expect("session");
+            assert!(matches!(
+                session.audio_negotiation(),
+                AudioNegotiationState::Pending
+            ));
+            assert_eq!(session.b_leg_offer_sdp(), None);
+            assert_eq!(session.b_leg_answer_sdp(), None);
         });
     }
 }
