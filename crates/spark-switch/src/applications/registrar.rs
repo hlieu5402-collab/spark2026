@@ -2,7 +2,6 @@
 #![allow(clippy::result_large_err)]
 
 use alloc::{boxed::Box, format, string::String, sync::Arc, vec::Vec};
-use core::future;
 use core::task::{Context as TaskContext, Poll};
 
 use spark_codec_sip::types::StartLine;
@@ -13,7 +12,7 @@ use spark_codec_sip::{
 #[cfg(feature = "router-factory")]
 use spark_core::service::{BoxService, auto_dyn::bridge_to_box_service};
 use spark_core::{
-    CallContext, Context, CoreError, PipelineMessage, SparkError,
+    BoxFuture, CallContext, Context, CoreError, PipelineMessage, SparkError,
     buffer::{ErasedSparkBuf, ReadableBuffer},
     error::codes,
     service::Service,
@@ -106,14 +105,29 @@ impl RegistrarService {
 impl Service<PipelineMessage> for RegistrarService {
     type Response = PipelineMessage;
     type Error = SparkError;
-    type Future = future::Ready<spark_core::Result<Self::Response, Self::Error>>;
+    ///
+    /// # 教案级意图说明（Why / What）
+    /// - 采用 [`BoxFuture`] 而非 `future::Ready`：当前 `LocationStore` 为内存实现，可同步返回；但契约需预留
+    ///   接入分布式存储（如 Redis、Consul）的演进空间，使用 `BoxFuture` 可在不变更上层类型签名的前提下接入
+    ///   `async fn` 或远程调用。
+    /// - 架构位置：该 Future 与数据平面 [`Service`] 契约对齐，保证对象层调用者在切换执行器时无需额外适配。
+    /// - 前置/后置条件：
+    ///   - **前置**：调用方需确保在 `poll_ready` 返回 `ReadyState::Ready` 后再调用 `call`；
+    ///   - **后置**：Future 完成即意味着一次 REGISTER 请求处理完毕，返回的 `PipelineMessage` 可安全写回下游。
+    type Future = BoxFuture<'static, spark_core::Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &Context<'_>, _: &mut TaskContext<'_>) -> PollReady<Self::Error> {
         Poll::Ready(ReadyCheck::Ready(ReadyState::Ready))
     }
 
     fn call(&mut self, _ctx: CallContext, req: PipelineMessage) -> Self::Future {
-        future::ready(self.handle_request(req))
+        // 教案式逻辑拆解：
+        // 1. 将同步的 `handle_request` 结果暂存，避免在 async 块中持有 `&mut self`，确保 `BoxFuture<'static>` 满足
+        //    生命周期约束；
+        // 2. 使用 `Box::pin(async move { ... })` 统一返回异步接口，为未来接入分布式 Registrar 实现留出扩展点，
+        //    但对当前纯内存路径零额外语义更改。
+        let result = self.handle_request(req);
+        Box::pin(async move { result })
     }
 }
 
