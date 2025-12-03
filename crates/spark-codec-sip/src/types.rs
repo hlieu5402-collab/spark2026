@@ -105,7 +105,7 @@ impl<'a> Method<'a> {
 }
 
 /// SIP URI scheme。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SipScheme {
     /// 非加密 `sip:`。
     Sip,
@@ -123,7 +123,7 @@ impl fmt::Display for SipScheme {
 }
 
 /// SIP URI，根据 RFC 3261 §19 解析后的零拷贝结构。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SipUri<'a> {
     /// scheme 信息。
     pub scheme: SipScheme,
