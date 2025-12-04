@@ -14,7 +14,10 @@ use crate::{
     types::{Method, RequestLine, SipMessage, StartLine},
 };
 
-use super::{parse_headers, parse_sip_uri, split_first_line, split_headers_body};
+use super::{
+    parse_headers, parse_sip_uri, split_first_line, split_headers_body, split_headers_body_bytes,
+};
+use core::str;
 
 /// 解析 SIP 请求文本。
 ///
@@ -40,6 +43,38 @@ pub fn parse_request<'a>(input: &'a str) -> spark_core::Result<SipMessage<'a>, S
         start_line: StartLine::Request(request_line),
         headers,
         body: body_block.as_bytes(),
+    })
+}
+
+/// 解析 SIP 请求字节流，仅对 header 执行 UTF-8 校验。
+///
+/// ### 教案式说明
+/// - **意图（Why）**：允许携带非 UTF-8 正文（例如 ISUP 隧道或二进制扩展）时仍能完成 INVITE/REGISTER 等起始行与头部解析。
+/// - **契约（What）**：
+///   - 输入：包含 CRLF 行结尾与 `\r\n\r\n` 分隔符的完整请求字节流；
+///   - 返回：零拷贝 [`SipMessage`]，其中 body 直接引用原始二进制切片；
+///   - 前置条件：header 必须是合法 UTF-8（符合 RFC 3261 的 ASCII/UTF-8 约束）；
+///   - 后置条件：若分隔符缺失或 header 无法通过 UTF-8 校验，将返回 [`SipParseError::UnexpectedEof`] 或 [`SipParseError::InvalidHeaderValue`]。
+/// - **实现要点（How）**：
+///   1. 调用 [`split_headers_body_bytes`] 快速定位 `\r\n\r\n` 分隔符，避免对正文进行 UTF-8 校验；
+///   2. 仅对 header 部分执行 `from_utf8`，随后复用 `parse_request_line` 与 `parse_headers` 完成语法解析；
+///   3. 将 body 保留为 `&[u8]` 直接塞入 [`SipMessage`]，保证零拷贝透传。
+/// - **风险提示（Trade-offs & Gotchas）**：
+///   - 函数不校验 `Content-Length` 与正文编码，调用方在解析 SDP 或其它负载时需自行校验；
+///   - 若调用方期望严格 UTF-8，可继续使用 [`parse_request`] 保持原有行为。
+pub fn parse_request_bytes<'a>(
+    input: &'a [u8],
+) -> spark_core::Result<SipMessage<'a>, SipParseError> {
+    let (header_block, body_block) = split_headers_body_bytes(input)?;
+    let headers_text =
+        str::from_utf8(header_block).map_err(|_| SipParseError::InvalidHeaderValue)?;
+    let (line, header_block) = split_first_line(headers_text)?;
+    let request_line = parse_request_line(line)?;
+    let headers = parse_headers(header_block)?;
+    Ok(SipMessage {
+        start_line: StartLine::Request(request_line),
+        headers,
+        body: body_block,
     })
 }
 

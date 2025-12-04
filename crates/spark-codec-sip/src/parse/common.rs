@@ -38,6 +38,27 @@ pub(crate) fn split_headers_body(input: &str) -> spark_core::Result<(&str, &str)
     }
 }
 
+/// 将字节流拆分为 header 与 body，以支持二进制负载透传。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：为上层提供“header 仍按 UTF-8 解析、body 保持原始字节” 的切分能力，避免因正文中出现非 UTF-8 数据而导致整包拒收。
+/// - **契约 (What)**：
+///   - 输入：完整的 SIP 报文字节切片；
+///   - 输出：`(header_bytes, body_bytes)`，均为原切片的子切片，不发生复制；
+///   - 前置条件：报文必须包含 `\r\n\r\n` 分隔符；
+///   - 后置条件：返回的两个切片生命周期与输入一致，可直接用于后续 UTF-8 校验或二进制透传。
+/// - **风险提示 (Trade-offs & Gotchas)**：
+///   - 若分隔符缺失，返回 `UnexpectedEof`，调用方需决定是记录告警还是直接拒绝；
+///   - 函数不校验 `Content-Length`，仅负责物理切分，语义层校验需在上层完成。
+pub(crate) fn split_headers_body_bytes(
+    input: &[u8],
+) -> spark_core::Result<(&[u8], &[u8]), SipParseError> {
+    match input.windows(4).position(|window| window == b"\r\n\r\n") {
+        Some(idx) => Ok((&input[..idx], &input[idx + 4..])),
+        None => Err(SipParseError::UnexpectedEof),
+    }
+}
+
 /// 跳过线性空白（包含 CRLF 后紧跟的空白）。
 pub(crate) fn skip_lws(input: &str, mut offset: usize) -> usize {
     let bytes = input.as_bytes();

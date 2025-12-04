@@ -14,7 +14,7 @@ use spark_codec_sdp::{
 use spark_codec_sip::types::HeaderKind;
 use spark_codec_sip::{Aor, ContactUri};
 use spark_codec_sip::{
-    Header, Method, RequestLine, SipMessage, StatusLine, fmt::write_response, parse_request,
+    Header, Method, RequestLine, SipMessage, StatusLine, fmt::write_response, parse_request_bytes,
 };
 use spark_core::{
     CallContext, Cancellation, Context, CoreError, PipelineMessage, SparkError,
@@ -115,8 +115,8 @@ impl ProxyService {
 
         let result = (|| {
             let sip_payload = read_sip_payload(message)?;
-            let sip_text = sip_payload.as_text()?;
-            let sip_message = parse_request(sip_text).map_err(map_invite_parse_error)?;
+            let sip_message =
+                parse_request_bytes(sip_payload.as_bytes()).map_err(map_invite_parse_error)?;
             let request_line = ensure_invite_request(&sip_message)?;
             let call_id = extract_call_id(&sip_message)?;
             let offer_sdp = extract_offer_sdp(&sip_message)?;
@@ -312,30 +312,24 @@ impl ServiceFactory for ProxyServiceFactory {
     }
 }
 
-/// 将 Pipeline 消息还原为 UTF-8 文本。
-///
-/// # 教案式说明
-/// - **意图 (Why)**：B2BUA 需要访问原始 INVITE 文本以执行 SIP 解析；
-/// - **契约 (What)**：仅接受 `PipelineMessage::Buffer`，否则返回 `switch.proxy.invalid_message`；
-/// - **风险 (Trade-offs)**：`try_into_vec` 会复制字节，若后续需要零拷贝可考虑共享切片生命周期。
-/// 承载 SIP 文本的零拷贝包装器，避免在 INVITE 入口处强制分配 `String`。
+/// 承载 SIP 报文字节的薄包装，避免在入口处强制 UTF-8。
 ///
 /// # 教案式说明
 /// - **意图 (Why)**：
-///   - 规避原先 `read_sip_text` 将缓冲整体转换为 `String` 的额外分配，保留原始字节以便后续零拷贝解析；
-///   - 为 SIP 解析器提供 UTF-8 受控视图，同时确保底层缓冲在解析期间保持有效生命周期。
+///   - 只对 header 区域执行 UTF-8/ASCII 校验，防止携带二进制负载（如 ISUP 隧道）时被整体拒绝；
+///   - 将原始字节集中托管，后续解析器可按需选择文本或二进制视图，支持零拷贝。
 /// - **契约 (What)**：
 ///   - 输入：必须是 [`PipelineMessage::Buffer`] 变体，内部承载完整的 SIP 报文字节；
-///   - 输出：`SipPayload` 保存原始字节所有权，可通过 [`SipPayload::as_text`] 获取 `&str` 视图；
-///   - 前置条件：调用方需确保缓冲内容即完整的 SIP 报文；
-///   - 后置条件：成功创建后，`SipPayload` 会在自身生命周期内维护字节所有权，`as_text` 返回的切片始终有效。
+///   - 输出：`SipPayload` 保存原始 `Vec<u8>` 所有权，可通过 [`SipPayload::as_bytes`] 获取不可变切片；
+///   - 前置条件：调用方需确保缓冲内容包含完整的 SIP 报文（起始行 + header + body 分隔符）；
+///   - 后置条件：创建成功后，调用方可在不复制正文的前提下执行 header 级 UTF-8 校验与后续二进制透传。
 /// - **解析逻辑 (How)**：
-///   1. 匹配 `PipelineMessage` 变体，非缓冲则返回领域错误；
-///   2. 通过 `try_into_vec` 将只读缓冲扁平化为 `Vec<u8>`（当前实现仍需一次复制，但避免了 `String` 的双份内存）；
-///   3. `as_text` 中使用 `str::from_utf8` 将字节安全地视为 UTF-8，失败时返回带错误码的 `SparkError`；
+///   1. 匹配 `PipelineMessage` 变体，非缓冲立即返回 `switch.proxy.invalid_message`；
+///   2. 使用 `try_into_vec` 将只读缓冲扁平化，确保后续解析持有可共享的所有权；
+///   3. 暂不在结构体构造阶段做 UTF-8 校验，而是交由上层解析器在解析 header 时局部验证；
 /// - **风险提示 (Trade-offs & Gotchas)**：
-///   - 若未来提供真正零拷贝的 SIP 解析器，可在此处改为借用切片而非分配 `Vec`；
-///   - 仍依赖 UTF-8 语义，若遇到非 UTF-8 报文会被拒绝。
+///   - 当前仍需一次复制；若未来可在 `PipelineMessage` 提供借用切片的安全视图，可移除分配；
+///   - 只保证 header 可验证，body 可能是任意二进制，上层处理 SDP 时需自行校验编码。
 struct SipPayload {
     bytes: Vec<u8>,
 }
@@ -364,14 +358,20 @@ impl SipPayload {
         Ok(Self { bytes })
     }
 
-    /// 暴露 UTF-8 视图，供 SIP 解析器使用。
-    fn as_text(&self) -> spark_core::Result<&str, SparkError> {
-        str::from_utf8(&self.bytes).map_err(|err| {
-            SparkError::new(
-                codes::APP_INVALID_ARGUMENT,
-                format!("SIP 报文必须为 UTF-8：{err}"),
-            )
-        })
+    /// 返回只读字节视图，供后续解析器按需拆分 header 与 body。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：让上层以零拷贝方式对 header 执行 UTF-8 校验，同时允许 body 保持二进制形式；
+    /// - **契约 (What)**：
+    ///   - 输入：无；
+    ///   - 输出：对内部 `Vec<u8>` 的只读借用，生命周期受 `SipPayload` 约束；
+    ///   - 前置条件：`SipPayload` 需由合法的管道缓冲构造；
+    ///   - 后置条件：调用方不得修改返回切片（Rust 编译器在类型层面保证不可变性）。
+    /// - **风险提示 (Trade-offs & Gotchas)**：
+    ///   - 返回的切片直接指向底层内存，若上层在多线程场景中共享需注意同步语义；
+    ///   - 未执行任何编码校验，调用方在解析 header 时务必执行 `from_utf8` 校验以拦截非法文本。
+    fn as_bytes(&self) -> &[u8] {
+        &self.bytes
     }
 }
 
