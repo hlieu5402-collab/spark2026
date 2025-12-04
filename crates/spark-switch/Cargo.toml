@@ -18,6 +18,7 @@ alloc = [
     "spark-codec-sip/alloc",
     "spark-codec-sdp/alloc",
 ]
+# `std` 保持运行时无关：不再透传或隐式启用 Tokio，避免默认特性强制绑定具体异步运行时。
 std = [
     "alloc",
     "spark-core/std",
