@@ -331,18 +331,13 @@ struct MediaContext {
 ///   - `Accepted`：包含完整的编解码参数；
 ///   - `Rejected`：Offer 中存在音频但本地能力无法满足；
 /// - **风险 (Trade-offs)**：若未来支持多流，需要扩展为向量形式。
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum AudioNegotiationState {
+    #[default]
     Pending,
     NoAudio,
     Accepted(AudioNegotiationProfile),
     Rejected,
-}
-
-impl Default for AudioNegotiationState {
-    fn default() -> Self {
-        AudioNegotiationState::Pending
-    }
 }
 
 /// 音频协商成功后的详细描述。

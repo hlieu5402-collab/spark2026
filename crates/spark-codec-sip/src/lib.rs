@@ -44,7 +44,7 @@ pub mod types;
 pub mod ws;
 
 pub use crate::error::{SipFormatError, SipParseError};
-pub use crate::parse::{parse_request, parse_response};
+pub use crate::parse::{parse_request, parse_request_bytes, parse_response};
 pub use crate::types::{
     CSeqHeader, ContactHeader, Header, HeaderName, MaxForwardsHeader, Method, NameAddr,
     RequestLine, SipMessage, SipUri, StatusLine, ViaHeader, ViaParamRport,

@@ -64,6 +64,13 @@ pub use governance::{
 pub mod data_plane;
 pub use data_plane::{buffer, codec, initializer, pipeline, protocol, service, transport};
 
+pub mod router;
+pub use router::{
+    DynRouter, MetadataKey, MetadataValue, RouteBindingObject, RouteCatalog, RouteDecisionObject,
+    RouteDescriptor, RouteError, RouteId, RouteKind, RouteMetadata, RoutePattern, RouteSegment,
+    RoutingContext, RoutingIntent, RoutingSnapshot,
+};
+
 pub mod platform;
 #[cfg(feature = "std")]
 pub use platform::time;
