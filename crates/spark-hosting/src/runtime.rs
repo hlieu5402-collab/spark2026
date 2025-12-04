@@ -214,9 +214,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{TaskTracker, TrackedRuntime};
-    use alloc::{boxed::Box, sync::Arc};
-    use core::{any::Any, cell::RefCell};
+    use super::TrackedRuntime;
+    use alloc::boxed::Box;
+    use core::any::Any;
     use spark_core::{
         async_trait,
         contract::CallContext,
@@ -224,11 +224,12 @@ mod tests {
             JoinHandle, TaskCancellationStrategy, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
         },
     };
+    use std::sync::Mutex;
 
     #[test]
     fn detached_tasks_still_decrement_tracker() {
-        let runtime = TrackedRuntime::new(ImmediateRuntime::default());
-        let ctx = CallContext::default();
+        let runtime = TrackedRuntime::new(ImmediateRuntime);
+        let ctx = CallContext::builder().build();
 
         let handle = runtime.spawn_dyn(
             &ctx,
@@ -251,7 +252,7 @@ mod tests {
         ) -> JoinHandle<Box<dyn Any + Send>> {
             let output = futures::executor::block_on(fut);
             JoinHandle::from_task_handle(Box::new(ImmediateHandle {
-                state: RefCell::new(Some(output)),
+                state: Mutex::new(Some(output)),
             }))
         }
     }
@@ -262,19 +263,11 @@ mod tests {
             spark_core::MonotonicTimePoint::from_offset(core::time::Duration::ZERO)
         }
 
-        fn monotonic_instant(&self) -> spark_core::MonotonicTimePoint {
-            self.now()
-        }
-
-        fn monotonic_from_nanos(&self, nanos: u64) -> spark_core::MonotonicTimePoint {
-            spark_core::MonotonicTimePoint::from_nanos(nanos)
-        }
-
         async fn sleep(&self, _duration: core::time::Duration) {}
     }
 
     struct ImmediateHandle {
-        state: RefCell<Option<TaskResult<Box<dyn Any + Send>>>>,
+        state: Mutex<Option<TaskResult<Box<dyn Any + Send>>>>,
     }
 
     #[async_trait]
@@ -284,7 +277,7 @@ mod tests {
         fn cancel(&self, _strategy: TaskCancellationStrategy) {}
 
         fn is_finished(&self) -> bool {
-            self.state.borrow().is_none()
+            self.state.lock().expect("poisoned").is_none()
         }
 
         fn is_cancelled(&self) -> bool {
@@ -299,7 +292,8 @@ mod tests {
 
         async fn join(self: Box<Self>) -> TaskResult<Self::Output> {
             self.state
-                .borrow_mut()
+                .lock()
+                .expect("poisoned")
                 .take()
                 .expect("join called multiple times")
         }

@@ -1551,6 +1551,7 @@ mod router_pipeline_migration {
     ///   或断言失败。
     /// - **边界考量（Trade-offs & Gotchas）**：测试不执行真实路由逻辑，仅检查符号存在性，
     ///   以最小成本提供命名空间守护；若未来 API 签名调整，应同步更新断言以免出现误报。
+    #[allow(clippy::type_complexity, clippy::default_constructed_unit_structs)]
     #[test]
     fn ensure_router_pipeline_symbols_match_new_namespace() {
         use std::{mem::size_of, sync::Arc};
