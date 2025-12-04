@@ -40,6 +40,7 @@ const CODE_PROXY_UNIMPLEMENTED: &str = "switch.proxy.unimplemented";
 const CODE_PROXY_INVALID_MESSAGE: &str = "switch.proxy.invalid_message";
 const CODE_PROXY_ROUTING_FAILURE: &str = "switch.proxy.routing_failure";
 const CODE_PROXY_CLIENT_FACTORY_UNAVAILABLE: &str = "switch.proxy.client_factory_unavailable";
+const CODE_PROXY_RUNTIME_UNAVAILABLE: &str = "switch.proxy.runtime_unavailable";
 
 /// 默认的媒体能力：PCMU 为首选，同时接受 PCMA 与 RFC 4733 DTMF。
 const DEFAULT_NEGOTIATION_CAPS: AnswerCapabilities =
@@ -135,8 +136,14 @@ impl ProxyService {
             session.attach_b_leg(b_leg)?;
             let call_id_arc = session.call_id_arc().clone();
             let cancellation = ctx.cancellation().child();
+            let runtime = ctx.runtime().ok_or_else(|| {
+                SparkError::new(
+                    CODE_PROXY_RUNTIME_UNAVAILABLE,
+                    "CallContext 未注入 AsyncRuntime，无法安全派生 B2BUA 编排任务",
+                )
+            })?;
             self.session_manager.create_session(session)?;
-            self.spawn_call_flow(call_id_arc, cancellation);
+            self.spawn_call_flow(&ctx, runtime, call_id_arc, cancellation);
 
             build_trying_response(&sip_message)
         })();
@@ -237,22 +244,33 @@ impl ProxyService {
     ///
     /// - **意图 (Why)**：
     ///   - 将后续的 B2BUA 编排与 A/B leg 调用从同步 `call` 热路径拆离，避免阻塞来电线程；
-    ///   - 同时传播 [`CallContext`] 的 [`Cancellation`]，确保会话结束或上游取消时后台任务能
-    ///     立即退出，避免悬挂协程占用资源；
+    ///   - 通过 [`CallContext::runtime`](spark_core::contract::CallContext::runtime) 显式绑定
+    ///     异步运行时，确保取消、追踪等元数据在执行器中继续生效，防止“裸 Tokio” 逃逸。
     /// - **契约 (What)**：
+    ///   - `ctx`：父调用上下文，运行时提交时需传入以传播取消/追踪链路；
+    ///   - `runtime`：实现 [`AsyncRuntime`](spark_core::runtime::AsyncRuntime) 的执行器引用，
+    ///     通常由宿主注入；
     ///   - `call_id`：已注册到 [`SessionManager`] 的 Call-ID，必须对应一个有效会话；
     ///   - `cancellation`：从调用上下文派生的取消令牌，外部在会话收尾时需调用
     ///     [`Cancellation::cancel`] 触发终止；
-    /// - **前置条件**：会话已存入 [`SessionManager`]，且调用方保证 `cancellation` 生命周期
-    ///   覆盖任务执行期；
-    /// - **后置条件**：当前实现直接在调用线程同步推进状态机，避免引入运行时耦合；如需切换
-    ///   至线程池或事件循环，可在调用点通过 [`CallContext`] 暴露的运行时能力提交任务。
-    /// - **风险提示 (Trade-offs)**：同步执行会将 SDP 协商成本计入请求热路径，但目前逻辑
-    ///   仅包含解析与内存写入，耗时可控；一旦未来接入外部 I/O，应改用运行时的 `spawn` 将
-    ///   编排任务移出热路径。
-    fn spawn_call_flow(&self, call_id: Arc<str>, cancellation: Cancellation) {
+    /// - **前置条件**：会话已存入 [`SessionManager`]，且调用方保证 `cancellation` 生命周期覆盖任务执行期；
+    /// - **后置条件**：返回的句柄在当前实现中立即 `detach`，后台任务完全由运行时托管；
+    /// - **风险提示 (Trade-offs)**：当前任务体仍为同步逻辑，因此执行器会立即完成；未来若引入 I/O，
+    ///   仍可复用本接口将异步步骤安全下沉到运行时。
+    fn spawn_call_flow(
+        &self,
+        ctx: &CallContext,
+        runtime: &dyn spark_core::runtime::AsyncRuntime,
+        call_id: Arc<str>,
+        cancellation: Cancellation,
+    ) {
         let manager = Arc::clone(&self.session_manager);
-        let _ = run_call_flow(manager, call_id, cancellation);
+        let handle = runtime.spawn(
+            ctx,
+            async move { run_call_flow(manager, call_id, cancellation) },
+        );
+
+        handle.detach();
     }
 }
 
@@ -313,6 +331,13 @@ impl ServiceFactory for ProxyServiceFactory {
 }
 
 /// 承载 SIP 报文字节的薄包装，避免在入口处强制 UTF-8。
+/// 将 Pipeline 消息还原为 UTF-8 文本。
+///
+/// # 教案式说明
+/// - **意图 (Why)**：B2BUA 需要访问原始 INVITE 文本以执行 SIP 解析；
+/// - **契约 (What)**：仅接受 `PipelineMessage::Buffer`，否则返回 `switch.proxy.invalid_message`；
+/// - **风险 (Trade-offs)**：若底层缓冲被拆分为多个 chunk，会在回退路径上发生一次复制。
+/// 承载 SIP 文本的零拷贝包装器，避免在 INVITE 入口处强制分配 `String`。
 ///
 /// # 教案式说明
 /// - **意图 (Why)**：
@@ -330,14 +355,46 @@ impl ServiceFactory for ProxyServiceFactory {
 /// - **风险提示 (Trade-offs & Gotchas)**：
 ///   - 当前仍需一次复制；若未来可在 `PipelineMessage` 提供借用切片的安全视图，可移除分配；
 ///   - 只保证 header 可验证，body 可能是任意二进制，上层处理 SDP 时需自行校验编码。
+///   1. 匹配 `PipelineMessage` 变体，非缓冲则返回领域错误；
+///   2. 首选 `ReadableBuffer::chunk` 获取连续切片；仅当 `chunk` 无法覆盖全部 `remaining` 时才复制到 `Vec<u8>`；
+///   3. `as_text` 中使用 `str::from_utf8` 将字节安全地视为 UTF-8，失败时返回带错误码的 `SparkError`；
+/// - **风险提示 (Trade-offs & Gotchas)**：
+///   - 若未来提供真正零拷贝的 SIP 解析器，可在此处改为借用切片而非分配 `Vec`；
+///   - 仍依赖 UTF-8 语义，若遇到非 UTF-8 报文会被拒绝。
+/// - **关键设计（Design Choices）**：
+///   - **Borrowed 视图**：当缓冲为单段连续内存时，直接持有 `ReadableBuffer` 并按需借用切片，保证零拷贝；
+///   - **Owned 回退**：仅在跨 chunk 时才分配 `Vec<u8>`，确保罕见情况下仍可安全解析。
+enum SipPayloadBytes {
+    Borrowed {
+        buffer: Box<dyn ReadableBuffer>,
+        len: usize,
+    },
+    Owned(Vec<u8>),
+}
+
 struct SipPayload {
-    bytes: Vec<u8>,
+    bytes: SipPayloadBytes,
 }
 
 impl SipPayload {
     /// 从管道消息中提取 SIP 原始字节。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：最大化复用数据平面零拷贝设计，避免对典型 MTU 以内的 INVITE 报文做不必要的堆分配；
+    /// - **契约 (What)**：
+    ///   - **输入**：必须提供 [`PipelineMessage::Buffer`]，否则返回 `CODE_PROXY_INVALID_MESSAGE`；
+    ///   - **输出**：根据底层缓冲是否连续，返回 `Borrowed` 或 `Owned` 两种形式的 [`SipPayloadBytes`]；
+    ///   - **前置条件**：调用方保证缓冲起始指针指向 SIP 报文首字节；
+    ///   - **后置条件**：成功后确保 `as_text` 可在后续解析阶段安全借用 UTF-8 视图。
+    /// - **解析逻辑 (How)**：
+    ///   1. 匹配并获取底层只读缓冲；
+    ///   2. 读取 `remaining` 与首个 `chunk`，若长度一致则直接以 Borrowed 方式保存，零拷贝；
+    ///   3. 若不一致，则分配 `Vec<u8>` 并调用 `copy_into_slice` 填充，保证跨 chunk 报文的完整性；
+    /// - **权衡与陷阱 (Trade-offs & Gotchas)**：
+    ///   - 通过 `chunk` 短路掉绝大部分连续缓冲场景，避免热路径 malloc；
+    ///   - 若第三方缓冲实现意外修改内部游标，`as_text` 会再次读取 `chunk` 并触发内部一致性校验，避免返回残缺数据。
     fn from_pipeline_message(message: PipelineMessage) -> spark_core::Result<Self, SparkError> {
-        let buffer = match message {
+        let mut buffer = match message {
             PipelineMessage::Buffer(buf) => buf,
             _ => {
                 return Err(SparkError::new(
@@ -347,13 +404,24 @@ impl SipPayload {
             }
         };
 
-        let bytes = buffer.try_into_vec().map_err(|err| {
-            SparkError::new(
-                codes::APP_INVALID_ARGUMENT,
-                format!("无法读取 INVITE 请求字节：{err}"),
-            )
-            .with_cause(err)
-        })?;
+        let remaining = buffer.remaining();
+        let chunk = buffer.chunk();
+        let bytes = if chunk.len() == remaining {
+            SipPayloadBytes::Borrowed {
+                buffer,
+                len: remaining,
+            }
+        } else {
+            let mut owned = alloc::vec![0u8; remaining];
+            buffer.copy_into_slice(&mut owned).map_err(|err| {
+                SparkError::new(
+                    codes::APP_INVALID_ARGUMENT,
+                    format!("无法读取 INVITE 请求字节：{err}"),
+                )
+                .with_cause(err)
+            })?;
+            SipPayloadBytes::Owned(owned)
+        };
 
         Ok(Self { bytes })
     }
@@ -949,8 +1017,17 @@ mod tests {
 
     use super::*;
     use crate::core::session::AudioNegotiationState;
+    use alloc::borrow::Cow;
+    use core::{
+        pin::Pin,
+        task::{Context as FutContext, Poll, noop_waker},
+    };
     use spark_core::{
-        CallContext as CoreCallContext,
+        CallContext as CoreCallContext, async_trait,
+        runtime::{
+            AsyncRuntime, JoinHandle, MonotonicTimePoint, TaskCancellationStrategy, TaskError,
+            TaskExecutor, TaskHandle, TaskResult, TimeDriver,
+        },
         service::{BoxService, ClientFactory},
     };
 
@@ -967,6 +1044,95 @@ mod tests {
 
         fn targets(&self) -> Vec<String> {
             self.targets.lock().expect("poisoned").clone()
+        }
+    }
+
+    /// 最小实现的内联运行时，立即执行提交的 Future，便于在单元测试中验证上下文传递。
+    struct InlineRuntime;
+
+    impl InlineRuntime {
+        fn new() -> Self {
+            Self
+        }
+    }
+
+    impl TaskExecutor for InlineRuntime {
+        fn spawn_dyn(
+            &self,
+            _ctx: &CoreCallContext,
+            mut fut: spark_core::BoxFuture<'static, TaskResult<Box<dyn core::any::Any + Send>>>,
+        ) -> JoinHandle<Box<dyn core::any::Any + Send>> {
+            let waker = noop_waker();
+            let mut cx = FutContext::from_waker(&waker);
+            let result = match Pin::new(&mut fut).poll(&mut cx) {
+                Poll::Ready(output) => output,
+                Poll::Pending => Err(TaskError::Failed(Cow::from(
+                    "InlineRuntime 无法驱动未就绪的 Future，测试需保持同步路径",
+                ))),
+            };
+
+            JoinHandle::from_task_handle(Box::new(InlineHandle {
+                result: Mutex::new(Some(result)),
+            }))
+        }
+    }
+
+    impl TimeDriver for InlineRuntime {
+        fn now(&self) -> MonotonicTimePoint {
+            MonotonicTimePoint::from_offset(core::time::Duration::ZERO)
+        }
+
+        async fn sleep(&self, _duration: core::time::Duration) {}
+    }
+
+    impl AsyncRuntime for InlineRuntime {}
+
+    struct InlineHandle<T> {
+        result: Mutex<Option<TaskResult<T>>>,
+    }
+
+    #[async_trait]
+    impl<T: Send + 'static> TaskHandle for InlineHandle<T> {
+        type Output = T;
+
+        fn cancel(&self, strategy: TaskCancellationStrategy) {
+            if matches!(strategy, TaskCancellationStrategy::Forceful) {
+                let _ = self
+                    .result
+                    .lock()
+                    .expect("poisoned")
+                    .replace(Err(TaskError::Cancelled));
+            }
+        }
+
+        fn is_finished(&self) -> bool {
+            self.result
+                .lock()
+                .expect("poisoned")
+                .as_ref()
+                .map(|res| !matches!(res, Err(TaskError::Cancelled)))
+                .unwrap_or(false)
+        }
+
+        fn is_cancelled(&self) -> bool {
+            matches!(
+                self.result.lock().expect("poisoned").as_ref(),
+                Some(Err(TaskError::Cancelled))
+            )
+        }
+
+        fn id(&self) -> Option<&str> {
+            None
+        }
+
+        fn detach(self: Box<Self>) {}
+
+        async fn join(mut self: Box<Self>) -> TaskResult<Self::Output> {
+            self.result
+                .lock()
+                .expect("poisoned")
+                .take()
+                .unwrap_or_else(|| Err(TaskError::ExecutorTerminated))
         }
     }
 
@@ -1035,8 +1201,10 @@ a=fmtp:101 0-15\r\n"
         let session_manager = Arc::new(SessionManager::new());
         let service = ProxyService::new(location_store, Arc::clone(&session_manager));
         let factory = Arc::new(RecordingClientFactory::new());
+        let runtime = Arc::new(InlineRuntime::new());
         let ctx = CoreCallContext::builder()
             .with_client_factory(factory.clone())
+            .with_runtime(runtime as Arc<dyn AsyncRuntime>)
             .build();
         let response = service
             .handle_request(ctx, build_invite_request())
