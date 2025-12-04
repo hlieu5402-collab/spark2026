@@ -15,6 +15,7 @@ extern crate alloc;
 pub mod builder;
 mod host;
 mod pipeline;
+pub mod runtime;
 mod service;
 pub mod shutdown;
 
