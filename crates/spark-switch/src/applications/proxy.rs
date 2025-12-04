@@ -335,7 +335,7 @@ impl ServiceFactory for ProxyServiceFactory {
 /// # 教案式说明
 /// - **意图 (Why)**：B2BUA 需要访问原始 INVITE 文本以执行 SIP 解析；
 /// - **契约 (What)**：仅接受 `PipelineMessage::Buffer`，否则返回 `switch.proxy.invalid_message`；
-/// - **风险 (Trade-offs)**：`try_into_vec` 会复制字节，若后续需要零拷贝可考虑共享切片生命周期。
+/// - **风险 (Trade-offs)**：若底层缓冲被拆分为多个 chunk，会在回退路径上发生一次复制。
 /// 承载 SIP 文本的零拷贝包装器，避免在 INVITE 入口处强制分配 `String`。
 ///
 /// # 教案式说明
@@ -349,19 +349,45 @@ impl ServiceFactory for ProxyServiceFactory {
 ///   - 后置条件：成功创建后，`SipPayload` 会在自身生命周期内维护字节所有权，`as_text` 返回的切片始终有效。
 /// - **解析逻辑 (How)**：
 ///   1. 匹配 `PipelineMessage` 变体，非缓冲则返回领域错误；
-///   2. 通过 `try_into_vec` 将只读缓冲扁平化为 `Vec<u8>`（当前实现仍需一次复制，但避免了 `String` 的双份内存）；
+///   2. 首选 `ReadableBuffer::chunk` 获取连续切片；仅当 `chunk` 无法覆盖全部 `remaining` 时才复制到 `Vec<u8>`；
 ///   3. `as_text` 中使用 `str::from_utf8` 将字节安全地视为 UTF-8，失败时返回带错误码的 `SparkError`；
 /// - **风险提示 (Trade-offs & Gotchas)**：
 ///   - 若未来提供真正零拷贝的 SIP 解析器，可在此处改为借用切片而非分配 `Vec`；
 ///   - 仍依赖 UTF-8 语义，若遇到非 UTF-8 报文会被拒绝。
+/// - **关键设计（Design Choices）**：
+///   - **Borrowed 视图**：当缓冲为单段连续内存时，直接持有 `ReadableBuffer` 并按需借用切片，保证零拷贝；
+///   - **Owned 回退**：仅在跨 chunk 时才分配 `Vec<u8>`，确保罕见情况下仍可安全解析。
+enum SipPayloadBytes {
+    Borrowed {
+        buffer: Box<dyn ReadableBuffer>,
+        len: usize,
+    },
+    Owned(Vec<u8>),
+}
+
 struct SipPayload {
-    bytes: Vec<u8>,
+    bytes: SipPayloadBytes,
 }
 
 impl SipPayload {
     /// 从管道消息中提取 SIP 原始字节。
+    ///
+    /// # 教案式说明
+    /// - **意图 (Why)**：最大化复用数据平面零拷贝设计，避免对典型 MTU 以内的 INVITE 报文做不必要的堆分配；
+    /// - **契约 (What)**：
+    ///   - **输入**：必须提供 [`PipelineMessage::Buffer`]，否则返回 `CODE_PROXY_INVALID_MESSAGE`；
+    ///   - **输出**：根据底层缓冲是否连续，返回 `Borrowed` 或 `Owned` 两种形式的 [`SipPayloadBytes`]；
+    ///   - **前置条件**：调用方保证缓冲起始指针指向 SIP 报文首字节；
+    ///   - **后置条件**：成功后确保 `as_text` 可在后续解析阶段安全借用 UTF-8 视图。
+    /// - **解析逻辑 (How)**：
+    ///   1. 匹配并获取底层只读缓冲；
+    ///   2. 读取 `remaining` 与首个 `chunk`，若长度一致则直接以 Borrowed 方式保存，零拷贝；
+    ///   3. 若不一致，则分配 `Vec<u8>` 并调用 `copy_into_slice` 填充，保证跨 chunk 报文的完整性；
+    /// - **权衡与陷阱 (Trade-offs & Gotchas)**：
+    ///   - 通过 `chunk` 短路掉绝大部分连续缓冲场景，避免热路径 malloc；
+    ///   - 若第三方缓冲实现意外修改内部游标，`as_text` 会再次读取 `chunk` 并触发内部一致性校验，避免返回残缺数据。
     fn from_pipeline_message(message: PipelineMessage) -> spark_core::Result<Self, SparkError> {
-        let buffer = match message {
+        let mut buffer = match message {
             PipelineMessage::Buffer(buf) => buf,
             _ => {
                 return Err(SparkError::new(
@@ -371,25 +397,54 @@ impl SipPayload {
             }
         };
 
-        let bytes = buffer.try_into_vec().map_err(|err| {
-            SparkError::new(
-                codes::APP_INVALID_ARGUMENT,
-                format!("无法读取 INVITE 请求字节：{err}"),
-            )
-            .with_cause(err)
-        })?;
+        let remaining = buffer.remaining();
+        let chunk = buffer.chunk();
+        let bytes = if chunk.len() == remaining {
+            SipPayloadBytes::Borrowed {
+                buffer,
+                len: remaining,
+            }
+        } else {
+            let mut owned = alloc::vec![0u8; remaining];
+            buffer.copy_into_slice(&mut owned).map_err(|err| {
+                SparkError::new(
+                    codes::APP_INVALID_ARGUMENT,
+                    format!("无法读取 INVITE 请求字节：{err}"),
+                )
+                .with_cause(err)
+            })?;
+            SipPayloadBytes::Owned(owned)
+        };
 
         Ok(Self { bytes })
     }
 
     /// 暴露 UTF-8 视图，供 SIP 解析器使用。
     fn as_text(&self) -> spark_core::Result<&str, SparkError> {
-        str::from_utf8(&self.bytes).map_err(|err| {
-            SparkError::new(
-                codes::APP_INVALID_ARGUMENT,
-                format!("SIP 报文必须为 UTF-8：{err}"),
-            )
-        })
+        match &self.bytes {
+            SipPayloadBytes::Borrowed { buffer, len } => {
+                let chunk = buffer.chunk();
+                let view = chunk.get(..*len).ok_or_else(|| {
+                    SparkError::new(
+                        CODE_PROXY_INVALID_MESSAGE,
+                        "底层缓冲已被提前消费，无法提供完整 SIP 报文",
+                    )
+                })?;
+
+                str::from_utf8(view).map_err(|err| {
+                    SparkError::new(
+                        codes::APP_INVALID_ARGUMENT,
+                        format!("SIP 报文必须为 UTF-8：{err}"),
+                    )
+                })
+            }
+            SipPayloadBytes::Owned(bytes) => str::from_utf8(bytes).map_err(|err| {
+                SparkError::new(
+                    codes::APP_INVALID_ARGUMENT,
+                    format!("SIP 报文必须为 UTF-8：{err}"),
+                )
+            }),
+        }
     }
 }
 
