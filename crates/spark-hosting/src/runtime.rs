@@ -11,8 +11,7 @@ use core::{
 
 use futures_util::{future::poll_fn, task::AtomicWaker};
 use spark_core::{
-    async_trait,
-    BoxFuture,
+    BoxFuture, async_trait,
     contract::CallContext,
     runtime::{JoinHandle, TaskExecutor, TaskResult, TimeDriver},
 };
@@ -133,13 +132,7 @@ impl TaskGuard {
 
 impl Drop for TaskGuard {
     fn drop(&mut self) {
-        if self
-            .tracker
-            .inner
-            .counter
-            .fetch_sub(1, Ordering::AcqRel)
-            == 1
-        {
+        if self.tracker.inner.counter.fetch_sub(1, Ordering::AcqRel) == 1 {
             self.tracker.inner.waker.wake();
         }
     }
@@ -227,7 +220,9 @@ mod tests {
     use spark_core::{
         async_trait,
         contract::CallContext,
-        runtime::{JoinHandle, TaskCancellationStrategy, TaskExecutor, TaskHandle, TaskResult, TimeDriver},
+        runtime::{
+            JoinHandle, TaskCancellationStrategy, TaskExecutor, TaskHandle, TaskResult, TimeDriver,
+        },
     };
 
     #[test]
@@ -235,7 +230,10 @@ mod tests {
         let runtime = TrackedRuntime::new(ImmediateRuntime::default());
         let ctx = CallContext::default();
 
-        let handle = runtime.spawn_dyn(&ctx, Box::pin(async { Ok::<_, spark_core::TaskError>(Box::new(()) as Box<dyn Any + Send>) }));
+        let handle = runtime.spawn_dyn(
+            &ctx,
+            Box::pin(async { Ok::<_, spark_core::TaskError>(Box::new(()) as Box<dyn Any + Send>) }),
+        );
         handle.detach();
 
         futures::executor::block_on(runtime.wait_for_idle());
@@ -252,7 +250,9 @@ mod tests {
             fut: spark_core::BoxFuture<'static, TaskResult<Box<dyn Any + Send>>>,
         ) -> JoinHandle<Box<dyn Any + Send>> {
             let output = futures::executor::block_on(fut);
-            JoinHandle::from_task_handle(Box::new(ImmediateHandle { state: RefCell::new(Some(output)) }))
+            JoinHandle::from_task_handle(Box::new(ImmediateHandle {
+                state: RefCell::new(Some(output)),
+            }))
         }
     }
 
