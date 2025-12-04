@@ -16,6 +16,8 @@
 //! ## Feature 策略（Trade-offs）
 //! - `std` 特性开启后依赖 `dashmap` 与 `spark-router`，提供生产环境所需的并发调度能力；
 //! - `alloc` 特性为后续在受限运行时中重用核心契约铺路，可在无 `std` 的情形下完成基础编译。
+//! - 特别强调运行时去耦：`std` 仅引入通用并发与错误依赖，不会强制绑定 Tokio 等具体异步运行时，
+//!   以避免下游默认启用时形成“幽灵依赖”，让调用方自选 runtime（如 async-std 或自定义执行器）。
 
 extern crate alloc;
 
