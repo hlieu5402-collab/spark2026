@@ -2,6 +2,7 @@ use crate::{
     SparkError,
     context::Context,
     observability::TraceContext,
+    runtime::AsyncRuntime,
     security::{IdentityDescriptor, SecurityPolicy},
     service::ClientFactory,
 };
@@ -518,6 +519,7 @@ struct CallContextInner {
     observability: ObservabilityContract,
     trace_context: TraceContext,
     client_factory: Option<Arc<dyn ClientFactory>>,
+    runtime: Option<Arc<dyn AsyncRuntime>>,
 }
 
 impl fmt::Debug for CallContextInner {
@@ -530,6 +532,7 @@ impl fmt::Debug for CallContextInner {
             .field("observability", &self.observability)
             .field("trace_context", &self.trace_context)
             .field("client_factory", &self.client_factory.is_some())
+            .field("runtime", &self.runtime.is_some())
             .finish()
     }
 }
@@ -630,6 +633,24 @@ impl CallContext {
     pub fn client_factory(&self) -> Option<Arc<dyn ClientFactory>> {
         self.inner.client_factory.as_ref().map(Arc::clone)
     }
+
+    /// 获取可选的异步运行时句柄。
+    ///
+    /// # 教案式注释
+    /// - **意图 (Why)**：业务层在提交异步任务时需要遵循治理契约，将取消、截止与追踪上下文传递给执行器；
+    ///   通过显式暴露运行时句柄，调用方可以使用 [`AsyncRuntime::spawn`](crate::runtime::TaskExecutor::spawn)
+    ///   在正确的执行环境中派生子任务，而无需依赖具体实现（Tokio、async-std 等）。
+    /// - **契约 (What)**：
+    ///   - 返回值为 `Option<&dyn AsyncRuntime>`：`Some` 表示外部已注入运行时能力，`None` 代表当前调用链
+    ///     无法派生异步任务，调用方应尽早报错而非静默降级；
+    ///   - 前置条件：调用方在使用前应确认返回值存在，并在提交任务时继续传递 `self` 以保持上下文；
+    ///   - 后置条件：成功获取的运行时引用仅在 `CallContext` 存活期间有效，不应跨越其生命周期缓存。
+    /// - **设计考量 (Trade-offs)**：
+    ///   - 选择返回借用而非克隆，避免在热路径上无谓地复制执行器指针；
+    ///   - 若未来需要在 `no_std` 环境以其他形式提供执行能力，可在 builder 中注入替代实现而无需改动业务代码。
+    pub fn runtime(&self) -> Option<&dyn AsyncRuntime> {
+        self.inner.runtime.as_deref()
+    }
 }
 
 impl fmt::Display for CallContext {
@@ -657,6 +678,7 @@ pub struct CallContextBuilder {
     observability: ObservabilityContract,
     trace_context: TraceContext,
     client_factory: Option<Arc<dyn ClientFactory>>,
+    runtime: Option<Arc<dyn AsyncRuntime>>,
 }
 
 impl Default for CallContextBuilder {
@@ -669,6 +691,7 @@ impl Default for CallContextBuilder {
             observability: ObservabilityContract::default(),
             trace_context: TraceContext::generate(),
             client_factory: None,
+            runtime: None,
         }
     }
 }
@@ -716,6 +739,16 @@ impl CallContextBuilder {
         self
     }
 
+    /// 注入运行时能力，供业务层安全地派生异步任务。
+    ///
+    /// # 契约说明
+    /// - **前置条件**：`runtime` 必须实现 [`AsyncRuntime`]，且生命周期覆盖 `CallContext` 的使用周期；
+    /// - **后置条件**：构建出的上下文通过 [`CallContext::runtime`] 访问同一引用，调用方可据此调用 `spawn` 等接口。
+    pub fn with_runtime(mut self, runtime: Arc<dyn AsyncRuntime>) -> Self {
+        self.runtime = Some(runtime);
+        self
+    }
+
     /// 构建上下文，若未提供预算将默认提供“无限 Flow 预算”。
     pub fn build(self) -> CallContext {
         let budgets = if self.budgets.is_empty() {
@@ -732,6 +765,7 @@ impl CallContextBuilder {
                 observability: self.observability,
                 trace_context: self.trace_context,
                 client_factory: self.client_factory,
+                runtime: self.runtime,
             }),
         }
     }
