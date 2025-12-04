@@ -1,3 +1,5 @@
+#![allow(clippy::items_after_test_module)]
+
 use alloc::{borrow::Cow, boxed::Box, format, sync::Arc, vec::Vec};
 use core::any::TypeId;
 
@@ -331,7 +333,7 @@ impl ApplicationRouterInitializer {
     ) -> Self {
         Self::new(
             router,
-            Arc::new(ExtensionsRoutingContextBuilder::default()),
+            Arc::new(ExtensionsRoutingContextBuilder),
             initializer_descriptor,
             handler_descriptor,
         )
@@ -557,7 +559,7 @@ impl ApplicationRouter {
     ) -> Self {
         Self::new(
             router,
-            Arc::new(ExtensionsRoutingContextBuilder::default()),
+            Arc::new(ExtensionsRoutingContextBuilder),
             descriptor,
         )
     }

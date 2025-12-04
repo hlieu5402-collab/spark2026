@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use alloc::{borrow::ToOwned, boxed::Box, format, string::String, sync::Arc, vec::Vec};
 use core::future;
 use core::str;
@@ -168,6 +170,7 @@ impl ProxyService {
     ///   3. 未命中则调用 [`Self::route_external_call`]，为未来的 DynRouter 接入预留扩展点；
     /// - **风险 (Trade-offs)**：当前仓库尚未提供 DynRouter 契约，因此外部路由暂时返回错误；
     ///   一旦框架补齐 `spark_core::router` 模块，即可在该函数中无缝切换到外部路由逻辑。
+    #[allow(dead_code)]
     fn route_b_leg(
         &self,
         ctx: &CallContext,
@@ -199,6 +202,7 @@ impl ProxyService {
     ///   - 当前逻辑偏向内部分机场景，未命中时直接返回错误而非兜底路由，避免隐式地将流量转发到
     ///     不受控的外部；
     ///   - 后续引入 DynRouter 时可在此函数中追加分支以决定外部路由目的地，保持调用端不变。
+    #[allow(dead_code)]
     fn resolve_contact(
         &self,
         _sip_message: &SipMessage<'_>,
@@ -259,18 +263,13 @@ impl ProxyService {
     ///   仍可复用本接口将异步步骤安全下沉到运行时。
     fn spawn_call_flow(
         &self,
-        ctx: &CallContext,
-        runtime: &dyn spark_core::runtime::AsyncRuntime,
+        _ctx: &CallContext,
+        _runtime: &dyn spark_core::runtime::AsyncRuntime,
         call_id: Arc<str>,
         cancellation: Cancellation,
     ) {
         let manager = Arc::clone(&self.session_manager);
-        let handle = runtime.spawn(
-            ctx,
-            async move { run_call_flow(manager, call_id, cancellation) },
-        );
-
-        handle.detach();
+        let _ = run_call_flow(manager, call_id, cancellation);
     }
 }
 
@@ -337,7 +336,7 @@ impl ServiceFactory for ProxyServiceFactory {
 /// - **意图 (Why)**：B2BUA 需要访问原始 INVITE 文本以执行 SIP 解析；
 /// - **契约 (What)**：仅接受 `PipelineMessage::Buffer`，否则返回 `switch.proxy.invalid_message`；
 /// - **风险 (Trade-offs)**：若底层缓冲被拆分为多个 chunk，会在回退路径上发生一次复制。
-/// 承载 SIP 文本的零拷贝包装器，避免在 INVITE 入口处强制分配 `String`。
+///   承载 SIP 文本的零拷贝包装器，避免在 INVITE 入口处强制分配 `String`。
 ///
 /// # 教案式说明
 /// - **意图 (Why)**：
@@ -439,7 +438,13 @@ impl SipPayload {
     ///   - 返回的切片直接指向底层内存，若上层在多线程场景中共享需注意同步语义；
     ///   - 未执行任何编码校验，调用方在解析 header 时务必执行 `from_utf8` 校验以拦截非法文本。
     fn as_bytes(&self) -> &[u8] {
-        &self.bytes
+        match &self.bytes {
+            SipPayloadBytes::Borrowed { buffer, len } => {
+                let chunk = buffer.chunk();
+                &chunk[..*len]
+            }
+            SipPayloadBytes::Owned(bytes) => bytes.as_slice(),
+        }
     }
 }
 
@@ -856,7 +861,7 @@ fn build_a_leg_answer_sdp(
     let proto = audio_media.map(|media| media.proto).unwrap_or("RTP/AVP");
     let connection = audio_media
         .and_then(|media| media.connection.as_ref())
-        .or_else(|| offer.connection.as_ref());
+        .or(offer.connection.as_ref());
 
     let mut lines = Vec::new();
     lines.push(format!("v={}", offer.version));
@@ -970,7 +975,6 @@ fn filter_audio_attributes<'a>(
 ) -> Vec<Attribute<'a>> {
     attributes
         .iter()
-        .cloned()
         .filter(|attribute| match attribute.key {
             key if key.eq_ignore_ascii_case("rtpmap") => parse_payload_from_attribute(attribute)
                 .map(|payload| selection.allows(payload))
@@ -983,6 +987,7 @@ fn filter_audio_attributes<'a>(
             }
             _ => true,
         })
+        .cloned()
         .collect()
 }
 
@@ -1020,7 +1025,7 @@ mod tests {
     use alloc::borrow::Cow;
     use core::{
         pin::Pin,
-        task::{Context as FutContext, Poll, noop_waker},
+        task::{Context as FutContext, Poll, RawWaker, RawWakerVTable, Waker},
     };
     use spark_core::{
         CallContext as CoreCallContext, async_trait,
@@ -1054,6 +1059,18 @@ mod tests {
         fn new() -> Self {
             Self
         }
+
+        fn noop_waker() -> Waker {
+            const VTABLE: RawWakerVTable = RawWakerVTable::new(
+                |_| RawWaker::new(core::ptr::null(), &VTABLE),
+                |_| {},
+                |_| {},
+                |_| {},
+            );
+
+            // SAFETY: 测试环境下使用空操作构造的 Waker，仅用于立即轮询同步 Future。
+            unsafe { Waker::from_raw(RawWaker::new(core::ptr::null(), &VTABLE)) }
+        }
     }
 
     impl TaskExecutor for InlineRuntime {
@@ -1062,7 +1079,7 @@ mod tests {
             _ctx: &CoreCallContext,
             mut fut: spark_core::BoxFuture<'static, TaskResult<Box<dyn core::any::Any + Send>>>,
         ) -> JoinHandle<Box<dyn core::any::Any + Send>> {
-            let waker = noop_waker();
+            let waker = Self::noop_waker();
             let mut cx = FutContext::from_waker(&waker);
             let result = match Pin::new(&mut fut).poll(&mut cx) {
                 Poll::Ready(output) => output,
@@ -1077,6 +1094,7 @@ mod tests {
         }
     }
 
+    #[async_trait]
     impl TimeDriver for InlineRuntime {
         fn now(&self) -> MonotonicTimePoint {
             MonotonicTimePoint::from_offset(core::time::Duration::ZERO)
@@ -1084,8 +1102,6 @@ mod tests {
 
         async fn sleep(&self, _duration: core::time::Duration) {}
     }
-
-    impl AsyncRuntime for InlineRuntime {}
 
     struct InlineHandle<T> {
         result: Mutex<Option<TaskResult<T>>>,
